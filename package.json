@@ -5,6 +5,13 @@
   "type": "module",
   "private": true,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/robertogecia/tjro-jurisprudencia-mcp"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
     "he": "^1.2.0",
