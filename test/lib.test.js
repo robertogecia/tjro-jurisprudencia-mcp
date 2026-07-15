@@ -11,7 +11,23 @@ import {
   sugestoes,
   formatBusca,
   formatInteiro,
+  diagnosticarRespostaNaoJson,
+  post,
 } from "../server/lib.js";
+
+// Corpo real capturado em 14/07/2026: o WAF do portal ("STIC") devolve HTTP 200
+// com uma página HTML em vez de erro quando suspeita de automação.
+const HTML_BLOQUEIO_STIC = `<!DOCTYPE html>
+<html lang="pt-br">
+<head><title>STIC - Página Bloqueada</title></head>
+<body>
+<h1>Página Bloqueada</h1>
+<p>Seu acesso a esta página foi bloqueado por suspeita de robotização.
+Por favor, abra um chamado através do e-mail suporte@tjro.jus.br</p>
+</body>
+</html>`;
+
+const fetchFake = (resposta) => async () => resposta;
 
 test("termo_exato escapa ANTES de aspear (regressão: aspas não podem virar \\\")", () => {
   const b = buildBuscaBody({
@@ -151,6 +167,45 @@ test("formatBusca rotula o trecho como Ementa só quando o tipo do documento é 
   const out = formatBusca(fake, "x", ["SENTENÇA"], "relevantes", 1, 10);
   assert.match(out, /Trecho da SENTENÇA/);
   assert.ok(!out.includes("Ementa (trecho)"));
+});
+
+test("diagnosticarRespostaNaoJson reconhece o bloqueio do WAF do TJRO (STIC) e orienta o usuário", () => {
+  const msg = diagnosticarRespostaNaoJson("text/html", HTML_BLOQUEIO_STIC);
+  assert.match(msg, /robotização/i);
+  assert.match(msg, /suporte@tjro\.jus\.br/);
+});
+
+test("diagnosticarRespostaNaoJson cai numa mensagem genérica quando o HTML não é o bloqueio conhecido", () => {
+  const msg = diagnosticarRespostaNaoJson("text/html", "<html>manutenção programada</html>");
+  assert.ok(!/robotização/i.test(msg));
+  assert.match(msg, /instabilidade temporária/);
+});
+
+test("post() dá mensagem acionável (não JSONDecodeError cru) quando o TJRO bloqueia por robotização", async () => {
+  const respostaFake = {
+    ok: true,
+    status: 200,
+    headers: { get: () => "text/html" },
+    text: async () => HTML_BLOQUEIO_STIC,
+  };
+  await assert.rejects(
+    () => post({ fields: { query: "x" } }, fetchFake(respostaFake)),
+    (err) => {
+      assert.match(err.message, /robotização/i);
+      return true;
+    }
+  );
+});
+
+test("post() devolve o JSON normalmente quando o content-type é application/json", async () => {
+  const respostaFake = {
+    ok: true,
+    status: 200,
+    headers: { get: () => "application/json; charset=utf-8" },
+    json: async () => ({ hits: { total: { value: 1 }, hits: [] } }),
+  };
+  const data = await post({ fields: { query: "x" } }, fetchFake(respostaFake));
+  assert.equal(data.hits.total.value, 1);
 });
 
 test("sugestoes agrega correções de qualquer token da consulta, não só a primeira palavra", () => {

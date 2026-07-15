@@ -6,6 +6,15 @@
 import he from "he";
 
 export const SITE = "https://juris.tjro.jus.br";
+export const API = "https://juris-back.tjro.jus.br";
+export const ENDPOINT = `${API}/search/varios_parametros/`;
+
+export const HEADERS = {
+  Origin: SITE,
+  Referer: SITE + "/",
+  "Content-Type": "application/json",
+  "User-Agent": "Mozilla/5.0 (compatible; MCP-TJRO-Jurisprudencia/1.1)",
+};
 
 export const TIPOS_VALIDOS = [
   "ACÓRDÃO",
@@ -180,6 +189,39 @@ export const msgErro = (e) =>
   e.name === "TimeoutError"
     ? "tempo esgotado após 45s — o portal JURIS pode estar lento; tente novamente"
     : e.cause?.code ?? e.cause?.message ?? e.message;
+
+// Interpreta uma resposta 200 OK que não é JSON. O portal tem um WAF que devolve
+// uma página HTML "Página Bloqueada" em vez de erro HTTP quando suspeita de
+// automação — merece mensagem própria, não um erro cru de JSON.parse.
+export function diagnosticarRespostaNaoJson(contentType, texto) {
+  if (/robotiza|p[aá]gina bloqueada|\bstic\b/i.test(texto || "")) {
+    return (
+      'O portal do TJRO bloqueou esta consulta por suspeita de automação ("robotização"). ' +
+      "Costuma ser temporário (ex.: muitas buscas em pouco tempo) — aguarde alguns minutos " +
+      'antes de tentar de novo. Se persistir, abra um chamado em suporte@tjro.jus.br com ' +
+      'assunto "Acesso Bloqueado".'
+    );
+  }
+  return (
+    `O portal respondeu algo inesperado (não é JSON; content-type="${contentType}"). ` +
+    "Pode ser instabilidade temporária do TJRO — tente novamente em alguns minutos."
+  );
+}
+
+export async function post(body, fetchImpl = fetch) {
+  const r = await fetchImpl(ENDPOINT, {
+    method: "POST",
+    headers: HEADERS,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(45000),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const ctype = r.headers.get("content-type") || "";
+  if (!ctype.toLowerCase().includes("json")) {
+    throw new Error(diagnosticarRespostaNaoJson(ctype, await r.text()));
+  }
+  return r.json();
+}
 
 // --------------------------------------------------------------- formatters -
 export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, filtros = [], nota = "", termoExato = false) {

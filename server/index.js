@@ -11,7 +11,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import {
-  SITE,
   ORDENACOES,
   JANELA_MAXIMA,
   normTipos,
@@ -20,31 +19,11 @@ import {
   formatBusca,
   formatInteiro,
   msgErro,
+  post,
 } from "./lib.js";
 
-const API = "https://juris-back.tjro.jus.br";
-const ENDPOINT = `${API}/search/varios_parametros/`;
-
-const HEADERS = {
-  Origin: SITE,
-  Referer: SITE + "/",
-  "Content-Type": "application/json",
-  "User-Agent": "Mozilla/5.0 (compatible; MCP-TJRO-Jurisprudencia/1.1)",
-};
-
-async function post(body) {
-  const r = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: HEADERS,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(45000),
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
-
 // --------------------------------------------------------------- MCP server -
-const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.1.0" });
+const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.1.1" });
 
 server.registerTool(
   "buscar_jurisprudencia_tjro",
