@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "tjro-jurisprudencia",
   "display_name": "Jurisprudência TJRO",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Busca de jurisprudência do Tribunal de Justiça de Rondônia (portal público JURIS), direto no Claude.",
   "long_description": "Adiciona ao Claude duas ferramentas: **buscar_jurisprudencia_tjro** (pesquisa por tema, com filtros de tipo, grau, classe, câmara e período) e **obter_inteiro_teor_tjro** (texto integral das peças de um processo). Os dados vêm do portal oficial de jurisprudência do TJRO (juris.tjro.jus.br) e cada resultado traz citação pronta para peça e link direto para a decisão no portal. AVISO: integração não-oficial; confirme número, relator, câmara, data e ementa na fonte antes de citar em peça.",
   "author": {

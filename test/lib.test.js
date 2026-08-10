@@ -13,6 +13,11 @@ import {
   formatInteiro,
   diagnosticarRespostaNaoJson,
   post,
+  checarDisjuntor,
+  checarLimitePreventivo,
+  registrarBloqueioDetectado,
+  registrarSucesso,
+  _resetDisjuntorParaTeste,
 } from "../server/lib.js";
 
 // Corpo real capturado em 14/07/2026: o WAF do portal ("STIC") devolve HTTP 200
@@ -182,6 +187,7 @@ test("diagnosticarRespostaNaoJson cai numa mensagem genérica quando o HTML não
 });
 
 test("post() dá mensagem acionável (não JSONDecodeError cru) quando o TJRO bloqueia por robotização", async () => {
+  _resetDisjuntorParaTeste();
   const respostaFake = {
     ok: true,
     status: 200,
@@ -197,7 +203,34 @@ test("post() dá mensagem acionável (não JSONDecodeError cru) quando o TJRO bl
   );
 });
 
+test("post() aciona o disjuntor ao detectar bloqueio — a PRÓXIMA chamada nem sai pela rede", async () => {
+  _resetDisjuntorParaTeste();
+  const respostaBloqueio = {
+    ok: true,
+    status: 200,
+    headers: { get: () => "text/html" },
+    text: async () => HTML_BLOQUEIO_STIC,
+  };
+  let chamadasDeRede = 0;
+  const fetchContador = async () => {
+    chamadasDeRede += 1;
+    return respostaBloqueio;
+  };
+  await assert.rejects(() => post({ fields: { query: "x" } }, fetchContador));
+  assert.equal(chamadasDeRede, 1);
+  // 2ª chamada: disjuntor já ativo — deve barrar ANTES de tocar a rede.
+  await assert.rejects(
+    () => post({ fields: { query: "x" } }, fetchContador),
+    (err) => {
+      assert.match(err.message, /evitando novas tentativas/);
+      return true;
+    }
+  );
+  assert.equal(chamadasDeRede, 1, "a 2ª chamada não deveria ter tocado a rede");
+});
+
 test("post() devolve o JSON normalmente quando o content-type é application/json", async () => {
+  _resetDisjuntorParaTeste();
   const respostaFake = {
     ok: true,
     status: 200,
@@ -223,4 +256,42 @@ test("sugestoes agrega correções de qualquer token da consulta, não só a pri
     out.some((s) => s.includes("extraordinária")),
     "deveria sugerir a correção da 2ª palavra, não só variantes de acento da 1ª"
   );
+});
+
+test("checarDisjuntor: sem incidente não bloqueia; após detecção, bloqueia com backoff crescente", () => {
+  _resetDisjuntorParaTeste();
+  assert.equal(checarDisjuntor(), null);
+
+  const t0 = 1_000_000;
+  registrarBloqueioDetectado(t0); // 1ª detecção: cooldown de ~10min
+  const aviso1 = checarDisjuntor(t0 + 1000); // 1s depois, ainda bem dentro do cooldown
+  assert.match(aviso1, /evitando novas tentativas/);
+  assert.match(aviso1, /9min/); // ~10min - 1s arredonda pra "9minXXs"
+
+  // 2ª detecção ainda dentro do cooldown da 1ª: o PRÓXIMO cooldown dobra p/ ~20min.
+  registrarBloqueioDetectado(t0 + 1000);
+  const aviso2 = checarDisjuntor(t0 + 1000);
+  assert.match(aviso2, /19min|20min/);
+
+  // Esse cooldown de ~20min expira -> disjuntor libera de novo.
+  assert.equal(checarDisjuntor(t0 + 1000 + 20 * 60_000 + 1), null);
+
+  // Sucesso reseta o backoff para o valor inicial — não fica acumulando pra sempre.
+  registrarSucesso();
+  registrarBloqueioDetectado(t0 + 5_000_000);
+  const avisoAposReset = checarDisjuntor(t0 + 5_000_000 + 1000);
+  assert.match(avisoAposReset, /9min/); // voltou a ser ~10min, não ~40min
+});
+
+test("checarLimitePreventivo: libera até o teto por minuto, barra a próxima e depois libera de novo", () => {
+  _resetDisjuntorParaTeste();
+  const t0 = 2_000_000;
+  for (let i = 0; i < 10; i++) {
+    assert.equal(checarLimitePreventivo(t0 + i), null, `requisição ${i + 1}/10 deveria passar`);
+  }
+  const aviso = checarLimitePreventivo(t0 + 10);
+  assert.match(aviso, /Muitas consultas/);
+
+  // Passado mais de 1 minuto da mais antiga, a janela desliza e libera de novo.
+  assert.equal(checarLimitePreventivo(t0 + 60_001), null);
 });

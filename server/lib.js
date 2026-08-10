@@ -208,7 +208,87 @@ export function diagnosticarRespostaNaoJson(contentType, texto) {
   );
 }
 
+// --------------------------------------------------------------------------- //
+// Disjuntor + limite preventivo — evita repetir o padrão que já causou um
+// bloqueio por robotização (observado 15/07/2026: rajada de requisições
+// automatizadas escalou de bloqueio por User-Agent para bloqueio por
+// IP/comportamento). Não sabemos o limiar exato do WAF do TJRO — em vez de
+// descobrir na marra (mais uma rajada automatizada contra o servidor deles),
+// o disjuntor DETECTA o bloqueio quando ocorre e recua sozinho, com backoff
+// crescente; o limite preventivo mantém o ritmo abaixo do que causou o
+// bloqueio de hoje mesmo se nada disparar. Números são estimativas
+// conservadoras, não medição precisa — ajustar se a experiência mostrar que
+// folgam ou apertam demais.
+// --------------------------------------------------------------------------- //
+const JANELA_MAX_REQS = 10; // no máx. 10 requisições
+const JANELA_MS = 60_000; // por minuto — folgado p/ uso interativo, curto p/ rajada de script
+const BACKOFF_INICIAL_MS = 10 * 60_000; // 10 min na primeira detecção de bloqueio
+const BACKOFF_MAXIMO_MS = 60 * 60_000; // nunca ultrapassa 1h de recuo automático
+
+let historicoRequisicoes = [];
+let bloqueadoAte = 0;
+let backoffAtualMs = BACKOFF_INICIAL_MS;
+
+// Reseta o estado do disjuntor — só para uso em testes (evita vazar estado entre casos).
+export function _resetDisjuntorParaTeste() {
+  historicoRequisicoes = [];
+  bloqueadoAte = 0;
+  backoffAtualMs = BACKOFF_INICIAL_MS;
+}
+
+const fmtDuracao = (ms) => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h) return `${h}h${String(m).padStart(2, "0")}min`;
+  if (m) return `${m}min${String(sec).padStart(2, "0")}s`;
+  return `${sec}s`;
+};
+
+// Mensagem de recuo se ainda dentro do cooldown de um bloqueio detectado; senão null.
+export function checarDisjuntor(agora = Date.now()) {
+  if (agora < bloqueadoAte) {
+    return (
+      "O TJRO bloqueou uma consulta recente por suspeita de automação; para não " +
+      "prolongar o bloqueio, esta ferramenta está evitando novas tentativas por " +
+      `mais ${fmtDuracao(bloqueadoAte - agora)}. Tente novamente depois disso.`
+    );
+  }
+  return null;
+}
+
+// Limite preventivo de ritmo — não depende de saber o limiar real do WAF.
+export function checarLimitePreventivo(agora = Date.now()) {
+  historicoRequisicoes = historicoRequisicoes.filter((t) => agora - t <= JANELA_MS);
+  if (historicoRequisicoes.length >= JANELA_MAX_REQS) {
+    const espera = JANELA_MS - (agora - historicoRequisicoes[0]);
+    return (
+      `Muitas consultas em pouco tempo (limite preventivo de ${JANELA_MAX_REQS}/min, ` +
+      "para não repetir o padrão que já causou bloqueio do TJRO). " +
+      `Aguarde ${fmtDuracao(espera)} e tente de novo.`
+    );
+  }
+  historicoRequisicoes.push(agora);
+  return null;
+}
+
+// WAF do TJRO bloqueou: ativa/estende o disjuntor com backoff crescente
+// (dobra a cada nova detecção dentro do cooldown, até o teto).
+export function registrarBloqueioDetectado(agora = Date.now()) {
+  bloqueadoAte = agora + backoffAtualMs;
+  backoffAtualMs = Math.min(backoffAtualMs * 2, BACKOFF_MAXIMO_MS);
+}
+
+// Consulta bem-sucedida após o cooldown reseta o backoff — um incidente
+// passado não deve continuar penalizando o uso normal futuro.
+export function registrarSucesso() {
+  backoffAtualMs = BACKOFF_INICIAL_MS;
+}
+
 export async function post(body, fetchImpl = fetch) {
+  const aviso = checarDisjuntor() || checarLimitePreventivo();
+  if (aviso) throw new Error(aviso);
   const r = await fetchImpl(ENDPOINT, {
     method: "POST",
     headers: HEADERS,
@@ -218,8 +298,13 @@ export async function post(body, fetchImpl = fetch) {
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const ctype = r.headers.get("content-type") || "";
   if (!ctype.toLowerCase().includes("json")) {
-    throw new Error(diagnosticarRespostaNaoJson(ctype, await r.text()));
+    const texto = await r.text();
+    if (/robotiza|p[aá]gina bloqueada|\bstic\b/i.test(texto)) {
+      registrarBloqueioDetectado();
+    }
+    throw new Error(diagnosticarRespostaNaoJson(ctype, texto));
   }
+  registrarSucesso();
   return r.json();
 }
 

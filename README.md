@@ -69,6 +69,17 @@ de qualquer forma.
   falhar com erro de certificado, fale com o suporte de TI (pode ser necessário
   ajustar o certificado/CA do sistema).
 
+## Se a busca parar de funcionar
+
+O portal do TJRO tem um filtro de segurança que pode bloquear temporariamente o
+acesso automatizado quando detecta volume alto de requisições em pouco tempo —
+mesmo sendo dados públicos. Se isso acontecer, a mensagem de erro vai dizer
+claramente que é um bloqueio por suspeita de automação, não um bug. Não é uma
+falha permanente: costuma liberar sozinho depois de um tempo. A extensão já
+evita insistir durante esse período (ver "Limite de ritmo próprio" acima) — o
+mais eficaz é simplesmente aguardar um pouco antes de tentar de novo, em vez
+de repetir a consulta várias vezes seguidas.
+
 ## Segurança e auditoria
 
 Pensado para ser fácil de verificar antes de instalar, não só "confie em mim":
@@ -91,6 +102,11 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
 - **Testado.** `server/lib.js` tem [testes automatizados](test/lib.test.js) que
   rodam em CI a cada mudança (badge no topo deste README) — inclusive regressões
   específicas dos bugs já encontrados e corrigidos neste projeto.
+- **Limite de ritmo próprio.** A extensão nunca faz mais de 10 requisições por
+  minuto e, se o portal responder com sinal de bloqueio por automação, ela
+  para de tentar sozinha por um tempo (crescente a cada nova detecção) em vez
+  de insistir — para não gerar tráfego repetido contra o TJRO. Ver "Se a busca
+  parar de funcionar" abaixo.
 - **Licença MIT**, sem cláusula que restrinja leitura ou uso do código-fonte.
 
 ## Desinstalar
