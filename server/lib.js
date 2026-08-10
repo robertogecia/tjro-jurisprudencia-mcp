@@ -4,6 +4,9 @@
  * (index.js conecta o transporte MCP no import e não pode ser importado em teste).
  */
 import he from "he";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 export const SITE = "https://juris.tjro.jus.br";
 export const API = "https://juris-back.tjro.jus.br";
@@ -220,20 +223,62 @@ export function diagnosticarRespostaNaoJson(contentType, texto) {
 // conservadoras, não medição precisa — ajustar se a experiência mostrar que
 // folgam ou apertam demais.
 // --------------------------------------------------------------------------- //
-const JANELA_MAX_REQS = 10; // no máx. 10 requisições
-const JANELA_MS = 60_000; // por minuto — folgado p/ uso interativo, curto p/ rajada de script
-const BACKOFF_INICIAL_MS = 10 * 60_000; // 10 min na primeira detecção de bloqueio
+const JANELA_MAX_REQS = 10; // sempre no máx. 10 requisições por janela
+// Escada de larguras da janela preventiva — mesmo teto de 10 requisições, mas a
+// janela ALARGA a cada bloqueio real detectado (evidência de que o nível atual
+// ainda é generoso demais) e RELAXA um degrau após uma sequência longa sem
+// incidente (o WAF pode ter sido ajustado, ou o bloqueio anterior foi pontual).
+// Persistido em disco: sobrevive a reinício do Claude Desktop, senão a "lição"
+// aprendida seria esquecida a cada sessão nova.
+const ESCADA_JANELA_MS = [60_000, 5 * 60_000, 10 * 60_000, 20 * 60_000, 30 * 60_000]; // 1,5,10,20,30min
+const SUCESSOS_PARA_RELAXAR = 100; // sucessos seguidos no nível atual antes de afrouxar 1 degrau
+const BACKOFF_INICIAL_MS = 10 * 60_000; // 10 min na primeira detecção de bloqueio (disjuntor reativo)
 const BACKOFF_MAXIMO_MS = 60 * 60_000; // nunca ultrapassa 1h de recuo automático
 
 let historicoRequisicoes = [];
 let bloqueadoAte = 0;
 let backoffAtualMs = BACKOFF_INICIAL_MS;
+let indiceJanelaAtual = 0; // índice em ESCADA_JANELA_MS — o nível "aprendido"
+let sucessosConsecutivos = 0;
+let arquivoEstadoDisjuntor = path.join(os.homedir(), ".tjro-jurisprudencia-mcp-estado.json");
+
+// Só para uso em testes: redireciona a persistência pra um arquivo temporário,
+// pra não gravar por cima do estado real aprendido do usuário.
+export function _setArquivoEstadoParaTeste(caminho) {
+  arquivoEstadoDisjuntor = caminho;
+}
+
+function carregarEstadoDisjuntor() {
+  try {
+    const dados = JSON.parse(fs.readFileSync(arquivoEstadoDisjuntor, "utf-8"));
+    const idx = Number.isInteger(dados.indiceJanela) ? dados.indiceJanela : 0;
+    indiceJanelaAtual = Math.max(0, Math.min(idx, ESCADA_JANELA_MS.length - 1));
+    sucessosConsecutivos = Math.max(0, Number(dados.sucessosConsecutivos) || 0);
+  } catch {
+    // sem arquivo ainda (1ª execução), corrompido, ou sem permissão — segue com o nível 0.
+  }
+}
+
+function salvarEstadoDisjuntor() {
+  try {
+    fs.writeFileSync(
+      arquivoEstadoDisjuntor,
+      JSON.stringify({ indiceJanela: indiceJanelaAtual, sucessosConsecutivos })
+    );
+  } catch {
+    // falha de disco não deve derrubar a ferramenta.
+  }
+}
+
+carregarEstadoDisjuntor();
 
 // Reseta o estado do disjuntor — só para uso em testes (evita vazar estado entre casos).
 export function _resetDisjuntorParaTeste() {
   historicoRequisicoes = [];
   bloqueadoAte = 0;
   backoffAtualMs = BACKOFF_INICIAL_MS;
+  indiceJanelaAtual = 0;
+  sucessosConsecutivos = 0;
 }
 
 const fmtDuracao = (ms) => {
@@ -258,14 +303,16 @@ export function checarDisjuntor(agora = Date.now()) {
   return null;
 }
 
-// Limite preventivo de ritmo — não depende de saber o limiar real do WAF.
+// Limite preventivo de ritmo, no nível aprendido (indiceJanelaAtual) — não
+// depende de saber o limiar real do WAF, só reage ao que já aconteceu.
 export function checarLimitePreventivo(agora = Date.now()) {
-  historicoRequisicoes = historicoRequisicoes.filter((t) => agora - t <= JANELA_MS);
+  const janelaMs = ESCADA_JANELA_MS[indiceJanelaAtual];
+  historicoRequisicoes = historicoRequisicoes.filter((t) => agora - t <= janelaMs);
   if (historicoRequisicoes.length >= JANELA_MAX_REQS) {
-    const espera = JANELA_MS - (agora - historicoRequisicoes[0]);
+    const espera = janelaMs - (agora - historicoRequisicoes[0]);
     return (
-      `Muitas consultas em pouco tempo (limite preventivo de ${JANELA_MAX_REQS}/min, ` +
-      "para não repetir o padrão que já causou bloqueio do TJRO). " +
+      `Muitas consultas em pouco tempo (limite preventivo atual: ${JANELA_MAX_REQS} a cada ` +
+      `${fmtDuracao(janelaMs)} — ajustado automaticamente conforme bloqueios anteriores do TJRO). ` +
       `Aguarde ${fmtDuracao(espera)} e tente de novo.`
     );
   }
@@ -273,17 +320,32 @@ export function checarLimitePreventivo(agora = Date.now()) {
   return null;
 }
 
-// WAF do TJRO bloqueou: ativa/estende o disjuntor com backoff crescente
-// (dobra a cada nova detecção dentro do cooldown, até o teto).
+// WAF do TJRO bloqueou: ativa/estende o disjuntor reativo (backoff dobra a cada
+// nova detecção dentro do cooldown, até o teto) E, como isso só acontece se o
+// limite preventivo atual não foi suficiente, avança um degrau na escada
+// (janela mais larga) para o futuro — persistido, sobrevive a reinício.
 export function registrarBloqueioDetectado(agora = Date.now()) {
   bloqueadoAte = agora + backoffAtualMs;
   backoffAtualMs = Math.min(backoffAtualMs * 2, BACKOFF_MAXIMO_MS);
+  if (indiceJanelaAtual < ESCADA_JANELA_MS.length - 1) indiceJanelaAtual += 1;
+  sucessosConsecutivos = 0;
+  salvarEstadoDisjuntor();
 }
 
-// Consulta bem-sucedida após o cooldown reseta o backoff — um incidente
-// passado não deve continuar penalizando o uso normal futuro.
+// Consulta bem-sucedida: reseta o backoff reativo (um incidente passado não
+// deve continuar penalizando o uso normal futuro) e conta pra relaxar a escada
+// — depois de uma sequência longa sem novo bloqueio no nível atual, afrouxa um
+// degrau (o bloqueio anterior pode ter sido pontual, ou o TJRO ajustou o WAF).
 export function registrarSucesso() {
   backoffAtualMs = BACKOFF_INICIAL_MS;
+  sucessosConsecutivos += 1;
+  if (sucessosConsecutivos >= SUCESSOS_PARA_RELAXAR) {
+    sucessosConsecutivos = 0; // reseta sempre, mesmo já no nível mínimo (não cresce sem limite)
+    if (indiceJanelaAtual > 0) {
+      indiceJanelaAtual -= 1;
+      salvarEstadoDisjuntor();
+    }
+  }
 }
 
 export async function post(body, fetchImpl = fetch) {

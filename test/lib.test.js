@@ -18,7 +18,14 @@ import {
   registrarBloqueioDetectado,
   registrarSucesso,
   _resetDisjuntorParaTeste,
+  _setArquivoEstadoParaTeste,
 } from "../server/lib.js";
+import os from "node:os";
+import path from "node:path";
+
+// Redireciona a persistência do disjuntor pra um arquivo temporário em TODO o
+// arquivo de teste — nunca deve gravar por cima do estado real do usuário.
+_setArquivoEstadoParaTeste(path.join(os.tmpdir(), "_teste_disjuntor_tjro.json"));
 
 // Corpo real capturado em 14/07/2026: o WAF do portal ("STIC") devolve HTTP 200
 // com uma página HTML em vez de erro quando suspeita de automação.
@@ -294,4 +301,56 @@ test("checarLimitePreventivo: libera até o teto por minuto, barra a próxima e 
 
   // Passado mais de 1 minuto da mais antiga, a janela desliza e libera de novo.
   assert.equal(checarLimitePreventivo(t0 + 60_001), null);
+});
+
+test("escada adaptativa: bloqueio real avança 1 degrau por vez, refletido no limite preventivo", () => {
+  _resetDisjuntorParaTeste();
+  const t0 = 3_000_000;
+
+  // Nível 0 (padrão): janela de 1min.
+  for (let i = 0; i < 10; i++) checarLimitePreventivo(t0 + i);
+  assert.match(checarLimitePreventivo(t0 + 10), /1min/);
+
+  // 1º bloqueio real -> avança pro nível 1 (5min). Salto de tempo > 5min pra
+  // garantir que o histórico da fase anterior já saiu da janela (mais larga agora).
+  const t1 = t0 + 6 * 60_000;
+  registrarBloqueioDetectado(t1);
+  for (let i = 0; i < 10; i++) checarLimitePreventivo(t1 + i);
+  assert.match(checarLimitePreventivo(t1 + 10), /5min/);
+
+  // 2º bloqueio real -> avança pro nível 2 (10min). Salto de tempo > 10min.
+  const t2 = t1 + 11 * 60_000;
+  registrarBloqueioDetectado(t2);
+  for (let i = 0; i < 10; i++) checarLimitePreventivo(t2 + i);
+  assert.match(checarLimitePreventivo(t2 + 10), /10min/);
+});
+
+test("escada adaptativa: nunca avança além do topo da escada (30min)", () => {
+  _resetDisjuntorParaTeste();
+  let t = 3_000_000;
+  for (let i = 0; i < 10; i++) {
+    // 10 bloqueios seguidos, cada um bem depois do teto da janela anterior — a
+    // escada tem só 5 níveis, então a partir do 5º isso já devia estar no topo.
+    registrarBloqueioDetectado(t);
+    t += 40 * 60_000;
+  }
+  for (let i = 0; i < 10; i++) checarLimitePreventivo(t + i);
+  assert.match(checarLimitePreventivo(t + 10), /30min/);
+});
+
+test("escada adaptativa: sequência longa de sucessos relaxa 1 degrau; nunca abaixo do nível 0", () => {
+  _resetDisjuntorParaTeste();
+  registrarBloqueioDetectado(4_000_000); // nível 0 -> 1
+  registrarBloqueioDetectado(4_000_100); // nível 1 -> 2 (10min)
+  for (let i = 0; i < 100; i++) registrarSucesso();
+  for (let i = 0; i < 10; i++) checarLimitePreventivo(5_000_000 + i);
+  const avisoAposRelaxar = checarLimitePreventivo(5_000_020);
+  assert.match(avisoAposRelaxar, /5min/, avisoAposRelaxar); // relaxou de 10min pra 5min
+
+  // Muito além do limiar, nunca relaxa abaixo do nível 0 (1min).
+  _resetDisjuntorParaTeste();
+  for (let i = 0; i < 300; i++) registrarSucesso();
+  for (let i = 0; i < 10; i++) checarLimitePreventivo(6_000_000 + i);
+  const avisoNivelMinimo = checarLimitePreventivo(6_000_020);
+  assert.match(avisoNivelMinimo, /1min/, avisoNivelMinimo);
 });

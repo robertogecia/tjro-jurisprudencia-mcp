@@ -80,6 +80,15 @@ evita insistir durante esse período (ver "Limite de ritmo próprio" acima) — 
 mais eficaz é simplesmente aguardar um pouco antes de tentar de novo, em vez
 de repetir a consulta várias vezes seguidas.
 
+**O limite se ajusta sozinho.** Como não há como saber de antemão o limiar
+exato do filtro do TJRO, a extensão aprende com a experiência: cada vez que um
+bloqueio real acontece, ela torna o próprio limite preventivo mais rígido (a
+janela de "10 consultas" alarga — de 1 minuto para 5, depois 10, até um teto de
+30 minutos); depois de uma sequência longa sem novos bloqueios, ela afrouxa de
+novo. Esse aprendizado fica salvo em `~/.tjro-jurisprudencia-mcp-estado.json`
+(só dois números — nível atual e contador de sucessos; nenhum dado pessoal ou
+de pesquisa) para não ser esquecido a cada reinício do Claude Desktop.
+
 ## Segurança e auditoria
 
 Pensado para ser fácil de verificar antes de instalar, não só "confie em mim":
