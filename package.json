@@ -1,6 +1,6 @@
 {
   "name": "tjro-jurisprudencia-mcp",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Busca de jurisprudência do TJRO (portal JURIS) como ferramentas MCP",
   "type": "module",
   "private": true,

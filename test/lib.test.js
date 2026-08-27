@@ -20,7 +20,9 @@ import {
   _resetDisjuntorParaTeste,
   _setArquivoEstadoParaTeste,
   _limparCacheParaTeste,
+  _statusPersistencia,
 } from "../server/lib.js";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -295,7 +297,7 @@ test("reservarRequisicao: barra ao estourar o teto da janela", () => {
   }
   const estourou = reservarRequisicao(t0 + 10 * 3000);
   assert.match(estourou.erro, /Muitas consultas/);
-  assert.match(estourou.erro, /compartilhado por todas as sessões/);
+  assert.match(estourou.erro, /compartilhado por todos os processos/);
 });
 
 test("reservarRequisicao: durante o cooldown do disjuntor, recusa de imediato", () => {
@@ -456,4 +458,176 @@ test("diagnóstico funciona (e não mente) quando nunca houve bloqueio", () => {
   const rel = diagnosticoRitmo(30_000_000);
   assert.match(rel, /Nenhum bloqueio registrado/);
   assert.match(rel, /liberado/);
+});
+
+
+// ---------------------------------------------------------------------------
+// Regressões do red team (v1.4.1)
+// ---------------------------------------------------------------------------
+
+const respostaFalsa = (status, ctype, corpo, headers = {}) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  headers: { get: (h) => (h.toLowerCase() === "content-type" ? ctype : headers[h.toLowerCase()] ?? null) },
+  text: async () => corpo,
+  json: async () => JSON.parse(corpo),
+});
+
+test("WAF com HTTP 403 e corpo de bloqueio arma o disjuntor (antes, o status furava tudo)", async () => {
+  limparTudo();
+  await assert.rejects(() =>
+    post({ fields: { query: "x" } }, async () => respostaFalsa(403, "text/html", HTML_BLOQUEIO_STIC))
+  );
+  // Disjuntor armado -> próxima chamada é barrada sem tocar a rede.
+  let tocouRede = false;
+  await assert.rejects(
+    () => post({ fields: { query: "y" } }, async () => { tocouRede = true; return respostaFalsa(200, "application/json", "{}"); }),
+    (err) => {
+      assert.match(err.message, /evitando novas tentativas/);
+      return true;
+    }
+  );
+  assert.equal(tocouRede, false);
+  assert.match(diagnosticoRitmo(), /Bloqueios registrados: 1/);
+});
+
+test("HTTP 429 respeita Retry-After e NÃO alarga a janela (403/429 seco não sobe a escada)", async () => {
+  limparTudo();
+  await assert.rejects(() =>
+    post({ fields: { query: "x" } }, async () =>
+      respostaFalsa(429, "text/html", "<html>rate limited</html>", { "retry-after": "1800" })
+    )
+  );
+  const rel = diagnosticoRitmo();
+  // Cooldown de 30min (Retry-After) prevalece sobre o backoff inicial de 10min...
+  assert.match(rel, /BLOQUEADO/);
+  assert.match(rel, /29min|30min/);
+  // ...mas a janela continua no nível 1 (1min), porque não houve assinatura do WAF.
+  assert.match(rel, /Nível atual: 1 de 5/);
+});
+
+test("HTTP 503 é instabilidade, não bloqueio: não arma disjuntor nem registra incidente", async () => {
+  limparTudo();
+  await assert.rejects(() =>
+    post({ fields: { query: "x" } }, async () => respostaFalsa(503, "text/html", "<html>manutenção</html>"))
+  );
+  const rel = diagnosticoRitmo();
+  assert.match(rel, /Situação: liberado/);
+  assert.match(rel, /Nenhum bloqueio registrado/);
+});
+
+test("escrita do estado é atômica: nenhum .tmp residual e o arquivo final é JSON válido", () => {
+  limparTudo();
+  const alvo = path.join(os.tmpdir(), "_teste_disjuntor_tjro.json");
+  reservarRequisicao(Date.now());
+  const conteudo = fs.readFileSync(alvo, "utf-8");
+  assert.doesNotThrow(() => JSON.parse(conteudo));
+  const residuos = fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith("_teste_disjuntor_tjro.json.") && f.endsWith(".tmp"));
+  assert.deepEqual(residuos, [], `sobraram temporários: ${residuos.join(", ")}`);
+});
+
+test("se o disco não aceitar escrita, o limite CONTINUA valendo em memória (não vira ilimitado)", () => {
+  limparTudo();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-somente-leitura-"));
+  const alvo = path.join(dir, "estado.json");
+  _setArquivoEstadoParaTeste(alvo);
+  try {
+    fs.chmodSync(dir, 0o500); // diretório sem permissão de escrita
+    const t0 = Date.now();
+    let admitidas = 0;
+    // 40 chamadas dentro da MESMA janela de 1min (1ms entre elas) — sem o fallback
+    // em memória, todas as 40 passariam, que é o padrão metralhadora.
+    for (let i = 0; i < 40; i++) {
+      if (!reservarRequisicao(t0 + i).erro) admitidas += 1;
+    }
+    assert.equal(admitidas, 10, `esperava o teto de 10, veio ${admitidas} — limitador desligado`);
+    assert.ok(_statusPersistencia(), "deveria registrar que a persistência falhou");
+    assert.match(diagnosticoRitmo(), /AVISO: não foi possível gravar/);
+  } finally {
+    try { fs.chmodSync(dir, 0o700); } catch {}
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+    _setArquivoEstadoParaTeste(path.join(os.tmpdir(), "_teste_disjuntor_tjro.json"));
+    limparTudo();
+  }
+});
+
+test("trava órfã é limpa a tempo — não se executa sem exclusão mútua", () => {
+  limparTudo();
+  const alvo = path.join(os.tmpdir(), "_teste_disjuntor_tjro.json");
+  const lock = alvo + ".lock";
+  fs.writeFileSync(lock, "");
+  const velho = new Date(Date.now() - 5000); // 5s > TRAVA_OBSOLETA_MS (1s)
+  fs.utimesSync(lock, velho, velho);
+  const inicio = Date.now();
+  const r = reservarRequisicao(Date.now());
+  assert.equal(r.erro, undefined);
+  assert.ok(Date.now() - inicio < 1500, "não deveria ter esperado o timeout inteiro");
+  assert.equal(fs.existsSync(lock), false, "a trava órfã deveria ter sido removida");
+});
+
+test("relógio adiantado: cooldown absurdo é limitado ao teto (falha fechada, mas não 99h)", () => {
+  limparTudo();
+  const alvo = path.join(os.tmpdir(), "_teste_disjuntor_tjro.json");
+  const agora = Date.now();
+  fs.writeFileSync(alvo, JSON.stringify({
+    versao: 2,
+    requisicoes: [],
+    proximoLivreEm: 0,
+    bloqueadoAte: agora + 99 * 60 * 60_000, // 99h — muito além do teto de backoff
+    indiceJanela: 0,
+    sucessos: 0,
+    backoffMs: 600000,
+    incidentes: [],
+  }));
+  const r = reservarRequisicao(agora);
+  // Continua barrando DE PROPÓSITO: não dá para distinguir relógio adiantado de
+  // bloqueio legítimo, e errar para o lado de não martelar o portal é o certo.
+  // O que não pode é ficar inutilizável por 99h — o teto é 1h.
+  assert.match(r.erro, /evitando novas tentativas/);
+  assert.match(r.erro, /1h/);
+  assert.ok(!/\d\dh/.test(r.erro), `cooldown não foi limitado ao teto: ${r.erro}`);
+});
+
+test("relógio adiantado: carimbos de requisição no futuro não consomem o orçamento", () => {
+  limparTudo();
+  const alvo = path.join(os.tmpdir(), "_teste_disjuntor_tjro.json");
+  const agora = Date.now();
+  fs.writeFileSync(alvo, JSON.stringify({
+    versao: 2,
+    // 10 carimbos 4h à frente: sem saneamento ocupariam o teto e barrariam tudo.
+    requisicoes: Array.from({ length: 10 }, (_, i) => agora + 4 * 60 * 60_000 + i),
+    proximoLivreEm: agora + 4 * 60 * 60_000,
+    bloqueadoAte: 0,
+    indiceJanela: 0,
+    sucessos: 0,
+    backoffMs: -5000, // negativo: faria o disjuntor nunca engatar
+    incidentes: [],
+  }));
+  const r = reservarRequisicao(agora);
+  // Os 10 carimbos futuros foram descartados: a recusa, se houver, NÃO é por
+  // orçamento estourado.
+  assert.ok(!/Muitas consultas/.test(r.erro || ""), `orçamento consumido pelo futuro: ${r.erro}`);
+  // E o estrago do relógio fica contido em dezenas de segundos, não em 4 horas.
+  if (r.erro) {
+    assert.match(r.erro, /Fila de espera longa demais \(\d\ds\)/, r.erro);
+  } else {
+    assert.ok(r.esperarMs <= 32_000, `espera herdou o futuro: ${r.esperarMs}ms`);
+  }
+});
+
+test("estado corrompido não é herdado: campos inválidos caem em valores seguros", () => {
+  limparTudo();
+  const alvo = path.join(os.tmpdir(), "_teste_disjuntor_tjro.json");
+  fs.writeFileSync(alvo, JSON.stringify({
+    requisicoes: "não é array",
+    indiceJanela: 999,
+    bloqueadoAte: "amanhã",
+    backoffMs: Infinity,
+    incidentes: { não: "é array" },
+  }));
+  const r = reservarRequisicao(Date.now());
+  assert.equal(r.erro, undefined);
+  const rel = diagnosticoRitmo();
+  assert.match(rel, /Nível atual: 5 de 5/); // 999 foi clampado ao topo, não estourou
+  assert.match(rel, /Nenhum bloqueio registrado/); // incidentes inválido virou lista vazia
 });

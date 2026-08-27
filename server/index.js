@@ -24,7 +24,7 @@ import {
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
-const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.4.0" });
+const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.4.1" });
 
 server.registerTool(
   "buscar_jurisprudencia_tjro",

@@ -247,7 +247,11 @@ const BACKOFF_MAXIMO_MS = 60 * 60_000; // nunca ultrapassa 1h de recuo automáti
 const ESPACAMENTO_MIN_MS = 2_000;
 const ESPERA_MAXIMA_MS = 30_000; // acima disso, melhor erro claro que travar a conversa
 const TRAVA_TIMEOUT_MS = 2_000;
-const TRAVA_OBSOLETA_MS = 10_000; // trava mais velha que isso = processo morreu, pode remover
+// PRECISA ser menor que TRAVA_TIMEOUT_MS: senão quem espera desiste ANTES de ganhar o
+// direito de limpar uma trava órfã e acaba executando sem exclusão nenhuma (medido:
+// 14 vagas concedidas para um teto de 10). 1s ainda é ~14.000x a posse real da seção
+// crítica (mediana 0,072ms), então não há risco de roubar a trava de um processo vivo.
+const TRAVA_OBSOLETA_MS = 1_000;
 
 // O estado do ritmo vive em ARQUIVO, não em memória: o Claude Desktop e cada
 // sessão do Claude Code sobem seu PRÓPRIO processo deste servidor (foram
@@ -328,31 +332,71 @@ function comTrava(fn) {
   }
 }
 
+// Margem de "futuro legítimo": uma vaga reservada pode estar até ESPERA_MAXIMA à
+// frente, mais um espaçamento. Carimbo além disso só pode vir de relógio adiantado
+// (NTP/fuso). Errar essa margem para MENOS devolveria vaga legítima e aumentaria o
+// tráfego — por isso ela domina os dois casos por construção.
+const MARGEM_FUTURO_MS = ESPERA_MAXIMA_MS + ESPACAMENTO_MIN_MS;
+
 function lerEstado() {
+  let d;
   try {
-    const d = JSON.parse(fs.readFileSync(arquivoEstadoDisjuntor, "utf-8"));
-    return {
-      ...ESTADO_PADRAO,
-      ...d,
-      requisicoes: Array.isArray(d.requisicoes) ? d.requisicoes.filter(Number.isFinite) : [],
-      indiceJanela: Math.max(0, Math.min(Number(d.indiceJanela) || 0, ESCADA_JANELA_MS.length - 1)),
-      backoffMs: Math.min(Number(d.backoffMs) || BACKOFF_INICIAL_MS, BACKOFF_MAXIMO_MS),
-    };
+    d = JSON.parse(fs.readFileSync(arquivoEstadoDisjuntor, "utf-8"));
   } catch {
-    return { ...ESTADO_PADRAO }; // 1ª execução, arquivo corrompido ou sem permissão
+    return { ...ESTADO_PADRAO }; // 1ª execução, arquivo ilegível ou sem permissão
   }
+  const agora = Date.now();
+  // Saneamento contra relógio que andou (para frente ou para trás) e contra valores
+  // absurdos num arquivo corrompido — sem isso, um bloqueadoAte inflado trava a
+  // ferramenta por horas e um backoff negativo faz o disjuntor nunca engatar.
+  const num = (v, padrao) => (Number.isFinite(Number(v)) ? Number(v) : padrao);
+  return {
+    ...ESTADO_PADRAO,
+    ...d,
+    requisicoes: (Array.isArray(d.requisicoes) ? d.requisicoes : [])
+      .filter(Number.isFinite)
+      .filter((t) => t <= agora + MARGEM_FUTURO_MS),
+    proximoLivreEm: Math.min(num(d.proximoLivreEm, 0), agora + MARGEM_FUTURO_MS),
+    bloqueadoAte: Math.max(0, Math.min(num(d.bloqueadoAte, 0), agora + BACKOFF_MAXIMO_MS)),
+    indiceJanela: Math.max(0, Math.min(num(d.indiceJanela, 0), ESCADA_JANELA_MS.length - 1)),
+    backoffMs: Math.max(BACKOFF_INICIAL_MS, Math.min(num(d.backoffMs, BACKOFF_INICIAL_MS), BACKOFF_MAXIMO_MS)),
+    incidentes: Array.isArray(d.incidentes) ? d.incidentes.slice(-MAX_INCIDENTES) : [],
+  };
+}
+
+// Quando o disco não aceita escrita (home somente-leitura, ENOSPC, dotfile criado
+// sob sudo), o estado passa a viver em memória DESTE processo. Sem isso, cada
+// chamada releria o padrão e nada acumularia: o limitador inteiro se desligaria em
+// silêncio — medido, 40 de 40 chamadas admitidas e 25 requisições em 3ms, o padrão
+// metralhadora que a v1.4.0 existe para evitar. Degradado (cada processo conta
+// sozinho) é muito melhor que ilimitado.
+let estadoMemoria = null;
+let persistenciaIndisponivel = null; // código do erro (EACCES/EROFS/ENOSPC/EISDIR…)
+
+export function _statusPersistencia() {
+  return persistenciaIndisponivel;
 }
 
 // Read-modify-write atômico: lê o estado mais recente do disco (não um cache de
 // processo — senão volta a corrida de last-write-wins), aplica fn e regrava.
 function transacao(fn) {
   return comTrava(() => {
-    const estado = lerEstado();
+    // Enquanto a persistência estiver quebrada, a memória manda: reler o disco
+    // sobreporia o contador com um arquivo congelado (caso do arquivo 444).
+    const estado = persistenciaIndisponivel && estadoMemoria ? estadoMemoria : lerEstado();
     const resultado = fn(estado);
     try {
-      fs.writeFileSync(arquivoEstadoDisjuntor, JSON.stringify(estado));
-    } catch {
-      // falha de disco não deve derrubar a ferramenta
+      // Escrita atômica: writeFileSync direto é truncate+write e pode ser lido pela
+      // metade (medido: 4,8% de leituras inválidas sob escrita concorrente). rename
+      // no mesmo volume nunca deixa arquivo incompleto.
+      const tmp = `${arquivoEstadoDisjuntor}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(estado));
+      fs.renameSync(tmp, arquivoEstadoDisjuntor);
+      persistenciaIndisponivel = null;
+      estadoMemoria = null;
+    } catch (e) {
+      persistenciaIndisponivel = e?.code || "EIO";
+      estadoMemoria = estado; // segue contando dentro deste processo
     }
     return resultado;
   });
@@ -366,6 +410,11 @@ export function _resetDisjuntorParaTeste() {
   try {
     fs.unlinkSync(arquivoEstadoDisjuntor + ".lock");
   } catch {}
+  // Limpar o fallback em memória também: sem isso o estado de um teste vaza para
+  // o seguinte (e, em produção, um erro de disco transitório manteria o processo
+  // preso à cópia em memória mesmo depois de o disco voltar).
+  estadoMemoria = null;
+  persistenciaIndisponivel = null;
 }
 
 const fmtDuracao = (ms) => {
@@ -400,7 +449,7 @@ export function reservarRequisicao(agora = Date.now()) {
       return {
         erro:
           `Muitas consultas em pouco tempo (limite atual: ${JANELA_MAX_REQS} a cada ` +
-          `${fmtDuracao(janelaMs)}, compartilhado por todas as sessões do Claude nesta máquina ` +
+          `${fmtDuracao(janelaMs)}, compartilhado por todos os processos desta extensão nesta máquina ` +
           "e ajustado conforme bloqueios anteriores do TJRO). " +
           `Aguarde ${fmtDuracao(espera)} e tente de novo.`,
       };
@@ -426,7 +475,13 @@ export function reservarRequisicao(agora = Date.now()) {
 // nova detecção dentro do cooldown, até o teto) E, como isso só acontece se o
 // limite preventivo atual não foi suficiente, avança um degrau na escada
 // (janela mais larga) para o futuro — persistido, sobrevive a reinício.
-export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?") {
+// opts.subirEscada=false: arma o disjuntor mas NÃO alarga a janela. Usado quando o
+// bloqueio é inferido só do status HTTP (403/429) sem a assinatura do WAF no corpo —
+// um 403 espúrio (proxy corporativo, hiccup de CDN) não pode alargar a janela de
+// forma quase permanente, já que a escada só relaxa após 100 sucessos consecutivos.
+// opts.esperaMinimaMs: piso do cooldown, para respeitar um cabeçalho Retry-After.
+export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?", opts = {}) {
+  const { subirEscada = true, esperaMinimaMs = 0 } = opts;
   transacao((e) => {
     // Fotografa o que estava acontecendo ANTES de mexer no estado — é isso que
     // permite descobrir depois se o bloqueio veio de rajada nossa ou de algo
@@ -446,9 +501,9 @@ export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?") {
     };
     e.incidentes = [...(e.incidentes || []), incidente].slice(-MAX_INCIDENTES);
 
-    e.bloqueadoAte = agora + e.backoffMs;
+    e.bloqueadoAte = agora + Math.max(e.backoffMs, esperaMinimaMs);
     e.backoffMs = Math.min(e.backoffMs * 2, BACKOFF_MAXIMO_MS);
-    if (e.indiceJanela < ESCADA_JANELA_MS.length - 1) e.indiceJanela += 1;
+    if (subirEscada && e.indiceJanela < ESCADA_JANELA_MS.length - 1) e.indiceJanela += 1;
     e.sucessos = 0;
   });
 }
@@ -471,6 +526,15 @@ export function diagnosticoRitmo(agora = Date.now()) {
       ? `- ⚠️ BLOQUEADO por suspeita de automação — liberando em ${fmtDuracao(e.bloqueadoAte - agora)}`
       : "- Situação: liberado",
   ];
+  if (persistenciaIndisponivel) {
+    linhas.splice(
+      1,
+      0,
+      `- ⚠️ AVISO: não foi possível gravar ${arquivoEstadoDisjuntor} (${persistenciaIndisponivel}) — ` +
+        "o orçamento NÃO está sendo compartilhado entre processos; cada um conta sozinho. " +
+        "Verifique permissão/espaço em disco."
+    );
+  }
 
   const inc = e.incidentes || [];
   if (!inc.length) {
@@ -572,17 +636,34 @@ export async function post(body, fetchImpl = fetch) {
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(45000),
   });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const ctype = r.headers.get("content-type") || "";
-  if (!ctype.toLowerCase().includes("json")) {
-    const texto = await r.text();
-    if (/robotiza|p[aá]gina bloqueada|\bstic\b/i.test(texto)) {
-      const campos = body?.fields || {};
-      const operacao = campos.nr_processo && !campos.query ? "inteiro_teor" : "busca";
-      registrarBloqueioDetectado(Date.now(), operacao);
+  // O corpo é lido ANTES de decidir pelo status: se o WAF um dia escalar de página
+  // 200-com-HTML para 403/429, a detecção de bloqueio precisa rodar do mesmo jeito.
+  // Com a ordem antiga (status primeiro), disjuntor, escada e diário de incidentes
+  // eram furados por inteiro e o diagnóstico passava a afirmar "Situação: liberado"
+  // enquanto a ferramenta seguia batendo num portal que estava bloqueando.
+  const ctype = (r.headers.get("content-type") || "").toLowerCase();
+  let texto = null;
+  if (!r.ok || !ctype.includes("json")) {
+    try {
+      texto = await r.text(); // uma única vez: r.text() duas vezes lança e some com a mensagem útil
+    } catch {
+      texto = "";
     }
-    throw new Error(diagnosticarRespostaNaoJson(ctype, texto));
   }
+  const ehBloqueio = !!texto && /robotiza|p[aá]gina bloqueada|\bstic\b/i.test(texto);
+  if (ehBloqueio || r.status === 403 || r.status === 429) {
+    const campos = body?.fields || {};
+    const operacao = campos.nr_processo && !campos.query ? "inteiro_teor" : "busca";
+    const retryAfterMs = (Number(r.headers.get("retry-after")) || 0) * 1000;
+    registrarBloqueioDetectado(Date.now(), operacao, {
+      subirEscada: ehBloqueio, // status seco arma o disjuntor, mas não alarga a janela
+      esperaMinimaMs: retryAfterMs,
+    });
+  }
+  // 503 e demais erros seguem como instabilidade: não são bloqueio, e insistir dentro
+  // do orçamento já é o comportamento certo.
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  if (!ctype.includes("json")) throw new Error(diagnosticarRespostaNaoJson(ctype, texto));
   registrarSucesso();
   const dados = await r.json();
   cacheGravar(chave, dados, Date.now());

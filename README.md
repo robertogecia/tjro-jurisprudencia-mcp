@@ -112,9 +112,16 @@ desta máquina (a causa está fora do alcance da extensão — outro equipamento
 mesmo IP, ou o portal apertando o filtro). Basta pedir ao Claude: *"rode o
 diagnóstico de ritmo do TJRO"*.
 
-**Uma limitação honesta:** o orçamento coordena processos da mesma **máquina**.
-Dois advogados do mesmo escritório, em computadores diferentes, saem pelo mesmo
-IP público e não há como coordenar isso sem um servidor central.
+**Duas limitações honestas:** (1) o orçamento coordena processos da mesma
+**máquina** — dois advogados do mesmo escritório, em computadores diferentes,
+saem pelo mesmo IP público e não há como coordenar isso sem um servidor central;
+(2) se o arquivo de estado não puder ser gravado (disco cheio, pasta pessoal
+somente-leitura), cada processo passa a contar sozinho em memória — o limite
+continua valendo, mas deixa de ser compartilhado. Nesse caso o
+`diagnostico_ritmo_tjro` avisa em vez de dizer que está tudo certo.
+
+Apagar `~/.tjro-jurisprudencia-mcp-estado.json` zera o aprendizado (nível,
+histórico de bloqueios e orçamento em curso) — útil se quiser recomeçar do zero.
 
 ## Segurança e auditoria
 

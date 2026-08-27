@@ -2,9 +2,9 @@
   "manifest_version": "0.2",
   "name": "tjro-jurisprudencia",
   "display_name": "Jurisprudência TJRO",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Busca de jurisprudência do Tribunal de Justiça de Rondônia (portal público JURIS), direto no Claude.",
-  "long_description": "Adiciona ao Claude três ferramentas: **buscar_jurisprudencia_tjro** (pesquisa por tema, com filtros de tipo, grau, classe, câmara e período), **obter_inteiro_teor_tjro** (texto integral das peças de um processo) e **diagnostico_ritmo_tjro** (explica por que as buscas podem estar falhando, sem consultar o portal). Os dados vêm do portal oficial de jurisprudência do TJRO (juris.tjro.jus.br) e cada resultado traz citação pronta para peça e link direto para a decisão. A extensão se autolimita e compartilha o orçamento de consultas entre todas as sessões da mesma máquina, para não sobrecarregar o portal. AVISO: integração não-oficial; confirme número, relator, câmara, data e ementa na fonte antes de citar em peça.",
+  "long_description": "Adiciona ao Claude três ferramentas: **buscar_jurisprudencia_tjro** (pesquisa por tema, com filtros de tipo, grau, classe, câmara e período), **obter_inteiro_teor_tjro** (texto integral das peças de um processo) e **diagnostico_ritmo_tjro** (explica por que as buscas podem estar falhando, sem consultar o portal). Os dados vêm do portal oficial de jurisprudência do TJRO (juris.tjro.jus.br) e cada resultado traz citação pronta para peça e link direto para a decisão. A extensão se autolimita e compartilha o orçamento de consultas entre todos os processos da extensão na mesma máquina, para não sobrecarregar o portal. AVISO: integração não-oficial; confirme número, relator, câmara, data e ementa na fonte antes de citar em peça.",
   "author": {
     "name": "Roberto Grécia Bessa (OAB/RO 7865-A)"
   },
