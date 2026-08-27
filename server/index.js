@@ -20,10 +20,11 @@ import {
   formatInteiro,
   msgErro,
   post,
+  diagnosticoRitmo,
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
-const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.3.0" });
+const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.4.0" });
 
 server.registerTool(
   "buscar_jurisprudencia_tjro",
@@ -36,9 +37,15 @@ server.registerTool(
       "Cada resultado traz citação pronta para peça e link direto para a decisão no portal. " +
       "Termos soltos combinam por OR (use \"a AND b\" ou termo_exato). O trecho exibido é o local " +
       "do match — só corresponde à ementa oficial quando o tipo é EMENTA. " +
-      "Sempre confirme número, relator, câmara, data e ementa no inteiro teor antes de citar.",
+      "Sempre confirme número, relator, câmara, data e ementa no inteiro teor antes de citar. " +
+      "USE SOMENTE para casos da jurisdição do TJRO (1º ou 2º grau de Rondônia) — jurisprudência " +
+      "do TJRO não tem autoridade em outro tribunal. A busca é por PALAVRAS, não semântica: para " +
+      "jurisprudência de 2020+, uma base com busca semântica costuma ser o melhor ponto de partida, " +
+      "e esta ferramenta rende mais nas lacunas dela (anterior a 2020, SENTENÇA de 1º grau, link " +
+      "oficial do tribunal). O portal limita acesso automatizado: prefira UMA busca bem construída " +
+      "(com por_pagina maior) a várias buscas seguidas.",
     inputSchema: {
-      consulta: z.string().describe('Termo(s) de busca; termos soltos combinam por OR — use "a AND b" para exigir todos, ou termo_exato para a frase exata. Ex.: "dano moral negativação".'),
+      consulta: z.string().describe('Termo(s) de busca; termos soltos combinam por OR — use "a AND b" para exigir todos, ou termo_exato para a frase exata. Curinga no FIM da palavra é aceito e rende mais numa só busca: "consign*" pega consignado/consignação/consignatário (curinga no início não é permitido). Ex.: "dano moral negativação".'),
       tipo: z
         .array(z.string())
         .optional()
@@ -136,6 +143,21 @@ server.registerTool(
       return { content: [{ type: "text", text: `Erro ao consultar o TJRO: ${msgErro(e)}` }], isError: true };
     }
   }
+);
+
+server.registerTool(
+  "diagnostico_ritmo_tjro",
+  {
+    title: "Diagnóstico do controle de ritmo (TJRO)",
+    description:
+      "Mostra por que as buscas do TJRO podem estar falhando: nível atual do limite de ritmo, " +
+      "orçamento já consumido, se há bloqueio por suspeita de automação em curso (e quanto falta " +
+      "para liberar) e o histórico de bloqueios com o que estava acontecendo em cada um. " +
+      "USE ISTO antes de concluir que 'o portal está fora do ar' — o sintoma é parecido, mas a " +
+      "causa e a solução são outras. Não faz nenhuma requisição ao TJRO.",
+    inputSchema: {},
+  },
+  async () => ({ content: [{ type: "text", text: diagnosticoRitmo() }] })
 );
 
 const transport = new StdioServerTransport();

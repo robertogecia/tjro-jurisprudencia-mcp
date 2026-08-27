@@ -13,12 +13,13 @@ import {
   formatInteiro,
   diagnosticarRespostaNaoJson,
   post,
-  checarDisjuntor,
-  checarLimitePreventivo,
+  reservarRequisicao,
   registrarBloqueioDetectado,
   registrarSucesso,
+  diagnosticoRitmo,
   _resetDisjuntorParaTeste,
   _setArquivoEstadoParaTeste,
+  _limparCacheParaTeste,
 } from "../server/lib.js";
 import os from "node:os";
 import path from "node:path";
@@ -26,6 +27,12 @@ import path from "node:path";
 // Redireciona a persistência do disjuntor pra um arquivo temporário em TODO o
 // arquivo de teste — nunca deve gravar por cima do estado real do usuário.
 _setArquivoEstadoParaTeste(path.join(os.tmpdir(), "_teste_disjuntor_tjro.json"));
+
+// Estado limpo + cache limpo antes de cada caso que toca a camada de ritmo.
+const limparTudo = () => {
+  _resetDisjuntorParaTeste();
+  _limparCacheParaTeste();
+};
 
 // Corpo real capturado em 14/07/2026: o WAF do portal ("STIC") devolve HTTP 200
 // com uma página HTML em vez de erro quando suspeita de automação.
@@ -194,7 +201,7 @@ test("diagnosticarRespostaNaoJson cai numa mensagem genérica quando o HTML não
 });
 
 test("post() dá mensagem acionável (não JSONDecodeError cru) quando o TJRO bloqueia por robotização", async () => {
-  _resetDisjuntorParaTeste();
+  limparTudo();
   const respostaFake = {
     ok: true,
     status: 200,
@@ -211,7 +218,7 @@ test("post() dá mensagem acionável (não JSONDecodeError cru) quando o TJRO bl
 });
 
 test("post() aciona o disjuntor ao detectar bloqueio — a PRÓXIMA chamada nem sai pela rede", async () => {
-  _resetDisjuntorParaTeste();
+  limparTudo();
   const respostaBloqueio = {
     ok: true,
     status: 200,
@@ -237,7 +244,7 @@ test("post() aciona o disjuntor ao detectar bloqueio — a PRÓXIMA chamada nem 
 });
 
 test("post() devolve o JSON normalmente quando o content-type é application/json", async () => {
-  _resetDisjuntorParaTeste();
+  limparTudo();
   const respostaFake = {
     ok: true,
     status: 200,
@@ -265,92 +272,188 @@ test("sugestoes agrega correções de qualquer token da consulta, não só a pri
   );
 });
 
-test("checarDisjuntor: sem incidente não bloqueia; após detecção, bloqueia com backoff crescente", () => {
-  _resetDisjuntorParaTeste();
-  assert.equal(checarDisjuntor(), null);
-
+test("reservarRequisicao: libera sem espera na 1ª chamada e impõe espaçamento na 2ª", () => {
+  limparTudo();
   const t0 = 1_000_000;
-  registrarBloqueioDetectado(t0); // 1ª detecção: cooldown de ~10min
-  const aviso1 = checarDisjuntor(t0 + 1000); // 1s depois, ainda bem dentro do cooldown
-  assert.match(aviso1, /evitando novas tentativas/);
-  assert.match(aviso1, /9min/); // ~10min - 1s arredonda pra "9minXXs"
+  const r1 = reservarRequisicao(t0);
+  assert.equal(r1.erro, undefined);
+  assert.equal(r1.esperarMs, 0, "1ª requisição não deveria esperar");
 
-  // 2ª detecção ainda dentro do cooldown da 1ª: o PRÓXIMO cooldown dobra p/ ~20min.
-  registrarBloqueioDetectado(t0 + 1000);
-  const aviso2 = checarDisjuntor(t0 + 1000);
-  assert.match(aviso2, /19min|20min/);
-
-  // Esse cooldown de ~20min expira -> disjuntor libera de novo.
-  assert.equal(checarDisjuntor(t0 + 1000 + 20 * 60_000 + 1), null);
-
-  // Sucesso reseta o backoff para o valor inicial — não fica acumulando pra sempre.
-  registrarSucesso();
-  registrarBloqueioDetectado(t0 + 5_000_000);
-  const avisoAposReset = checarDisjuntor(t0 + 5_000_000 + 1000);
-  assert.match(avisoAposReset, /9min/); // voltou a ser ~10min, não ~40min
+  // 2ª imediata: recebe uma vaga ~2s à frente em vez de disparar junto.
+  const r2 = reservarRequisicao(t0 + 1);
+  assert.equal(r2.erro, undefined);
+  assert.ok(r2.esperarMs >= 1500, `esperava espaçamento, veio ${r2.esperarMs}ms`);
 });
 
-test("checarLimitePreventivo: libera até o teto por minuto, barra a próxima e depois libera de novo", () => {
-  _resetDisjuntorParaTeste();
+test("reservarRequisicao: barra ao estourar o teto da janela", () => {
+  limparTudo();
   const t0 = 2_000_000;
+  // Consome o teto (avançando o relógio p/ não esbarrar só no espaçamento).
   for (let i = 0; i < 10; i++) {
-    assert.equal(checarLimitePreventivo(t0 + i), null, `requisição ${i + 1}/10 deveria passar`);
+    const r = reservarRequisicao(t0 + i * 3000);
+    assert.equal(r.erro, undefined, `requisição ${i + 1}/10 deveria passar`);
   }
-  const aviso = checarLimitePreventivo(t0 + 10);
-  assert.match(aviso, /Muitas consultas/);
-
-  // Passado mais de 1 minuto da mais antiga, a janela desliza e libera de novo.
-  assert.equal(checarLimitePreventivo(t0 + 60_001), null);
+  const estourou = reservarRequisicao(t0 + 10 * 3000);
+  assert.match(estourou.erro, /Muitas consultas/);
+  assert.match(estourou.erro, /compartilhado por todas as sessões/);
 });
 
-test("escada adaptativa: bloqueio real avança 1 degrau por vez, refletido no limite preventivo", () => {
-  _resetDisjuntorParaTeste();
+test("reservarRequisicao: durante o cooldown do disjuntor, recusa de imediato", () => {
+  limparTudo();
   const t0 = 3_000_000;
-
-  // Nível 0 (padrão): janela de 1min.
-  for (let i = 0; i < 10; i++) checarLimitePreventivo(t0 + i);
-  assert.match(checarLimitePreventivo(t0 + 10), /1min/);
-
-  // 1º bloqueio real -> avança pro nível 1 (5min). Salto de tempo > 5min pra
-  // garantir que o histórico da fase anterior já saiu da janela (mais larga agora).
-  const t1 = t0 + 6 * 60_000;
-  registrarBloqueioDetectado(t1);
-  for (let i = 0; i < 10; i++) checarLimitePreventivo(t1 + i);
-  assert.match(checarLimitePreventivo(t1 + 10), /5min/);
-
-  // 2º bloqueio real -> avança pro nível 2 (10min). Salto de tempo > 10min.
-  const t2 = t1 + 11 * 60_000;
-  registrarBloqueioDetectado(t2);
-  for (let i = 0; i < 10; i++) checarLimitePreventivo(t2 + i);
-  assert.match(checarLimitePreventivo(t2 + 10), /10min/);
+  registrarBloqueioDetectado(t0);
+  const r = reservarRequisicao(t0 + 1000);
+  assert.match(r.erro, /evitando novas tentativas/);
+  assert.match(r.erro, /9min/); // ~10min de cooldown menos 1s
+  // Passado o cooldown, volta a liberar.
+  assert.equal(reservarRequisicao(t0 + 10 * 60_000 + 1).erro, undefined);
 });
 
-test("escada adaptativa: nunca avança além do topo da escada (30min)", () => {
-  _resetDisjuntorParaTeste();
-  let t = 3_000_000;
-  for (let i = 0; i < 10; i++) {
-    // 10 bloqueios seguidos, cada um bem depois do teto da janela anterior — a
-    // escada tem só 5 níveis, então a partir do 5º isso já devia estar no topo.
+test("estado do ritmo é COMPARTILHADO via arquivo — outro processo enxerga o mesmo orçamento", () => {
+  limparTudo();
+  const t0 = 4_000_000;
+  // Simula "processo A" consumindo todo o teto da janela.
+  for (let i = 0; i < 10; i++) reservarRequisicao(t0 + i * 3000);
+
+  // "Processo B" = mesma lógica lendo o MESMO arquivo (sem reset em memória).
+  // Antes desta versão, cada processo tinha contador próprio e B teria 10 vagas.
+  const doProcessoB = reservarRequisicao(t0 + 10 * 3000);
+  assert.match(doProcessoB.erro, /Muitas consultas/, "processo B deveria ver o orçamento já gasto");
+});
+
+test("bloqueio detectado por um processo faz TODOS recuarem (é o mesmo IP)", () => {
+  limparTudo();
+  const t0 = 5_000_000;
+  registrarBloqueioDetectado(t0); // "processo A" levou bloqueio
+  const doProcessoB = reservarRequisicao(t0 + 500); // "processo B" tenta em seguida
+  assert.match(doProcessoB.erro, /evitando novas tentativas/);
+});
+
+test("escada adaptativa: cada bloqueio real alarga a janela, até o teto de 30min", () => {
+  limparTudo();
+  let t = 6_000_000;
+  const janelaVisivel = () => {
+    for (let i = 0; i < 10; i++) reservarRequisicao(t + i * 3000);
+    const msg = reservarRequisicao(t + 10 * 3000).erro;
+    t += 40 * 60_000; // avança além de qualquer janela p/ a próxima medição ser limpa
+    return msg;
+  };
+  assert.match(janelaVisivel(), /1min/); // nível 0
+
+  registrarBloqueioDetectado(t);
+  t += 40 * 60_000;
+  assert.match(janelaVisivel(), /5min/); // nível 1
+
+  registrarBloqueioDetectado(t);
+  t += 40 * 60_000;
+  assert.match(janelaVisivel(), /10min/); // nível 2
+
+  // Muitos bloqueios: nunca passa do topo da escada.
+  for (let i = 0; i < 8; i++) {
     registrarBloqueioDetectado(t);
-    t += 40 * 60_000;
+    t += 70 * 60_000;
   }
-  for (let i = 0; i < 10; i++) checarLimitePreventivo(t + i);
-  assert.match(checarLimitePreventivo(t + 10), /30min/);
+  assert.match(janelaVisivel(), /30min/);
 });
 
 test("escada adaptativa: sequência longa de sucessos relaxa 1 degrau; nunca abaixo do nível 0", () => {
-  _resetDisjuntorParaTeste();
-  registrarBloqueioDetectado(4_000_000); // nível 0 -> 1
-  registrarBloqueioDetectado(4_000_100); // nível 1 -> 2 (10min)
+  limparTudo();
+  let t = 7_000_000;
+  registrarBloqueioDetectado(t); // -> nível 1
+  registrarBloqueioDetectado(t + 1000); // -> nível 2 (10min)
+  t += 70 * 60_000;
+
   for (let i = 0; i < 100; i++) registrarSucesso();
-  for (let i = 0; i < 10; i++) checarLimitePreventivo(5_000_000 + i);
-  const avisoAposRelaxar = checarLimitePreventivo(5_000_020);
-  assert.match(avisoAposRelaxar, /5min/, avisoAposRelaxar); // relaxou de 10min pra 5min
+  for (let i = 0; i < 10; i++) reservarRequisicao(t + i * 3000);
+  assert.match(reservarRequisicao(t + 10 * 3000).erro, /5min/, "deveria ter relaxado de 10min p/ 5min");
 
   // Muito além do limiar, nunca relaxa abaixo do nível 0 (1min).
-  _resetDisjuntorParaTeste();
+  limparTudo();
+  const t2 = 8_000_000;
   for (let i = 0; i < 300; i++) registrarSucesso();
-  for (let i = 0; i < 10; i++) checarLimitePreventivo(6_000_000 + i);
-  const avisoNivelMinimo = checarLimitePreventivo(6_000_020);
-  assert.match(avisoNivelMinimo, /1min/, avisoNivelMinimo);
+  for (let i = 0; i < 10; i++) reservarRequisicao(t2 + i * 3000);
+  assert.match(reservarRequisicao(t2 + 10 * 3000).erro, /1min/);
+});
+
+test("cache: repetir a MESMA busca não gera segunda requisição ao portal", async () => {
+  limparTudo();
+  let chamadasDeRede = 0;
+  const fetchContador = async () => {
+    chamadasDeRede += 1;
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      json: async () => ({ hits: { total: { value: 7 }, hits: [] } }),
+    };
+  };
+  const corpo = { fields: { query: "mesma busca" } };
+  const a = await post(corpo, fetchContador);
+  const b = await post(corpo, fetchContador);
+  assert.equal(a.hits.total.value, 7);
+  assert.equal(b.hits.total.value, 7);
+  assert.equal(chamadasDeRede, 1, "a 2ª chamada idêntica deveria vir do cache");
+});
+
+test("escapeLucene: curinga no FIM é preservado; no INÍCIO continua escapado", () => {
+  assert.equal(escapeLucene("consign*"), "consign*");
+  assert.equal(escapeLucene("dano consign*"), "dano consign*");
+  assert.equal(escapeLucene("*signado"), "\\*signado");
+  // Demais operadores seguem escapados.
+  assert.equal(escapeLucene('a"b'), 'a\\"b');
+});
+
+test("formatBusca: sugere aumentar por_pagina em vez de paginar (menos requisições)", () => {
+  const fake = {
+    hits: {
+      total: { value: 500 },
+      hits: [{ _source: { tipo: "EMENTA", ds_modelo_documento: "t", nr_processo: "1" } }],
+    },
+  };
+  const out = formatBusca(fake, "x", ["EMENTA"], "relevantes", 1, 10);
+  assert.match(out, /por_pagina maior/);
+});
+
+test("incidente registra o contexto do bloqueio (rajada, nível, intervalo, operação)", () => {
+  limparTudo();
+  const t0 = 9_000_000;
+  // Simula rajada: 6 consultas no minuto anterior ao bloqueio.
+  for (let i = 0; i < 6; i++) reservarRequisicao(t0 + i * 3000);
+  registrarBloqueioDetectado(t0 + 20_000, "busca");
+
+  const rel = diagnosticoRitmo(t0 + 21_000);
+  assert.match(rel, /BLOQUEADO/);
+  assert.match(rel, /Bloqueios registrados: 1/);
+  assert.match(rel, /consultas no minuto anterior/);
+  assert.match(rel, /operação: busca/);
+  assert.match(rel, /Padrão observado/);
+});
+
+test("diagnóstico distingue bloqueio por rajada de bloqueio com pouco tráfego", () => {
+  limparTudo();
+  // Cenário A: bloqueios sempre após rajada -> orienta a espaçar consultas.
+  let t = 10_000_000;
+  for (let n = 0; n < 3; n++) {
+    for (let i = 0; i < 8; i++) reservarRequisicao(t + i * 3000);
+    registrarBloqueioDetectado(t + 30_000, "busca");
+    t += 4 * 60 * 60_000; // bem depois, p/ a janela seguinte começar limpa
+  }
+  assert.match(diagnosticoRitmo(t), /após rajadas/);
+
+  // Cenário B: bloqueios com quase nenhum tráfego daqui -> causa externa.
+  limparTudo();
+  let t2 = 20_000_000;
+  for (let n = 0; n < 3; n++) {
+    reservarRequisicao(t2);
+    registrarBloqueioDetectado(t2 + 1000, "busca");
+    t2 += 4 * 60 * 60_000;
+  }
+  assert.match(diagnosticoRitmo(t2), /fora do controle desta ferramenta/);
+});
+
+test("diagnóstico funciona (e não mente) quando nunca houve bloqueio", () => {
+  limparTudo();
+  const rel = diagnosticoRitmo(30_000_000);
+  assert.match(rel, /Nenhum bloqueio registrado/);
+  assert.match(rel, /liberado/);
 });

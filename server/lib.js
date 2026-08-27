@@ -54,7 +54,15 @@ export const ORCAMENTO_INTEIRO = 50000;
 const LUCENE = /([+\-=&|><!(){}\[\]^"~*?:\\/])/g;
 
 // ---------------------------------------------------------------- helpers ---
-export const escapeLucene = (t) => (!t || !t.trim() ? "" : t.replace(LUCENE, "\\$1"));
+// Escapa os operadores do Elasticsearch, MAS preserva o curinga no FIM de uma
+// palavra: `consign*` acha consignado/consignação/consignatário numa só busca —
+// mais alcance com menos requisições, que é o que interessa aqui. O curinga
+// INICIAL (`*signado`) continua escapado de propósito: força varredura do índice
+// inteiro, é lento no servidor do tribunal e é vetor clássico de sobrecarga.
+export const escapeLucene = (t) => {
+  if (!t || !t.trim()) return "";
+  return t.replace(LUCENE, "\\$1").replace(/([\p{L}\p{N}])\\\*(?=\s|$)/gu, "$1*");
+};
 
 export const cnj = (nr) => {
   const d = String(nr || "").replace(/\D/g, "");
@@ -228,18 +236,27 @@ const JANELA_MAX_REQS = 10; // sempre no máx. 10 requisições por janela
 // janela ALARGA a cada bloqueio real detectado (evidência de que o nível atual
 // ainda é generoso demais) e RELAXA um degrau após uma sequência longa sem
 // incidente (o WAF pode ter sido ajustado, ou o bloqueio anterior foi pontual).
-// Persistido em disco: sobrevive a reinício do Claude Desktop, senão a "lição"
-// aprendida seria esquecida a cada sessão nova.
 const ESCADA_JANELA_MS = [60_000, 5 * 60_000, 10 * 60_000, 20 * 60_000, 30 * 60_000]; // 1,5,10,20,30min
 const SUCESSOS_PARA_RELAXAR = 100; // sucessos seguidos no nível atual antes de afrouxar 1 degrau
 const BACKOFF_INICIAL_MS = 10 * 60_000; // 10 min na primeira detecção de bloqueio (disjuntor reativo)
 const BACKOFF_MAXIMO_MS = 60 * 60_000; // nunca ultrapassa 1h de recuo automático
+// Intervalo mínimo entre requisições: sem isso o teto da janela permite 10
+// disparos no MESMO segundo — o padrão "metralhadora" que WAF detecta. Em vez
+// de recusar, a chamada espera sua vez (a vaga é reservada na transação, então
+// chamadas concorrentes recebem instantes distintos, sem acordar todas juntas).
+const ESPACAMENTO_MIN_MS = 2_000;
+const ESPERA_MAXIMA_MS = 30_000; // acima disso, melhor erro claro que travar a conversa
+const TRAVA_TIMEOUT_MS = 2_000;
+const TRAVA_OBSOLETA_MS = 10_000; // trava mais velha que isso = processo morreu, pode remover
 
-let historicoRequisicoes = [];
-let bloqueadoAte = 0;
-let backoffAtualMs = BACKOFF_INICIAL_MS;
-let indiceJanelaAtual = 0; // índice em ESCADA_JANELA_MS — o nível "aprendido"
-let sucessosConsecutivos = 0;
+// O estado do ritmo vive em ARQUIVO, não em memória: o Claude Desktop e cada
+// sessão do Claude Code sobem seu PRÓPRIO processo deste servidor (foram
+// observados 4 simultâneos). Com estado em memória, cada processo contaria até
+// 10 sozinho — 4 processos = 40 req/min contra o portal, cada um "achando" que
+// estava educado. Com arquivo + trava, todos dividem o mesmo orçamento e, se um
+// leva bloqueio, TODOS recuam (é o mesmo IP; não faz sentido só um recuar).
+// Limite conhecido: coordena processos da mesma MÁQUINA. Duas máquinas no mesmo
+// escritório saem pelo mesmo IP público e não há como coordenar sem servidor.
 let arquivoEstadoDisjuntor = path.join(os.homedir(), ".tjro-jurisprudencia-mcp-estado.json");
 
 // Só para uso em testes: redireciona a persistência pra um arquivo temporário,
@@ -248,37 +265,107 @@ export function _setArquivoEstadoParaTeste(caminho) {
   arquivoEstadoDisjuntor = caminho;
 }
 
-function carregarEstadoDisjuntor() {
+const MAX_INCIDENTES = 20; // histórico curto: serve para diagnosticar padrão, não para auditoria
+
+const ESTADO_PADRAO = {
+  versao: 2,
+  requisicoes: [], // carimbos epoch(ms) das requisições dentro da janela
+  proximoLivreEm: 0, // epoch(ms) da próxima vaga livre (espaçamento)
+  bloqueadoAte: 0, // epoch(ms) do fim do cooldown do disjuntor
+  indiceJanela: 0, // nível aprendido na ESCADA_JANELA_MS
+  sucessos: 0, // sucessos consecutivos no nível atual
+  backoffMs: BACKOFF_INICIAL_MS,
+  // Diário de bordo: o que estava acontecendo QUANDO cada bloqueio veio. Sem
+  // isso a ferramenta reage ao bloqueio mas ninguém aprende com ele — e uma
+  // sessão futura acaba diagnosticando errado ("o portal está fora do ar").
+  incidentes: [],
+  ultimaRequisicaoEm: 0,
+  totalRequisicoes: 0,
+};
+
+// Pausa síncrona curta (só usada para esperar a trava, na casa dos milissegundos).
+const dormirSync = (ms) => {
   try {
-    const dados = JSON.parse(fs.readFileSync(arquivoEstadoDisjuntor, "utf-8"));
-    const idx = Number.isInteger(dados.indiceJanela) ? dados.indiceJanela : 0;
-    indiceJanelaAtual = Math.max(0, Math.min(idx, ESCADA_JANELA_MS.length - 1));
-    sucessosConsecutivos = Math.max(0, Number(dados.sucessosConsecutivos) || 0);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
   } catch {
-    // sem arquivo ainda (1ª execução), corrompido, ou sem permissão — segue com o nível 0.
+    // ambiente sem SharedArrayBuffer: segue direto, a trava vira best-effort.
+  }
+};
+
+// Exclusão mútua entre processos via lockfile (open "wx" é atômico e funciona
+// em mac/Windows/Linux). Se a trava não puder ser obtida a tempo, executa mesmo
+// assim: perder um pouco de precisão no contador é melhor que travar a busca.
+function comTrava(fn) {
+  const lock = arquivoEstadoDisjuntor + ".lock";
+  const limite = Date.now() + TRAVA_TIMEOUT_MS;
+  let fd = null;
+  for (;;) {
+    try {
+      fd = fs.openSync(lock, "wx");
+      break;
+    } catch (e) {
+      if (e.code !== "EEXIST" || Date.now() > limite) break;
+      try {
+        const st = fs.statSync(lock);
+        if (Date.now() - st.mtimeMs > TRAVA_OBSOLETA_MS) fs.unlinkSync(lock);
+      } catch {
+        // trava sumiu no meio do caminho — tenta de novo
+      }
+      dormirSync(5);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {}
+      try {
+        fs.unlinkSync(lock);
+      } catch {}
+    }
   }
 }
 
-function salvarEstadoDisjuntor() {
+function lerEstado() {
   try {
-    fs.writeFileSync(
-      arquivoEstadoDisjuntor,
-      JSON.stringify({ indiceJanela: indiceJanelaAtual, sucessosConsecutivos })
-    );
+    const d = JSON.parse(fs.readFileSync(arquivoEstadoDisjuntor, "utf-8"));
+    return {
+      ...ESTADO_PADRAO,
+      ...d,
+      requisicoes: Array.isArray(d.requisicoes) ? d.requisicoes.filter(Number.isFinite) : [],
+      indiceJanela: Math.max(0, Math.min(Number(d.indiceJanela) || 0, ESCADA_JANELA_MS.length - 1)),
+      backoffMs: Math.min(Number(d.backoffMs) || BACKOFF_INICIAL_MS, BACKOFF_MAXIMO_MS),
+    };
   } catch {
-    // falha de disco não deve derrubar a ferramenta.
+    return { ...ESTADO_PADRAO }; // 1ª execução, arquivo corrompido ou sem permissão
   }
 }
 
-carregarEstadoDisjuntor();
+// Read-modify-write atômico: lê o estado mais recente do disco (não um cache de
+// processo — senão volta a corrida de last-write-wins), aplica fn e regrava.
+function transacao(fn) {
+  return comTrava(() => {
+    const estado = lerEstado();
+    const resultado = fn(estado);
+    try {
+      fs.writeFileSync(arquivoEstadoDisjuntor, JSON.stringify(estado));
+    } catch {
+      // falha de disco não deve derrubar a ferramenta
+    }
+    return resultado;
+  });
+}
 
-// Reseta o estado do disjuntor — só para uso em testes (evita vazar estado entre casos).
+// Reseta o estado — só para uso em testes (evita vazar estado entre casos).
 export function _resetDisjuntorParaTeste() {
-  historicoRequisicoes = [];
-  bloqueadoAte = 0;
-  backoffAtualMs = BACKOFF_INICIAL_MS;
-  indiceJanelaAtual = 0;
-  sucessosConsecutivos = 0;
+  try {
+    fs.unlinkSync(arquivoEstadoDisjuntor);
+  } catch {}
+  try {
+    fs.unlinkSync(arquivoEstadoDisjuntor + ".lock");
+  } catch {}
 }
 
 const fmtDuracao = (ms) => {
@@ -291,45 +378,138 @@ const fmtDuracao = (ms) => {
   return `${sec}s`;
 };
 
-// Mensagem de recuo se ainda dentro do cooldown de um bloqueio detectado; senão null.
-export function checarDisjuntor(agora = Date.now()) {
-  if (agora < bloqueadoAte) {
-    return (
-      "O TJRO bloqueou uma consulta recente por suspeita de automação; para não " +
-      "prolongar o bloqueio, esta ferramenta está evitando novas tentativas por " +
-      `mais ${fmtDuracao(bloqueadoAte - agora)}. Tente novamente depois disso.`
-    );
-  }
-  return null;
-}
-
-// Limite preventivo de ritmo, no nível aprendido (indiceJanelaAtual) — não
-// depende de saber o limiar real do WAF, só reage ao que já aconteceu.
-export function checarLimitePreventivo(agora = Date.now()) {
-  const janelaMs = ESCADA_JANELA_MS[indiceJanelaAtual];
-  historicoRequisicoes = historicoRequisicoes.filter((t) => agora - t <= janelaMs);
-  if (historicoRequisicoes.length >= JANELA_MAX_REQS) {
-    const espera = janelaMs - (agora - historicoRequisicoes[0]);
-    return (
-      `Muitas consultas em pouco tempo (limite preventivo atual: ${JANELA_MAX_REQS} a cada ` +
-      `${fmtDuracao(janelaMs)} — ajustado automaticamente conforme bloqueios anteriores do TJRO). ` +
-      `Aguarde ${fmtDuracao(espera)} e tente de novo.`
-    );
-  }
-  historicoRequisicoes.push(agora);
-  return null;
+// Ponto único de admissão: decide bloqueio, orçamento e espaçamento numa só
+// transação (separar em checagens independentes abriria janela para duas
+// chamadas passarem juntas). Devolve {esperarMs} com a vaga já reservada, ou
+// {erro} com mensagem pronta para o usuário.
+export function reservarRequisicao(agora = Date.now()) {
+  return transacao((e) => {
+    if (agora < e.bloqueadoAte) {
+      return {
+        erro:
+          "O TJRO bloqueou uma consulta recente por suspeita de automação; para não " +
+          "prolongar o bloqueio, esta ferramenta está evitando novas tentativas por " +
+          `mais ${fmtDuracao(e.bloqueadoAte - agora)}. Tente novamente depois disso. ` +
+          "Para jurisprudência recente, uma base com busca semântica pode atender enquanto isso.",
+      };
+    }
+    const janelaMs = ESCADA_JANELA_MS[e.indiceJanela];
+    e.requisicoes = e.requisicoes.filter((t) => agora - t <= janelaMs);
+    if (e.requisicoes.length >= JANELA_MAX_REQS) {
+      const espera = janelaMs - (agora - e.requisicoes[0]);
+      return {
+        erro:
+          `Muitas consultas em pouco tempo (limite atual: ${JANELA_MAX_REQS} a cada ` +
+          `${fmtDuracao(janelaMs)}, compartilhado por todas as sessões do Claude nesta máquina ` +
+          "e ajustado conforme bloqueios anteriores do TJRO). " +
+          `Aguarde ${fmtDuracao(espera)} e tente de novo.`,
+      };
+    }
+    const vaga = Math.max(agora, e.proximoLivreEm);
+    const esperarMs = vaga - agora;
+    if (esperarMs > ESPERA_MAXIMA_MS) {
+      return {
+        erro:
+          `Fila de espera longa demais (${fmtDuracao(esperarMs)}) — há consultas demais ` +
+          "em andamento em paralelo. Refaça a busca daqui a pouco, de preferência uma por vez.",
+      };
+    }
+    e.proximoLivreEm = vaga + ESPACAMENTO_MIN_MS;
+    e.requisicoes.push(vaga);
+    e.ultimaRequisicaoEm = vaga;
+    e.totalRequisicoes = (e.totalRequisicoes || 0) + 1;
+    return { esperarMs };
+  });
 }
 
 // WAF do TJRO bloqueou: ativa/estende o disjuntor reativo (backoff dobra a cada
 // nova detecção dentro do cooldown, até o teto) E, como isso só acontece se o
 // limite preventivo atual não foi suficiente, avança um degrau na escada
 // (janela mais larga) para o futuro — persistido, sobrevive a reinício.
-export function registrarBloqueioDetectado(agora = Date.now()) {
-  bloqueadoAte = agora + backoffAtualMs;
-  backoffAtualMs = Math.min(backoffAtualMs * 2, BACKOFF_MAXIMO_MS);
-  if (indiceJanelaAtual < ESCADA_JANELA_MS.length - 1) indiceJanelaAtual += 1;
-  sucessosConsecutivos = 0;
-  salvarEstadoDisjuntor();
+export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?") {
+  transacao((e) => {
+    // Fotografa o que estava acontecendo ANTES de mexer no estado — é isso que
+    // permite descobrir depois se o bloqueio veio de rajada nossa ou de algo
+    // fora do nosso controle (ex.: outra máquina no mesmo IP, ou aperto do WAF).
+    const reqs = e.requisicoes || [];
+    const incidente = {
+      quando: agora,
+      operacao,
+      nivel: e.indiceJanela,
+      janelaS: Math.round(ESCADA_JANELA_MS[e.indiceJanela] / 1000),
+      reqsUltimos60s: reqs.filter((t) => agora - t <= 60_000).length,
+      reqsNaJanela: reqs.filter((t) => agora - t <= ESCADA_JANELA_MS[e.indiceJanela]).length,
+      desdeUltimaReqS: e.ultimaRequisicaoEm ? Math.round((agora - e.ultimaRequisicaoEm) / 1000) : null,
+      desdeIncidenteAnteriorS: e.incidentes?.length
+        ? Math.round((agora - e.incidentes[e.incidentes.length - 1].quando) / 1000)
+        : null,
+    };
+    e.incidentes = [...(e.incidentes || []), incidente].slice(-MAX_INCIDENTES);
+
+    e.bloqueadoAte = agora + e.backoffMs;
+    e.backoffMs = Math.min(e.backoffMs * 2, BACKOFF_MAXIMO_MS);
+    if (e.indiceJanela < ESCADA_JANELA_MS.length - 1) e.indiceJanela += 1;
+    e.sucessos = 0;
+  });
+}
+
+// Relatório legível do estado e do histórico de bloqueios. Existe para que
+// qualquer sessão (ou o próprio usuário) consiga responder "por que parou?" sem
+// abrir arquivo nenhum — e para não repetir o diagnóstico errado de "portal
+// fora do ar" quando na verdade é bloqueio por automação.
+export function diagnosticoRitmo(agora = Date.now()) {
+  const e = comTrava(() => lerEstado());
+  const janelaMs = ESCADA_JANELA_MS[e.indiceJanela];
+  const naJanela = (e.requisicoes || []).filter((t) => agora - t <= janelaMs).length;
+  const linhas = [
+    "**Controle de ritmo do MCP TJRO**",
+    `- Nível atual: ${e.indiceJanela + 1} de ${ESCADA_JANELA_MS.length} ` +
+      `(limite: ${JANELA_MAX_REQS} consultas a cada ${fmtDuracao(janelaMs)})`,
+    `- Orçamento usado agora: ${naJanela}/${JANELA_MAX_REQS} nesta janela`,
+    `- Consultas desde o início (nesta máquina): ${e.totalRequisicoes || 0}`,
+    agora < e.bloqueadoAte
+      ? `- ⚠️ BLOQUEADO por suspeita de automação — liberando em ${fmtDuracao(e.bloqueadoAte - agora)}`
+      : "- Situação: liberado",
+  ];
+
+  const inc = e.incidentes || [];
+  if (!inc.length) {
+    linhas.push("\nNenhum bloqueio registrado até agora nesta máquina.");
+    return linhas.join("\n");
+  }
+
+  linhas.push(`\n**Bloqueios registrados: ${inc.length}** (mais recentes primeiro)`);
+  for (const i of [...inc].reverse().slice(0, 8)) {
+    const quando = new Date(i.quando).toISOString().replace("T", " ").slice(0, 16);
+    const intervalo = i.desdeUltimaReqS === null ? "—" : `${i.desdeUltimaReqS}s`;
+    linhas.push(
+      `- ${quando} · ${i.reqsUltimos60s} consultas no minuto anterior, ` +
+        `${i.reqsNaJanela} na janela de ${fmtDuracao(i.janelaS * 1000)} · ` +
+        `intervalo desde a anterior: ${intervalo} · operação: ${i.operacao}`
+    );
+  }
+
+  // Leitura do padrão: rajada nossa (muitas consultas antes) x algo fora do
+  // nosso controle (bloqueio mesmo com pouquíssimo tráfego daqui).
+  const media = inc.reduce((n, i) => n + i.reqsUltimos60s, 0) / inc.length;
+  const comPoucoTrafego = inc.filter((i) => i.reqsUltimos60s <= 2).length;
+  linhas.push(
+    `\n**Padrão observado:** em média ${media.toFixed(1)} consultas no minuto que antecedeu ` +
+      `cada bloqueio.`
+  );
+  if (comPoucoTrafego > inc.length / 2) {
+    linhas.push(
+      "A maioria dos bloqueios veio com pouquíssimo tráfego desta máquina — indício de que a " +
+        "causa está fora do controle desta ferramenta (outro equipamento no mesmo IP, ou o " +
+        "próprio portal apertando o filtro). Espaçar mais as consultas aqui tende a não resolver."
+    );
+  } else if (media >= 5) {
+    linhas.push(
+      "Os bloqueios vieram após rajadas — evitar várias consultas seguidas (preferir uma busca " +
+        "ampla, com por_pagina maior) é o que mais ajuda."
+    );
+  }
+  return linhas.join("\n");
 }
 
 // Consulta bem-sucedida: reseta o backoff reativo (um incidente passado não
@@ -337,20 +517,55 @@ export function registrarBloqueioDetectado(agora = Date.now()) {
 // — depois de uma sequência longa sem novo bloqueio no nível atual, afrouxa um
 // degrau (o bloqueio anterior pode ter sido pontual, ou o TJRO ajustou o WAF).
 export function registrarSucesso() {
-  backoffAtualMs = BACKOFF_INICIAL_MS;
-  sucessosConsecutivos += 1;
-  if (sucessosConsecutivos >= SUCESSOS_PARA_RELAXAR) {
-    sucessosConsecutivos = 0; // reseta sempre, mesmo já no nível mínimo (não cresce sem limite)
-    if (indiceJanelaAtual > 0) {
-      indiceJanelaAtual -= 1;
-      salvarEstadoDisjuntor();
+  transacao((e) => {
+    e.backoffMs = BACKOFF_INICIAL_MS;
+    e.sucessos += 1;
+    if (e.sucessos >= SUCESSOS_PARA_RELAXAR) {
+      e.sucessos = 0; // reseta sempre, mesmo já no nível mínimo (não cresce sem limite)
+      if (e.indiceJanela > 0) e.indiceJanela -= 1;
     }
+  });
+}
+
+// Cache de respostas idênticas (por processo): repetir a MESMA busca na mesma
+// conversa não deve gerar uma segunda requisição ao portal. Não substitui o
+// orçamento compartilhado — é só o tráfego que dá pra evitar de graça.
+const CACHE_TTL_MS = 5 * 60_000;
+const CACHE_MAX_ENTRADAS = 32;
+const cacheRespostas = new Map();
+
+export function _limparCacheParaTeste() {
+  cacheRespostas.clear();
+}
+
+function cacheLer(chave, agora) {
+  const item = cacheRespostas.get(chave);
+  if (!item) return null;
+  if (agora - item.quando > CACHE_TTL_MS) {
+    cacheRespostas.delete(chave);
+    return null;
   }
+  return item.dados;
+}
+
+function cacheGravar(chave, dados, agora) {
+  if (cacheRespostas.size >= CACHE_MAX_ENTRADAS) {
+    cacheRespostas.delete(cacheRespostas.keys().next().value); // descarta a mais antiga
+  }
+  cacheRespostas.set(chave, { dados, quando: agora });
 }
 
 export async function post(body, fetchImpl = fetch) {
-  const aviso = checarDisjuntor() || checarLimitePreventivo();
-  if (aviso) throw new Error(aviso);
+  const chave = JSON.stringify(body);
+  const emCache = cacheLer(chave, Date.now());
+  if (emCache) return emCache; // não consome vaga: nenhuma requisição é feita
+
+  const reserva = reservarRequisicao();
+  if (reserva.erro) throw new Error(reserva.erro);
+  if (reserva.esperarMs > 0) {
+    await new Promise((r) => setTimeout(r, reserva.esperarMs));
+  }
+
   const r = await fetchImpl(ENDPOINT, {
     method: "POST",
     headers: HEADERS,
@@ -362,12 +577,16 @@ export async function post(body, fetchImpl = fetch) {
   if (!ctype.toLowerCase().includes("json")) {
     const texto = await r.text();
     if (/robotiza|p[aá]gina bloqueada|\bstic\b/i.test(texto)) {
-      registrarBloqueioDetectado();
+      const campos = body?.fields || {};
+      const operacao = campos.nr_processo && !campos.query ? "inteiro_teor" : "busca";
+      registrarBloqueioDetectado(Date.now(), operacao);
     }
     throw new Error(diagnosticarRespostaNaoJson(ctype, texto));
   }
   registrarSucesso();
-  return r.json();
+  const dados = await r.json();
+  cacheGravar(chave, dados, Date.now());
+  return dados;
 }
 
 // --------------------------------------------------------------- formatters -
@@ -400,7 +619,11 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       out.push(
         sugg.length
           ? `\nNenhum resultado. Você quis dizer: ${sugg.join(", ")}?`
-          : "\nNenhum resultado. Tente termos mais amplos ou remova filtros."
+          : "\nNenhum resultado. Esta busca casa PALAVRAS, não sentido: um julgado que diga " +
+              '"inscrição indevida em cadastro de inadimplentes" não aparece numa busca por ' +
+              '"negativação". Tente sinônimos, termos mais amplos, ou o curinga final ' +
+              '(ex.: "consign*" pega consignado/consignação). Para jurisprudência de 2020 em ' +
+              "diante, uma base com busca semântica tende a achar o que a busca por palavras não acha."
       );
     }
     return out.join("\n");
@@ -431,12 +654,20 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
     );
   });
   if (total > pagina * porPagina) {
-    if ((pagina + 1) * porPagina <= JANELA_MAXIMA)
-      out.push(`\n_(há mais resultados — chame novamente com pagina=${pagina + 1})_`);
-    else
+    if ((pagina + 1) * porPagina > JANELA_MAXIMA) {
       out.push(
         "\n_(há mais resultados, mas o portal só expõe os 10.000 primeiros — refine com filtros ou mude a ordenação)_"
       );
+    } else if (porPagina < 50) {
+      // Preferir UMA busca maior a várias páginas: cada página é uma requisição
+      // a mais ao portal, e o orçamento de requisições é limitado.
+      out.push(
+        `\n_(há mais resultados — prefira repetir a busca com por_pagina maior (até 50) ` +
+          `numa única chamada, em vez de paginar; se precisar mesmo paginar, use pagina=${pagina + 1})_`
+      );
+    } else {
+      out.push(`\n_(há mais resultados — chame novamente com pagina=${pagina + 1})_`);
+    }
   }
   return out.join("\n");
 }
