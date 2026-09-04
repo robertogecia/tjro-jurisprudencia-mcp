@@ -76,6 +76,18 @@ de qualquer forma.
 - **Confirme antes de citar.** Sempre abra o *inteiro teor* (o link vem em cada
   resultado) e confira número, relator, câmara, data e a ementa literal antes de
   usar em peça. Vale para qualquer ferramenta de IA jurídica.
+- **Um número, vários julgados.** Sob o mesmo número de processo convivem o
+  acórdão original, os embargos de declaração, os segundos embargos e, em
+  julgamento por maioria, às vezes o voto vencido como documento próprio no
+  índice. O número sozinho não identifica uma decisão — foi assim que uma peça
+  real citou o conteúdo de um acórdão com o relator de outro. Por isso cada
+  resultado traz o **id do documento** (chave única daquela decisão), e a
+  extensão avisa quando o mesmo número aparece mais de uma vez, quando dois
+  documentos do mesmo julgamento declaram resultado oposto (provável voto
+  vencido) e, no inteiro teor, quando a câmara ou o relator do **índice** não
+  batem com o que o **texto do acórdão** declara — o cadastro do portal já saiu
+  errado nesse campo, e outras bases herdam o mesmo cadastro. Cite pelo id +
+  data de julgamento, e pelo que o texto do acórdão diz.
 - **Rede do escritório:** se o escritório usa proxy que intercepta HTTPS e a busca
   falhar com erro de certificado, fale com o suporte de TI (pode ser necessário
   ajustar o certificado/CA do sistema).

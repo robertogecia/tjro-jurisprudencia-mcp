@@ -124,6 +124,93 @@ export const citacao = (s) => {
 
 export const fold = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
 
+// Id único da decisão no portal. O NÚMERO do processo não identifica um julgado:
+// sob o mesmo número convivem o acórdão original, os embargos, os segundos
+// embargos e, em julgamento por maioria, às vezes o voto vencido como documento
+// próprio. Erro real (04/09/2026): peça citou o conteúdo de um acórdão com o
+// relator de OUTRO, ambos sob o mesmo número.
+export const idDocumento = (s) => String(s.id_processo_documento ?? "").trim();
+
+// Resultado(s) declarados num texto de julgado. Só a cauda, onde fica o
+// dispositivo — o corpo cita outros julgados com resultados que não são o dele.
+// Um documento que declara os dois lados de um par (ex.: "recurso do autor
+// provido, do réu desprovido") é ambíguo para aquele par e não gera aviso.
+// CONHECIDO × NÃO CONHECIDO fica FORA dos pares comparados: "não conheço do
+// agravo retido; dou provimento à apelação" fala de objetos diferentes, e
+// compará-lo com um voto que só trata da apelação daria aviso falso (red team
+// 04/09/2026, achado 3). O rótulo continua sendo extraído, só não é confrontado.
+export const OPOSTOS = [
+  ["PROVIDO", "DESPROVIDO"],
+  ["ACOLHIDO", "REJEITADO"],
+];
+export const resultadoDe = (texto) => {
+  const t = fold(texto).toUpperCase();
+  const cauda = t.length > 2500 ? t.slice(-2500) : t;
+  const r = new Set();
+  // Cada lado é testado de forma INDEPENDENTE (não é if/else): texto que
+  // menciona os dois — ementa que registra o voto vencido ("vencido o relator,
+  // que negava provimento"), "recurso do autor provido e do réu desprovido",
+  // histórico da decisão de origem — fica AMBÍGUO e não gera aviso (red team
+  // 04/09/2026, achados 1 e 2). Só a negação colada ("NÃO PROVIDO", "NÃO
+  // CONHECIDO") é excluída do lado positivo, por lookbehind.
+  if (/\bNAO (SE )?CONHEC/.test(cauda)) r.add("NÃO CONHECIDO");
+  if (/(?<!NAO )(?<!NAO SE )\bCONHEC/.test(cauda)) r.add("CONHECIDO");
+  if (/\b(DESPROVI|IMPROVI|NAO PROVI|NEG\w*(-SE| SE)? PROVIMENTO|PROVIMENTO NEGADO)/.test(cauda)) r.add("DESPROVIDO");
+  if (/(?<!NAO )\b(PROVI(DO|DOS|DA|DAS)\b|D(A|AO|AR|OU|ERAM|EU)(-SE| SE)? (PARCIAL )?PROVIMENTO)/.test(cauda)) r.add("PROVIDO");
+  if (/\bREJEIT/.test(cauda)) r.add("REJEITADO");
+  if (/\bACOLH/.test(cauda)) r.add("ACOLHIDO");
+  return r;
+};
+// Lado de um par declarado por um documento; null se nenhum ou se ambos (ambíguo).
+export const ladoDe = (conjunto, [a, b]) =>
+  conjunto.has(a) && conjunto.has(b) ? null : conjunto.has(a) ? a : conjunto.has(b) ? b : null;
+
+// Índice é indício, texto é prova: o campo "Câmara" do cadastro do TJRO já saiu
+// errado (índice "3ª Câmara Cível", acórdão "1ª Câmara Cível" duas vezes —
+// 04/09/2026), e o JusRatio herda o mesmo cadastro. Extração conservadora: só
+// devolve quando o texto é unânime (uma única câmara mencionada).
+const TIPO_CAMARA = { civel: "Cível", criminal: "Criminal", especial: "Especial" };
+const ORDINAL = { primeira: "1", segunda: "2", terceira: "3", quarta: "4", quinta: "5" };
+// Só o CABEÇALHO (timbre): a fundamentação cita câmaras alheias ("como decidiu a
+// 4ª Câmara Cível", "1ª Câmara Especializada do TJSP") e isso ou desligava a
+// checagem ou, pior, apontava a câmara alheia como a do julgado (red team
+// 04/09/2026, achados 5 e 7). "\b" após o tipo impede "Especializada" ≈ "Especial".
+export const extrairOrgaoDoTexto = (texto) => {
+  const cab = String(texto || "").slice(0, 600);
+  const achados = new Set();
+  for (const m of cab.matchAll(/\b(\d{1,2}\s*[ªa°º]|primeira|segunda|terceira|quarta|quinta)\s*C[âa]mara\s+(C[íi]vel|Criminal|Especial)\b/gi)) {
+    const n = ORDINAL[fold(m[1])] || m[1].replace(/\D/g, "");
+    achados.add(`${n}ª Câmara ${TIPO_CAMARA[fold(m[2])] || m[2]}`);
+  }
+  return achados.size === 1 ? [...achados][0] : null;
+};
+const ROTULOS_APOS_RELATOR =
+  /\s+(Revisor|Vogal|Presidente|Processo|Agravante|Agravad[oa]|Apelante|Apelad[oa]|Embargante|Embargad[oa]|Recorrente|Recorrid[oa]|Origem|Data|Relat[oó]rio|Ementa|Assunto|Classe|[ÓO]rg[ãa]o|Sess[ãa]o)\b.*$/i;
+export const extrairRelatorDoTexto = (texto) => {
+  // Só o cabeçalho: o corpo cita julgados alheios com "Relator:" próprios.
+  const cab = String(texto || "").slice(0, 1500);
+  // Julgamento por maioria com redator diferente do sorteado: o índice guarda o
+  // "relator para o acórdão" — é ele que vale para citação (red team 04/09/2026,
+  // achado 4a). Limite conhecido: embargos que reproduzem o cabeçalho do acórdão
+  // embargado ANTES do próprio ainda podem devolver o relator do embargado.
+  const paraAcordao = /(?:Relator|Redator)(?:a)?\s+(?:para|p\/|p\.)\s*o?\s*ac[óo]rd[ãa]o\s*:\s*([^\n;:]{3,90})/i.exec(cab);
+  const m = paraAcordao || /Relator(?:a)?(?:\s*\(a\))?\s*:\s*([^\n;:]{3,90})/i.exec(cab);
+  if (!m) return null;
+  const nome = m[1].replace(ROTULOS_APOS_RELATOR, "").trim().split(/\s+/).slice(0, 6).join(" ");
+  return nome.length >= 3 ? nome : null;
+};
+const TITULOS = new Set([
+  "desembargador", "desembargadora", "juiz", "juiza", "convocado", "convocada",
+  "ministro", "ministra", "relator", "relatora", "substituto", "substituta",
+]);
+const sobrenomes = (nome) => fold(nome).split(/[^a-z]+/).filter((w) => w.length >= 4 && !TITULOS.has(w));
+export const relatorDiverge = (doTexto, doIndice) => {
+  if (!doTexto || !doIndice || doIndice === "—") return false;
+  const a = sobrenomes(doTexto);
+  const b = new Set(sobrenomes(doIndice));
+  return a.length > 0 && b.size > 0 && !a.some((w) => b.has(w));
+};
+
 // Agrega correções "você quis dizer" de TODOS os tokens da consulta. A API devolve
 // uma entrada por token e por variante com/sem acento (mesmo offset); usa-se a
 // variante que bate com o texto digitado e descartam-se "correções" que só diferem
@@ -711,6 +798,18 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   }
 
   const inicio = (pagina - 1) * porPagina + 1;
+  // Agrupa por número: sob o mesmo número, vários julgados (ver idDocumento).
+  const porProcesso = new Map();
+  hits.forEach((h, i) => {
+    const k = String((h._source || {}).nr_processo || "").replace(/\D/g, "") || `#${i}`;
+    if (!porProcesso.has(k)) porProcesso.set(k, []);
+    porProcesso.get(k).push(i);
+  });
+  const chaveProc = (i) => String((hits[i]._source || {}).nr_processo || "").replace(/\D/g, "") || `#${i}`;
+  const chaveJulg = (i) => String((hits[i]._source || {}).dtjulgamento || "");
+  const resultados = hits.map((h) => resultadoDe(limpar((h._source || {}).ds_modelo_documento || "", 0)));
+  const quandoDe = (s) => s.dtjulgamento_str || dataBr(s.dtjulgamento) || "?";
+
   hits.forEach((h, i) => {
     const s = h._source || {};
     const hl = (h.highlight || {}).ds_modelo_documento;
@@ -722,17 +821,53 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       const artigo = ["SENTENÇA", "DECISÃO", "DECISÃO DA PRESIDÊNCIA"].includes(t) ? "da" : "do";
       rotulo = `Trecho ${artigo} ${t} com os termos da busca`;
     }
+    if (t === "VOTO") rotulo += " (VOTO — pode ser voto vencido; não é o dispositivo do colegiado)";
     const assunto = s.ds_assunto_trf ? ` · Assunto: ${s.ds_assunto_trf}` : "";
-    out.push(
-      `\n---\n**${inicio + i}. ${s.tipo} · ${s.ds_classe_judicial || ""}**\n` +
-        `- Processo: ${cnj(s.nr_processo || "")}\n` +
-        `- Relator(a): ${relator(s)}\n` +
-        `- Órgão: ${orgao(s)} (${s.grau_jurisdicao}º grau)\n` +
-        `- Julgado em: ${s.dtjulgamento_str || s.dtjulgamento || "—"}${assunto}\n` +
-        `- Citação: ${citacao(s)}\n` +
-        `- Inteiro teor: ${link(s)}\n` +
-        `- ${rotulo}: ${trecho || "(sem trecho)"}`
-    );
+    const linhas = [
+      `\n---\n**${inicio + i}. ${s.tipo} · ${s.ds_classe_judicial || ""}**`,
+      `- Processo: ${cnj(s.nr_processo || "")}`,
+      `- Id. do documento: ${idDocumento(s) || "—"} (chave única desta decisão)`,
+      `- Relator(a): ${relator(s)}`,
+      `- Órgão: ${orgao(s)} (${s.grau_jurisdicao}º grau)`,
+      `- Julgado em: ${s.dtjulgamento_str || s.dtjulgamento || "—"}${assunto}`,
+      `- Citação: ${citacao(s)}`,
+      `- Inteiro teor: ${link(s)}`,
+    ];
+    const grupo = porProcesso.get(chaveProc(i));
+    if (grupo.length > 1) {
+      if (grupo[0] === i) {
+        const lista = grupo
+          .map((j) => {
+            const x = hits[j]._source || {};
+            const rel = relator(x) !== "—" ? ` (Rel. ${relator(x)})` : "";
+            return `nº ${inicio + j}: ${quandoDe(x)} ${x.tipo || ""}${rel}`;
+          })
+          .join("; ");
+        linhas.push(
+          `- ⚠️ Mesmo número, ${grupo.length} documentos nesta página (${lista}) — o número NÃO identifica a decisão: cite pelo id + data de julgamento.`
+        );
+      } else {
+        linhas.push(`- ⚠️ Mesmo número que o resultado nº ${inicio + grupo[0]} — cite pelo id + data de julgamento.`);
+      }
+      // Resultado oposto no MESMO julgamento: provável voto vencido indexado.
+      for (const j of grupo) {
+        // Data ausente não é evidência de mesmo julgamento: nunca casa (red team, achado 6).
+        if (j === i || !chaveJulg(i) || chaveJulg(j) !== chaveJulg(i)) continue;
+        for (const par of OPOSTOS) {
+          const meu = ladoDe(resultados[i], par);
+          const dele = ladoDe(resultados[j], par);
+          if (meu && dele && meu !== dele) {
+            linhas.push(
+              `- ⚠️ Resultado oposto a outro documento do mesmo julgamento: este diz ${meu}; o nº ${inicio + j} ` +
+                `(${(hits[j]._source || {}).tipo}) diz ${dele}. Provável voto vencido indexado junto ao acórdão — ` +
+                `o dispositivo do colegiado é o do ACÓRDÃO/EMENTA; confira o inteiro teor.`
+            );
+          }
+        }
+      }
+    }
+    linhas.push(`- ${rotulo}: ${trecho || "(sem trecho)"}`);
+    out.push(linhas.join("\n"));
   });
   if (total > pagina * porPagina) {
     if ((pagina + 1) * porPagina > JANELA_MAXIMA) {
@@ -775,9 +910,32 @@ export function formatInteiro(data, nrProcesso) {
   const out = [
     `**Processo ${cnj(nrProcesso)} — ${s0.ds_classe_judicial || ""}**`,
     `Relator(a): ${relator(s0)} · ${orgao(s0)} · Julgado em ${s0.dtjulgamento_str || s0.dtjulgamento || "—"}`,
-    `Citação: ${citacao(s0)}`,
+    `Citação: ${citacao(s0)}` + (idDocumento(s0) ? ` · id ${idDocumento(s0)}` : ""),
     `Inteiro teor no portal: ${link(s0)}`,
   ];
+  // Sob o mesmo número, julgamentos distintos: a Citação acima é só da peça
+  // mais recente. Quem cita "pelo número" pode estar citando outra decisão.
+  const julgamentos = new Map();
+  for (const [s] of unicos) {
+    // Sem data, cada peça é um julgamento à parte: não dá para afirmar que
+    // duas peças sem data são do mesmo (red team 04/09/2026, achado 6).
+    const d = s.dtjulgamento_str || dataBr(s.dtjulgamento) || `sem data (id ${idDocumento(s) || "?"})`;
+    if (!julgamentos.has(d)) julgamentos.set(d, []);
+    julgamentos.get(d).push(s);
+  }
+  if (julgamentos.size > 1) {
+    const lista = [...julgamentos.entries()]
+      .map(([d, ss]) =>
+        `${d}: ${ss
+          .map((s) => `${s.tipo}${relator(s) !== "—" ? `, Rel. ${relator(s)}` : ""}${idDocumento(s) ? `, id ${idDocumento(s)}` : ""}`)
+          .join(" / ")}`
+      )
+      .join("; ");
+    out.push(
+      `⚠️ Este número tem ${julgamentos.size} julgamentos distintos — ${lista}. A Citação acima é da decisão mais recente; ` +
+        `para citar outra, use a data e o id da peça correspondente. O número sozinho não identifica a decisão.`
+    );
+  }
   if (total > hits.length)
     out.push(
       `⚠️ O processo tem ${total} documentos; vieram os ${hits.length} mais recentes — refine o parâmetro tipo para alcançar os demais.`
@@ -789,13 +947,29 @@ export function formatInteiro(data, nrProcesso) {
   let usado = out.reduce((n, x) => n + x.length, 0);
   for (const [s, corpo] of unicos) {
     const quando = s.dtjulgamento_str || s.dtjulgamento || "";
-    const cab = `\n## ${s.tipo}` + (quando ? ` — julgado em ${quando}` : "");
+    const cab =
+      `\n## ${s.tipo}` +
+      (quando ? ` — julgado em ${quando}` : "") +
+      (relator(s) !== "—" ? ` · Relator(a): ${relator(s)}` : "") +
+      (idDocumento(s) ? ` · id ${idDocumento(s)}` : "");
     if (usado >= ORCAMENTO_INTEIRO) {
       out.push(
         "\n_(limite de tamanho da resposta atingido — peças restantes omitidas; chame novamente filtrando por tipo ou abra o link do portal acima)_"
       );
       break;
     }
+    // Índice × texto: o campo do cadastro pode divergir do que o acórdão diz.
+    const avisos = [];
+    const orgTexto = extrairOrgaoDoTexto(corpo);
+    if (orgTexto && orgao(s) !== "—" && fold(orgTexto) !== fold(orgao(s)))
+      avisos.push(
+        `⚠️ Índice: ${orgao(s)} · cabeçalho desta peça: ${orgTexto} — prevalece o texto (o cadastro do portal já saiu errado; cite pela câmara que o acórdão declara).`
+      );
+    const relTexto = extrairRelatorDoTexto(corpo);
+    if (relatorDiverge(relTexto, relator(s)))
+      avisos.push(
+        `⚠️ Índice: relator ${relator(s)} · cabeçalho desta peça: "${relTexto}" — pode ser relator sorteado vencido ou o do acórdão embargado; confira no acórdão antes de citar.`
+      );
     let texto = corpo || "(documento sem texto)";
     const teto = Math.min(tetoPeca, ORCAMENTO_INTEIRO - usado);
     if (texto.length > teto) {
@@ -804,8 +978,9 @@ export function formatInteiro(data, nrProcesso) {
         `${corte}…\n_[peça exibida parcialmente (${corte.length} de ${corpo.length} caracteres) — ` +
         `para o texto integral, chame obter_inteiro_teor_tjro(tipo=["${s.tipo}"]) ou abra o link do portal]_`;
     }
-    out.push(`${cab}\n${texto}`);
-    usado += cab.length + texto.length;
+    const bloco = `${cab}${avisos.length ? "\n" + avisos.join("\n") : ""}\n${texto}`;
+    out.push(bloco);
+    usado += bloco.length;
   }
   return out.join("\n");
 }
