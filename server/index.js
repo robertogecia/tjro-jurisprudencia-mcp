@@ -24,7 +24,7 @@ import {
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
-const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.4.1" });
+const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.5.0" });
 
 server.registerTool(
   "buscar_jurisprudencia_tjro",
@@ -34,7 +34,10 @@ server.registerTool(
       "Pesquisa jurisprudência do Tribunal de Justiça de Rondônia (TJRO) no portal público JURIS. " +
       "Cobre ~4 milhões de documentos (ementas, acórdãos, sentenças, votos) de 1º e 2º grau. " +
       "Ideal para precedentes LOCAIS de Rondônia, que bases nacionais não trazem. " +
-      "Cada resultado traz citação pronta para peça e link direto para a decisão no portal. " +
+      "Cada resultado traz citação pronta para peça, o ID DO DOCUMENTO (chave única daquela decisão) e link direto para a decisão no portal. " +
+      "Um NÚMERO de processo pode ter vários julgados (acórdão original, embargos, segundos embargos, voto vencido): " +
+      "a resposta avisa quando o mesmo número aparece mais de uma vez e quando dois documentos do mesmo julgamento " +
+      "declaram resultado oposto (provável voto vencido indexado) — cite pelo id + data de julgamento, nunca só pelo número. " +
       "Termos soltos combinam por OR (use \"a AND b\" ou termo_exato). O trecho exibido é o local " +
       "do match — só corresponde à ementa oficial quando o tipo é EMENTA. " +
       "Sempre confirme número, relator, câmara, data e ementa no inteiro teor antes de citar. " +
@@ -123,6 +126,9 @@ server.registerTool(
       "Retorna o texto integral dos documentos de UM processo do TJRO (acórdão, ementa, voto, relatório), " +
       "com citação pronta para peça e link do portal. " +
       "Use o nr_processo devolvido por buscar_jurisprudencia_tjro quando precisar do teor completo, não só da ementa. " +
+      "Se o processo tiver julgamentos distintos (original, embargos, segundos embargos), a resposta lista todos com data, relator e id " +
+      "do documento — a Citação do cabeçalho é só da decisão mais recente. Cada peça avisa quando a câmara ou o relator do índice " +
+      "divergem do que o texto do acórdão declara (prevalece o texto; o cadastro do portal já saiu errado nesse campo). " +
       "A saída é deduplicada e limitada a ~50 mil caracteres — se algo for truncado, um aviso indica como buscar o restante (filtrando por tipo).",
     inputSchema: {
       nr_processo: z.string().describe("Número do processo (CNJ), com ou sem máscara."),

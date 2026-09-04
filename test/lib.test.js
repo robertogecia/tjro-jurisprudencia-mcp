@@ -21,6 +21,13 @@ import {
   _setArquivoEstadoParaTeste,
   _limparCacheParaTeste,
   _statusPersistencia,
+  idDocumento,
+  resultadoDe,
+  ladoDe,
+  OPOSTOS,
+  extrairOrgaoDoTexto,
+  extrairRelatorDoTexto,
+  relatorDiverge,
 } from "../server/lib.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -630,4 +637,215 @@ test("estado corrompido não é herdado: campos inválidos caem em valores segur
   const rel = diagnosticoRitmo();
   assert.match(rel, /Nível atual: 5 de 5/); // 999 foi clampado ao topo, não estourou
   assert.match(rel, /Nenhum bloqueio registrado/); // incidentes inválido virou lista vazia
+});
+
+// ---------------------------------------------------------------------------
+// v1.5.0 — "um número, vários julgados" e "índice é indício, texto é prova".
+// Motivação: peça real (04/09/2026) citou o conteúdo de um acórdão com o relator
+// de OUTRO sob o mesmo número; o índice devolveu duas ementas de resultado oposto
+// para o mesmo acórdão (voto vencido indexado); e o campo "Câmara" do cadastro
+// divergia do texto do acórdão.
+// ---------------------------------------------------------------------------
+
+test("idDocumento: chave única da decisão, vazia quando o índice não traz", () => {
+  assert.equal(idDocumento({ id_processo_documento: 30009487 }), "30009487");
+  assert.equal(idDocumento({}), "");
+});
+
+test("resultadoDe: provido/desprovido/acolhido/rejeitado/(não) conhecido, com negações e só na cauda", () => {
+  assert.deepEqual([...resultadoDe("ACORDAM ... RECURSOS PROVIDOS.")], ["PROVIDO"]);
+  assert.deepEqual([...resultadoDe("recurso a que se nega provimento")], ["DESPROVIDO"]);
+  assert.deepEqual([...resultadoDe("Recurso não provido.")], ["DESPROVIDO"]);
+  assert.deepEqual([...resultadoDe("negaram provimento ao recurso")], ["DESPROVIDO"]);
+  assert.deepEqual([...resultadoDe("rejeito os presentes embargos de declaração")], ["REJEITADO"]);
+  assert.deepEqual([...resultadoDe("ACOLHO os embargos para sanar a omissão")], ["ACOLHIDO"]);
+  assert.deepEqual([...resultadoDe("recurso não conhecido")], ["NÃO CONHECIDO"]);
+  assert.deepEqual([...resultadoDe("recurso conhecido e desprovido")].sort(), ["CONHECIDO", "DESPROVIDO"]);
+  // Só a cauda conta: o corpo cita julgado alheio "desprovido", o dispositivo é "provido".
+  const corpo = "x".repeat(3000) + " o STJ manteve recurso desprovido em caso análogo " + "y".repeat(2600) + " Diante do exposto, DOU PROVIMENTO ao recurso.";
+  assert.deepEqual([...resultadoDe(corpo)], ["PROVIDO"]);
+  assert.equal(ladoDe(new Set(["PROVIDO", "DESPROVIDO"]), OPOSTOS[0]), null); // ambíguo
+  assert.equal(ladoDe(new Set(["PROVIDO"]), OPOSTOS[0]), "PROVIDO");
+});
+
+test("extrairOrgaoDoTexto: só devolve câmara quando o texto é unânime", () => {
+  assert.equal(extrairOrgaoDoTexto("Tribunal de Justiça de Rondônia 1ª Câmara Cível ... 1ª CÂMARA CÍVEL ..."), "1ª Câmara Cível");
+  assert.equal(extrairOrgaoDoTexto("2a Camara Civel Relator: X"), "2ª Câmara Cível"); // sem acento/ordinal
+  assert.equal(extrairOrgaoDoTexto("1ª Câmara Cível ... como decidiu a 2ª Câmara Cível ..."), null); // duas: não arrisca
+  assert.equal(extrairOrgaoDoTexto("texto sem câmara"), null);
+});
+
+test("extrairRelatorDoTexto / relatorDiverge: cabeçalho, rótulos seguintes e títulos ignorados", () => {
+  assert.equal(extrairRelatorDoTexto("Relator: Des. Alexandre Miguel Revisor: Des. Fulano"), "Des. Alexandre Miguel");
+  assert.equal(extrairRelatorDoTexto("Relatora: Juíza Convocada Fulana de Tal Processo: 123"), "Juíza Convocada Fulana de Tal");
+  assert.equal(extrairRelatorDoTexto("sem relator aqui"), null);
+  assert.equal(extrairRelatorDoTexto("z".repeat(1600) + " Relator: Des. Alguém"), null); // fora do cabeçalho
+  assert.equal(relatorDiverge("Des. Alexandre Miguel", "ALEXANDRE MIGUEL"), false);
+  assert.equal(relatorDiverge("Juiz Jorge Luiz de Moura Gurgel do Amaral", "ALEXANDRE MIGUEL"), true);
+  assert.equal(relatorDiverge(null, "ALEXANDRE MIGUEL"), false);
+  assert.equal(relatorDiverge("Desembargador", "ALEXANDRE MIGUEL"), false); // só título, nada a comparar
+});
+
+test("busca: mesmo número com vários documentos avisa, lista as decisões e traz o id de cada uma", () => {
+  const src = (over) => ({
+    tipo: "ACÓRDÃO",
+    ds_classe_judicial: "AGRAVO DE INSTRUMENTO",
+    nr_processo: "08194775020248220000",
+    grau_jurisdicao: 2,
+    ...over,
+  });
+  const data = {
+    hits: {
+      total: { value: 3 },
+      hits: [
+        { _source: src({ id_processo_documento: 30009487, dtjulgamento: "2025-11-07", nome_relator_acordao: "ALEXANDRE MIGUEL", ds_modelo_documento: "ACOLHO os embargos e FIXO honorários" }) },
+        { _source: src({ id_processo_documento: 31621228, dtjulgamento: "2026-04-29", nome_relator_acordao: "JORGE LUIZ DE MOURA GURGEL DO AMARAL", ds_modelo_documento: "rejeito os presentes embargos" }) },
+        { _source: src({ nr_processo: "70000042420228220012", id_processo_documento: 1, dtjulgamento: "2025-09-25", ds_modelo_documento: "x" }) },
+      ],
+    },
+  };
+  const out = formatBusca(data, "honorários", ["ACÓRDÃO"], "relevantes", 1, 10);
+  assert.match(out, /Id\. do documento: 30009487 \(chave única desta decisão\)/);
+  assert.match(out, /Mesmo número, 2 documentos nesta página \(nº 1: 07\/11\/2025 ACÓRDÃO \(Rel\. ALEXANDRE MIGUEL\); nº 2: 29\/04\/2026 ACÓRDÃO \(Rel\. JORGE LUIZ DE MOURA GURGEL DO AMARAL\)\)/);
+  assert.match(out, /Mesmo número que o resultado nº 1 — cite pelo id \+ data de julgamento/);
+  assert.doesNotMatch(out, /Resultado oposto/); // datas diferentes: não é o mesmo julgamento
+  const terceiro = out.split("\n---\n")[3];
+  assert.doesNotMatch(terceiro, /Mesmo número/); // número diferente: sem aviso
+});
+
+test("busca: resultado oposto no MESMO julgamento aponta provável voto vencido", () => {
+  const base = { ds_classe_judicial: "APELAÇÃO CÍVEL", nr_processo: "70025671120248220015", grau_jurisdicao: 2, dtjulgamento: "2026-08-19" };
+  const data = {
+    hits: {
+      total: { value: 2 },
+      hits: [
+        { _source: { ...base, tipo: "EMENTA", id_processo_documento: 11, ds_modelo_documento: "EMENTA ... RECURSOS PROVIDOS." } },
+        { _source: { ...base, tipo: "VOTO", id_processo_documento: 12, ds_modelo_documento: "voto ... RECURSOS DESPROVIDOS." } },
+      ],
+    },
+  };
+  const out = formatBusca(data, "esbulho", ["EMENTA", "VOTO"], "relevantes", 1, 10);
+  assert.match(out, /Resultado oposto a outro documento do mesmo julgamento: este diz PROVIDO; o nº 2 \(VOTO\) diz DESPROVIDO/);
+  assert.match(out, /VOTO — pode ser voto vencido; não é o dispositivo do colegiado/);
+});
+
+test("inteiro teor: julgamentos distintos sob o mesmo número são listados com id; índice × texto avisa só onde diverge", () => {
+  const nr = "08053155020248220000";
+  const data = {
+    hits: {
+      total: { value: 2 },
+      hits: [
+        {
+          _source: {
+            tipo: "ACÓRDÃO", ds_classe_judicial: "AGRAVO DE INSTRUMENTO", nr_processo: nr, id_processo_documento: 501,
+            dtjulgamento: "2025-03-10", nome_relator_acordao: "ROWILSON TEIXEIRA", ds_orgao_julgador_colegiado: "3ª Câmara Cível",
+            ds_modelo_documento: "PODER JUDICIÁRIO Tribunal de Justiça de Rondônia 1ª Câmara Cível Relator: Des. Rowilson Teixeira Agravante: Fulano ... 1ª CÂMARA CÍVEL ... voto no sentido de dar provimento.",
+          },
+        },
+        {
+          _source: {
+            tipo: "ACÓRDÃO", ds_classe_judicial: "AGRAVO DE INSTRUMENTO", nr_processo: nr, id_processo_documento: 777,
+            dtjulgamento: "2024-11-05", nome_relator_acordao: "ALEXANDRE MIGUEL", ds_orgao_julgador_colegiado: "1ª Câmara Cível",
+            ds_modelo_documento: "1ª Câmara Cível Relator: Des. Alexandre Miguel Agravante: Y ... rejeito os embargos",
+          },
+        },
+      ],
+    },
+  };
+  const out = formatInteiro(data, nr);
+  assert.match(out, /Citação: .*· id 501/);
+  assert.match(out, /Este número tem 2 julgamentos distintos — 10\/03\/2025: ACÓRDÃO, Rel\. ROWILSON TEIXEIRA, id 501; 05\/11\/2024: ACÓRDÃO, Rel\. ALEXANDRE MIGUEL, id 777/);
+  assert.match(out, /## ACÓRDÃO — julgado em 2025-03-10 · Relator\(a\): ROWILSON TEIXEIRA · id 501/);
+  assert.match(out, /Índice: 3ª Câmara Cível · cabeçalho desta peça: 1ª Câmara Cível — prevalece o texto/);
+  const segunda = out.split("## ACÓRDÃO — julgado em 2024-11-05")[1];
+  assert.doesNotMatch(segunda, /Índice:/); // índice e texto batem: nenhum aviso
+});
+
+test("inteiro teor: relator do índice diferente do texto gera aviso", () => {
+  const nr = "08194775020248220000";
+  const data = {
+    hits: {
+      total: { value: 1 },
+      hits: [
+        {
+          _source: {
+            tipo: "ACÓRDÃO", nr_processo: nr, id_processo_documento: 9, dtjulgamento: "2025-11-07",
+            nome_relator_acordao: "JORGE LUIZ DE MOURA GURGEL DO AMARAL", ds_orgao_julgador_colegiado: "2ª Câmara Cível",
+            ds_modelo_documento: "2ª Câmara Cível Relator: Des. Alexandre Miguel Agravante: X ... ACOLHO os embargos",
+          },
+        },
+      ],
+    },
+  };
+  const out = formatInteiro(data, nr);
+  assert.match(out, /Índice: relator JORGE LUIZ DE MOURA GURGEL DO AMARAL · cabeçalho desta peça: "Des\. Alexandre Miguel"/);
+  assert.doesNotMatch(out, /julgamentos distintos/); // um julgamento só
+});
+
+// ---------------------------------------------------------------------------
+// Red team 04/09/2026 (7 achados reproduzidos) — regressões.
+// ---------------------------------------------------------------------------
+
+test("red team 1/2: texto que menciona os dois lados fica AMBÍGUO e não gera aviso de voto vencido", () => {
+  const ambos = resultadoDe("recurso do autor provido, do réu desprovido");
+  assert.ok(ambos.has("PROVIDO") && ambos.has("DESPROVIDO"));
+  assert.equal(ladoDe(ambos, OPOSTOS[0]), null);
+  const ementa =
+    "ACORDAM os Desembargadores, por maioria, DAR PROVIMENTO ao recurso, nos termos do voto do Redator, " +
+    "vencido o Desembargador Relator sorteado, que NEGAVA PROVIMENTO ao recurso.";
+  assert.equal(ladoDe(resultadoDe(ementa), OPOSTOS[0]), null);
+  // Histórico da origem antes do dispositivo: também ambíguo, nunca invertido.
+  assert.equal(ladoDe(resultadoDe("DECISÃO AGRAVADA QUE NEGOU PROVIMENTO AO PEDIDO LIMINAR. RECURSO PROVIDO."), OPOSTOS[0]), null);
+  const base = { nr_processo: "70025671120248220015", grau_jurisdicao: 2, dtjulgamento: "2026-08-19" };
+  const data = { hits: { total: { value: 2 }, hits: [
+    { _source: { ...base, tipo: "EMENTA", id_processo_documento: 1, ds_modelo_documento: ementa } },
+    { _source: { ...base, tipo: "VOTO", id_processo_documento: 2, ds_modelo_documento: "quanto ao recurso, DOU PROVIMENTO." } },
+  ] } };
+  assert.doesNotMatch(formatBusca(data, "x", ["EMENTA", "VOTO"], "relevantes", 1, 10), /Resultado oposto/);
+  // Negação colada continua excluindo o lado positivo.
+  assert.deepEqual([...resultadoDe("Recurso não provido.")], ["DESPROVIDO"]);
+  assert.deepEqual([...resultadoDe("recurso não conhecido")], ["NÃO CONHECIDO"]);
+});
+
+test("red team 3: preliminar não conhecida × mérito conhecido não é resultado oposto", () => {
+  const base = { nr_processo: "70000042420228220012", grau_jurisdicao: 2, dtjulgamento: "2025-09-25" };
+  const data = { hits: { total: { value: 2 }, hits: [
+    { _source: { ...base, tipo: "EMENTA", id_processo_documento: 1, ds_modelo_documento: "Preliminarmente, não conheço do agravo retido. No mérito, dou provimento ao recurso de apelação." } },
+    { _source: { ...base, tipo: "VOTO", id_processo_documento: 2, ds_modelo_documento: "Conheço do recurso de apelação e dou provimento para reformar a sentença." } },
+  ] } };
+  assert.doesNotMatch(formatBusca(data, "x", ["EMENTA", "VOTO"], "relevantes", 1, 10), /Resultado oposto/);
+});
+
+test("red team 4a: 'Relator para o acórdão' prevalece sobre o relator sorteado", () => {
+  const cab = "Relator: Desembargador João da Silva Relator para o acórdão: Desembargador Alexandre Miguel Agravante: Fulano";
+  assert.equal(extrairRelatorDoTexto(cab), "Desembargador Alexandre Miguel");
+  assert.equal(relatorDiverge(extrairRelatorDoTexto(cab), "ALEXANDRE MIGUEL"), false);
+});
+
+test("red team 5/7: câmara só do cabeçalho, ordinal por extenso, 'Especializada' não vira 'Especial'", () => {
+  assert.equal(extrairOrgaoDoTexto("1ª Câmara Especializada Cível do TJSP"), null);
+  assert.equal(extrairOrgaoDoTexto("Terceira Câmara Cível Relator: X"), "3ª Câmara Cível");
+  const corpo = "Tribunal de Justiça de Rondônia 1ª Câmara Cível Relator: Des. Y " + "z".repeat(700) + " como já decidiu a 4ª Câmara Cível em caso análogo";
+  assert.equal(extrairOrgaoDoTexto(corpo), "1ª Câmara Cível");
+  // Câmara por extenso no cabeçalho + citação alheia no corpo: índice certo, sem aviso.
+  const nr = "08053155020248220000";
+  const data = { hits: { total: { value: 1 }, hits: [{ _source: {
+    tipo: "ACÓRDÃO", nr_processo: nr, id_processo_documento: 5, dtjulgamento: "2025-03-10",
+    nome_relator_acordao: "ROWILSON TEIXEIRA", ds_orgao_julgador_colegiado: "3ª Câmara Cível",
+    ds_modelo_documento: "Terceira Câmara Cível Relator: Des. Rowilson Teixeira Agravante: A " + "w".repeat(700) + " já decidiu a 1ª Câmara Especializada Cível do TJSP",
+  } }] } };
+  assert.doesNotMatch(formatInteiro(data, nr), /Índice:/);
+});
+
+test("red team 6: sem data de julgamento não se presume mesmo julgamento (busca) e cada peça conta como distinta (inteiro teor)", () => {
+  const base = { nr_processo: "08194775020248220000", grau_jurisdicao: 2, dtjulgamento: null };
+  const data = { hits: { total: { value: 2 }, hits: [
+    { _source: { ...base, tipo: "ACÓRDÃO", id_processo_documento: 1, ds_modelo_documento: "RECURSO PROVIDO." } },
+    { _source: { ...base, tipo: "ACÓRDÃO", id_processo_documento: 2, ds_modelo_documento: "recurso desprovido." } },
+  ] } };
+  const out = formatBusca(data, "x", ["ACÓRDÃO"], "relevantes", 1, 10);
+  assert.match(out, /Mesmo número, 2 documentos/);
+  assert.doesNotMatch(out, /Resultado oposto/);
+  const teor = formatInteiro(data, base.nr_processo);
+  assert.match(teor, /Este número tem 2 julgamentos distintos — sem data \(id 1\): ACÓRDÃO, id 1; sem data \(id 2\): ACÓRDÃO, id 2/);
 });

@@ -2,9 +2,9 @@
   "manifest_version": "0.2",
   "name": "tjro-jurisprudencia",
   "display_name": "Jurisprudência TJRO",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Busca de jurisprudência do Tribunal de Justiça de Rondônia (portal público JURIS), direto no Claude.",
-  "long_description": "Adiciona ao Claude três ferramentas: **buscar_jurisprudencia_tjro** (pesquisa por tema, com filtros de tipo, grau, classe, câmara e período), **obter_inteiro_teor_tjro** (texto integral das peças de um processo) e **diagnostico_ritmo_tjro** (explica por que as buscas podem estar falhando, sem consultar o portal). Os dados vêm do portal oficial de jurisprudência do TJRO (juris.tjro.jus.br) e cada resultado traz citação pronta para peça e link direto para a decisão. A extensão se autolimita e compartilha o orçamento de consultas entre todos os processos da extensão na mesma máquina, para não sobrecarregar o portal. AVISO: integração não-oficial; confirme número, relator, câmara, data e ementa na fonte antes de citar em peça.",
+  "long_description": "Adiciona ao Claude três ferramentas: **buscar_jurisprudencia_tjro** (pesquisa por tema, com filtros de tipo, grau, classe, câmara e período), **obter_inteiro_teor_tjro** (texto integral das peças de um processo) e **diagnostico_ritmo_tjro** (explica por que as buscas podem estar falhando, sem consultar o portal). Os dados vêm do portal oficial de jurisprudência do TJRO (juris.tjro.jus.br) e cada resultado traz citação pronta para peça, o id do documento (chave única daquela decisão) e link direto para a decisão. Como um mesmo número de processo pode ter vários julgados (original, embargos, voto vencido), a extensão avisa quando o número se repete, quando dois documentos do mesmo julgamento declaram resultado oposto e quando a câmara ou o relator do índice divergem do texto do acórdão. A extensão se autolimita e compartilha o orçamento de consultas entre todos os processos da extensão na mesma máquina, para não sobrecarregar o portal. AVISO: integração não-oficial; confirme número, relator, câmara, data e ementa no texto do acórdão antes de citar em peça.",
   "author": {
     "name": "Roberto Grécia Bessa (OAB/RO 7865-A)"
   },
@@ -34,11 +34,11 @@
   "tools": [
     {
       "name": "buscar_jurisprudencia_tjro",
-      "description": "Pesquisa jurisprudência do TJRO por tema, com filtros (tipo, grau, classe, câmara, período)."
+      "description": "Pesquisa jurisprudência do TJRO por tema, com filtros (tipo, grau, classe, câmara, período). Traz o id de cada decisão e avisa quando um número tem vários julgados ou resultados opostos."
     },
     {
       "name": "obter_inteiro_teor_tjro",
-      "description": "Retorna o texto integral das peças de um processo do TJRO (acórdão, ementa, voto, relatório)."
+      "description": "Retorna o texto integral das peças de um processo do TJRO (acórdão, ementa, voto, relatório), listando julgamentos distintos e avisando quando câmara/relator do índice divergem do texto."
     },
     {
       "name": "diagnostico_ritmo_tjro",
