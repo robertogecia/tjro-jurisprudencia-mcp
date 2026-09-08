@@ -849,3 +849,17 @@ test("red team 6: sem data de julgamento não se presume mesmo julgamento (busca
   const teor = formatInteiro(data, base.nr_processo);
   assert.match(teor, /Este número tem 2 julgamentos distintos — sem data \(id 1\): ACÓRDÃO, id 1; sem data \(id 2\): ACÓRDÃO, id 2/);
 });
+
+test("busca avisa uma única vez que os trechos são fragmentos (ementa numerada aplica a tese no fim)", () => {
+  const longa = "EMENTA. I. Caso em exame. " + "palavra ".repeat(300) + " VI. Aplicação: base somada, percentual único.";
+  const src = (i) => ({ tipo: "EMENTA", ds_classe_judicial: "APELAÇÃO CÍVEL", grau_jurisdicao: 2,
+    nr_processo: `7000000${i}420228220001`, id_processo_documento: i, dtjulgamento: `2025-0${i}-01`,
+    ds_modelo_documento: longa });
+  const data = { hits: { total: { value: 2 }, hits: [{ _source: src(1) }, { _source: src(2) }] } };
+  const out = formatBusca(data, "palavra", ["EMENTA"], "relevantes", 1, 10);
+  assert.equal((out.match(/são fragmentos \(até 800 caracteres\)/g) || []).length, 1);
+  assert.match(out, /ENUNCIAR a tese nos primeiros itens e APLICÁ-LA/);
+  // trecho curto (nada cortado) não gera o aviso
+  const curto = { hits: { total: { value: 1 }, hits: [{ _source: { ...src(1), ds_modelo_documento: "ementa curta" } }] } };
+  assert.doesNotMatch(formatBusca(curto, "x", ["EMENTA"], "relevantes", 1, 10), /são fragmentos/);
+});

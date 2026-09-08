@@ -76,6 +76,13 @@ de qualquer forma.
 - **Confirme antes de citar.** Sempre abra o *inteiro teor* (o link vem em cada
   resultado) e confira número, relator, câmara, data e a ementa literal antes de
   usar em peça. Vale para qualquer ferramenta de IA jurídica.
+- **O trecho exibido é um fragmento, não a ementa.** A busca mostra até 800
+  caracteres a partir do ponto onde os termos casaram. Ementa numerada
+  (I. Caso em exame, II. Questão em discussão, III. Razões de decidir...)
+  costuma **enunciar** a tese nos primeiros itens e **aplicá-la** nos últimos,
+  às vezes com alcance menor do que o enunciado sugere — citar pelo fragmento é
+  o jeito mais fácil de atribuir ao julgado uma tese que ele não sustenta. Abra
+  o inteiro teor antes de citar; a resposta avisa quando houve corte.
 - **Um número, vários julgados.** Sob o mesmo número de processo convivem o
   acórdão original, os embargos de declaração, os segundos embargos e, em
   julgamento por maioria, às vezes o voto vencido como documento próprio no

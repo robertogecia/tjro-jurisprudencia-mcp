@@ -808,12 +808,15 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   const chaveProc = (i) => String((hits[i]._source || {}).nr_processo || "").replace(/\D/g, "") || `#${i}`;
   const chaveJulg = (i) => String((hits[i]._source || {}).dtjulgamento || "");
   const resultados = hits.map((h) => resultadoDe(limpar((h._source || {}).ds_modelo_documento || "", 0)));
+  let houveCorte = false;
   const quandoDe = (s) => s.dtjulgamento_str || dataBr(s.dtjulgamento) || "?";
 
   hits.forEach((h, i) => {
     const s = h._source || {};
     const hl = (h.highlight || {}).ds_modelo_documento;
+    const inteiro = limpar(hl ? hl[0] : s.ds_modelo_documento || "", 0);
     const trecho = limpar(hl ? hl[0] : s.ds_modelo_documento || "", 800);
+    if (inteiro.length > trecho.length) houveCorte = true;
     const t = s.tipo || "documento";
     let rotulo;
     if (t === "EMENTA") rotulo = "Ementa (trecho)";
@@ -869,6 +872,17 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
     linhas.push(`- ${rotulo}: ${trecho || "(sem trecho)"}`);
     out.push(linhas.join("\n"));
   });
+  // Aviso de UMA vez, no rodapé — por resultado viraria ruído (quase toda ementa
+  // passa de 800 chars) e ruído faz o leitor parar de ler os avisos que importam.
+  // Motivo real (08/09/2026): peça citou uma tese fichada só pelos primeiros itens
+  // de uma ementa numerada, sem ler o item final, que aplicava o oposto.
+  if (houveCorte)
+    out.push(
+      "\n_Os trechos acima são fragmentos (até 800 caracteres) do ponto onde os termos casaram, " +
+        "não a ementa inteira. Ementa numerada costuma ENUNCIAR a tese nos primeiros itens e APLICÁ-LA " +
+        "nos últimos, às vezes com alcance menor — abra o inteiro teor antes de fichar ou citar._"
+    );
+
   if (total > pagina * porPagina) {
     if ((pagina + 1) * porPagina > JANELA_MAXIMA) {
       out.push(
