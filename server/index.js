@@ -24,7 +24,7 @@ import {
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
-const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.5.0" });
+const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.5.1" });
 
 server.registerTool(
   "buscar_jurisprudencia_tjro",
@@ -38,8 +38,10 @@ server.registerTool(
       "Um NÚMERO de processo pode ter vários julgados (acórdão original, embargos, segundos embargos, voto vencido): " +
       "a resposta avisa quando o mesmo número aparece mais de uma vez e quando dois documentos do mesmo julgamento " +
       "declaram resultado oposto (provável voto vencido indexado) — cite pelo id + data de julgamento, nunca só pelo número. " +
-      "Termos soltos combinam por OR (use \"a AND b\" ou termo_exato). O trecho exibido é o local " +
-      "do match — só corresponde à ementa oficial quando o tipo é EMENTA. " +
+      "Termos soltos combinam por OR (use \"a AND b\" ou termo_exato). O trecho exibido é um FRAGMENTO " +
+      "(até 800 caracteres) do local do match, não a peça inteira, e só corresponde à ementa oficial quando o " +
+      "tipo é EMENTA: ementa numerada costuma ENUNCIAR a tese nos primeiros itens e APLICÁ-LA nos últimos, às " +
+      "vezes com alcance menor — abra o inteiro teor antes de fichar ou citar. " +
       "Sempre confirme número, relator, câmara, data e ementa no inteiro teor antes de citar. " +
       "USE SOMENTE para casos da jurisdição do TJRO (1º ou 2º grau de Rondônia) — jurisprudência " +
       "do TJRO não tem autoridade em outro tribunal. A busca é por PALAVRAS, não semântica: para " +
