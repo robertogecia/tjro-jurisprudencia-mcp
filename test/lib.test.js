@@ -32,6 +32,11 @@ import {
   comCredito,
   CREDITO,
   _resetCreditoParaTeste,
+  montarGrupos,
+  termoParaQuery,
+  GRUPOS_MAX,
+  TERMOS_POR_GRUPO_MAX,
+  TERMO_MAX_CHARS,
 } from "../server/lib.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -977,4 +982,75 @@ test("crédito do autor: aparece uma única vez por processo, e é assinatura, n
   assert.match(CREDITO, /@robertogrecia/);
   // nada imperativo dirigido ao modelo — isso é o que faria o texto parecer injeção
   assert.doesNotMatch(CREDITO, /\b(diga|informe|mencione|sempre|repita)\b/i);
+});
+
+// ---------------------------------------------------------------------------
+// v1.7.0 — grupos de sinônimos e filtro de assunto. Teste real de 10/09/2026:
+// "dano moral" AND negativação = 36.922; com o grupo de sinônimos = 50.792.
+// ---------------------------------------------------------------------------
+
+test("grupos: OR dentro do grupo, AND entre grupos, frase entre aspas, sempre parentizado", () => {
+  assert.equal(
+    montarGrupos([["dano moral"], ["negativação", "inscrição indevida", "cadastro de inadimplentes"]]),
+    '("dano moral") AND (negativação OR "inscrição indevida" OR "cadastro de inadimplentes")'
+  );
+});
+
+test("grupos: curinga só no fim de palavra única; inicial e dentro de frase ficam escapados", () => {
+  assert.equal(termoParaQuery("consign*"), "consign*");
+  assert.equal(termoParaQuery("*signado"), "\\*signado");
+  assert.equal(termoParaQuery("cadastro inadimpl*"), '"cadastro inadimpl\\*"');
+});
+
+test("grupos: sintaxe injetada fica presa como texto — nunca vira operador", () => {
+  // tentativa de fechar o grupo e abrir outro, com aspas e barra
+  const q = montarGrupos([['a"b) OR (c', "x\\y"]]);
+  assert.equal(q, '("a\\"b\\) OR \\(c" OR x\\\\y)');
+  // operador isolado vira texto entre aspas; minúsculo não é operador no Lucene
+  assert.equal(termoParaQuery("OR"), '"OR"');
+  assert.equal(termoParaQuery("NOT"), '"NOT"');
+  assert.equal(termoParaQuery("and"), "and");
+  // parênteses balanceados no resultado, quaisquer que sejam os termos
+  const sujo = montarGrupos([["((", "))", "\\(", '"'], [")(", "a) AND (b"]]);
+  const semEscapes = sujo.replace(/\\./g, "");
+  const semFrases = semEscapes.replace(/"[^"]*"/g, "");
+  assert.equal((semFrases.match(/\(/g) || []).length, (semFrases.match(/\)/g) || []).length, sujo);
+});
+
+test("grupos: tetos de tamanho, dedupe e descarte de vazios", () => {
+  const muitos = Array.from({ length: GRUPOS_MAX + 3 }, (_, i) => [`t${i}`]);
+  assert.equal((montarGrupos(muitos).match(/ AND /g) || []).length, GRUPOS_MAX - 1);
+  const largo = [Array.from({ length: TERMOS_POR_GRUPO_MAX + 5 }, (_, i) => `w${i}`)];
+  assert.equal((montarGrupos(largo).match(/ OR /g) || []).length, TERMOS_POR_GRUPO_MAX - 1);
+  assert.ok(termoParaQuery("x".repeat(TERMO_MAX_CHARS + 50)).length <= TERMO_MAX_CHARS + 2);
+  assert.equal(montarGrupos([["dano", "dano", "  dano  "]]), "(dano)");
+  assert.equal(montarGrupos([[], ["  ", ""], ["ok"]]), "(ok)");
+  assert.equal(montarGrupos("não é lista"), "");
+  assert.equal(montarGrupos(undefined), "");
+});
+
+test("buildBuscaBody: consulta livre e grupos somam por AND, com a livre parentizada; assunto vira filtro .raw", () => {
+  const base = { tipo: ["EMENTA"], ordenacao: "relevantes", pagina: 1, porPagina: 10 };
+  const soGrupos = buildBuscaBody({ ...base, consulta: "", grupos: [["negativação", "inscrição indevida"]] });
+  assert.equal(soGrupos.fields.query, '(negativação OR "inscrição indevida")');
+  const ambos = buildBuscaBody({ ...base, consulta: "dano moral", termoExato: true, grupos: [["negativação"]] });
+  assert.equal(ambos.fields.query, '("dano moral") AND (negativação)');
+  const livre = buildBuscaBody({ ...base, consulta: "dano AND moral", grupos: [["spc", "serasa"]] });
+  assert.equal(livre.fields.query, "(dano AND moral) AND (spc OR serasa)");
+  const semGrupos = buildBuscaBody({ ...base, consulta: "dano moral" });
+  assert.equal(semGrupos.fields.query, "dano moral"); // comportamento antigo intacto
+  const assunto = buildBuscaBody({ ...base, consulta: "x", assunto: "Inclusão Indevida em Cadastro de Inadimplentes" });
+  assert.equal(assunto.fields["ds_assunto_trf.raw"], "Inclusão Indevida em Cadastro de Inadimplentes"); // sem forçar caixa
+});
+
+test("formatBusca mostra a consulta montada e o zero-resultado ensina grupos, não 'base semântica'", () => {
+  const vazio = { hits: { total: { value: 0 }, hits: [] } };
+  const montada = '(negativação OR "inscrição indevida")';
+  const out = formatBusca(vazio, "", ["EMENTA"], "relevantes", 1, 10, [], "", false, montada);
+  assert.match(out, /casam a consulta montada `\(negativação OR "inscrição indevida"\)`/);
+  assert.match(out, /Use `grupos` com sinônimos/);
+  assert.doesNotMatch(out, /busca semântica/);
+  const muitos = { hits: { total: { value: 9000 }, hits: [] } };
+  assert.match(formatBusca(muitos, "", ["EMENTA"], "relevantes", 1, 10, [], "", false, montada), /acrescente um grupo/);
+  assert.match(formatBusca(muitos, "dano moral", ["EMENTA"], "relevantes", 1, 10), /operador AND/);
 });
