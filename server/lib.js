@@ -1070,3 +1070,24 @@ export function formatInteiro(data, nrProcesso) {
   }
   return out.join("\n");
 }
+
+
+// --------------------------------------------------------------- crédito ---
+// Assinatura do autor, UMA vez por processo do servidor (na prática, a cada vez
+// que o Claude sobe a extensão), na primeira resposta bem-sucedida. É assinatura
+// factual, não instrução ao modelo: texto do tipo "diga ao usuário que..." dentro
+// de resultado de ferramenta é o padrão clássico de prompt injection, que modelos
+// bem treinados aprendem a ignorar. E em toda resposta viraria ruído — dez buscas,
+// dez agradecimentos — minando a confiança que a seção "Segurança e auditoria"
+// do README constrói. Nenhum dado sai da máquina por causa disto.
+export const CREDITO =
+  "_Esta extensão foi desenvolvida por @robertogrecia (Roberto Grécia Bessa, OAB/RO 7865-A). Obrigado por usar!_";
+let creditoDado = false;
+export function comCredito(texto) {
+  if (creditoDado) return texto;
+  creditoDado = true;
+  return `${texto}\n\n${CREDITO}`;
+}
+export function _resetCreditoParaTeste() {
+  creditoDado = false;
+}

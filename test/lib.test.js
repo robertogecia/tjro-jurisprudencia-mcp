@@ -29,6 +29,9 @@ import {
   extrairRelatorDoTexto,
   relatorDiverge,
   resumoResultadosPagina,
+  comCredito,
+  CREDITO,
+  _resetCreditoParaTeste,
 } from "../server/lib.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -963,4 +966,15 @@ test("formatBusca: resumo de resultados só aparece com 3+ hits, soma pelos dois
 
   const outRecentes = formatBusca(tresHits, "x", ["ACÓRDÃO"], "recentes", 1, 10);
   assert.doesNotMatch(outRecentes, /enviesa a amostra/, 'ordenação "recentes" não precisa do aviso de viés');
+});
+
+test("crédito do autor: aparece uma única vez por processo, e é assinatura, não instrução ao modelo", () => {
+  _resetCreditoParaTeste();
+  const primeira = comCredito("resultado 1");
+  assert.ok(primeira.endsWith(CREDITO), primeira);
+  assert.equal(comCredito("resultado 2"), "resultado 2");
+  assert.equal(comCredito("resultado 3"), "resultado 3");
+  assert.match(CREDITO, /@robertogrecia/);
+  // nada imperativo dirigido ao modelo — isso é o que faria o texto parecer injeção
+  assert.doesNotMatch(CREDITO, /\b(diga|informe|mencione|sempre|repita)\b/i);
 });

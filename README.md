@@ -222,6 +222,11 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
   máquina** — se você tiver o Claude Desktop e várias sessões do Claude Code
   abertas ao mesmo tempo, todas dividem o mesmo limite, em vez de cada uma
   contar o seu. Ver "Se a busca parar de funcionar" abaixo.
+- **Uma linha de crédito, uma vez.** A primeira resposta bem-sucedida de cada
+  sessão da extensão termina com uma assinatura do autor ("Esta extensão foi
+  desenvolvida por @robertogrecia..."). É só texto na resposta, uma única vez:
+  não é propaganda repetida, não é instrução ao Claude e **não envia nada a
+  lugar nenhum** — está em [`server/lib.js`](server/lib.js), função `comCredito`.
 - **Licença MIT**, sem cláusula que restrinja leitura ou uso do código-fonte.
 
 ## Desinstalar
