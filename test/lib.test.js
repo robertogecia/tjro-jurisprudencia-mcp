@@ -28,6 +28,7 @@ import {
   extrairOrgaoDoTexto,
   extrairRelatorDoTexto,
   relatorDiverge,
+  resumoResultadosPagina,
 } from "../server/lib.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -862,4 +863,104 @@ test("busca avisa uma única vez que os trechos são fragmentos (ementa numerada
   // trecho curto (nada cortado) não gera o aviso
   const curto = { hits: { total: { value: 1 }, hits: [{ _source: { ...src(1), ds_modelo_documento: "ementa curta" } }] } };
   assert.doesNotMatch(formatBusca(curto, "x", ["EMENTA"], "relevantes", 1, 10), /são fragmentos/);
+});
+
+// ---------------------------------------------------------------------------
+// v1.6.0 — filtro por relator (server-side, investigação real 09/09/2026) e
+// resumo offline de resultados da página.
+// ---------------------------------------------------------------------------
+
+test("buildBuscaBody: relator filtra SERVER-SIDE via nome_relator_acordao.raw, sem forçar maiúscula", () => {
+  // Investigação real (09/09/2026, 4 requisições ao portal): total mudou
+  // coerentemente (203480 -> 7202 para "dano moral"/ACÓRDÃO) e os hits vieram
+  // todos do relator pedido. A grafia no índice é MISTA (o relator testado
+  // batia em Title Case; outro relator da mesma amostra estava em CAIXA ALTA)
+  // — diferente de ds_classe_judicial, que é sempre CAIXA ALTA — por isso aqui
+  // NÃO se força .toUpperCase(): faria seria quebrar o caso que funcionou.
+  const b = buildBuscaBody({
+    consulta: "dano moral",
+    tipo: ["ACÓRDÃO"],
+    relator: "Alexandre Miguel",
+    ordenacao: "relevantes",
+    pagina: 1,
+    porPagina: 3,
+  });
+  assert.equal(b.fields["nome_relator_acordao.raw"], "Alexandre Miguel");
+
+  const semRelator = buildBuscaBody({ consulta: "x", tipo: ["EMENTA"], ordenacao: "relevantes", pagina: 1, porPagina: 1 });
+  assert.ok(!("nome_relator_acordao.raw" in semRelator.fields), "sem relator, o campo não deve aparecer");
+});
+
+test("resumoResultadosPagina: contagem correta e dedupe por JULGAMENTO — ementa+acórdão do mesmo julgado contam uma vez", () => {
+  const hits = [
+    { _source: { nr_processo: "70000000000000000001", dtjulgamento: "2026-01-10", tipo: "EMENTA", ds_modelo_documento: "RECURSO PROVIDO." } },
+    // mesmo processo E mesma data = MESMO julgamento (ementa + acórdão do julgado): não pode contar 2x.
+    { _source: { nr_processo: "70000000000000000001", dtjulgamento: "2026-01-10", tipo: "ACÓRDÃO", ds_modelo_documento: "ACORDAM dar provimento ao recurso." } },
+    { _source: { nr_processo: "70000000000000000002", dtjulgamento: "2026-01-11", ds_modelo_documento: "recurso desprovido." } },
+    { _source: { nr_processo: "70000000000000000003", dtjulgamento: "2026-01-12", ds_modelo_documento: "ACOLHO os embargos" } },
+    { _source: { nr_processo: "70000000000000000004", dtjulgamento: "2026-01-13", ds_modelo_documento: "texto sem nenhum resultado" } },
+  ];
+  const { contagem, semResultado, totalJulgamentos } = resumoResultadosPagina(hits);
+  assert.equal(totalJulgamentos, 4, "5 documentos, mas só 4 julgamentos distintos");
+  assert.deepEqual(contagem, { PROVIDO: 1, DESPROVIDO: 1, ACOLHIDO: 1, REJEITADO: 0 });
+  assert.equal(semResultado, 1);
+});
+
+test("resumoResultadosPagina: sem data, cada documento conta por si (nunca presume mesmo julgamento — red team 6)", () => {
+  const hits = [
+    { _source: { nr_processo: "70000000000000000009", dtjulgamento: null, ds_modelo_documento: "RECURSO PROVIDO." } },
+    { _source: { nr_processo: "70000000000000000009", dtjulgamento: null, ds_modelo_documento: "recurso desprovido." } },
+    { _source: { nr_processo: "70000000000000000009", dtjulgamento: null, ds_modelo_documento: "ACOLHO os embargos" } },
+  ];
+  const { contagem, totalJulgamentos } = resumoResultadosPagina(hits);
+  assert.equal(totalJulgamentos, 3, "sem data, os 3 documentos do mesmo número são 3 julgamentos, não 1");
+  assert.deepEqual(contagem, { PROVIDO: 1, DESPROVIDO: 1, ACOLHIDO: 1, REJEITADO: 0 });
+});
+
+test("resumoResultadosPagina: documento ambíguo (declara os dois lados de um par) cai em semResultado, nunca escolhe lado", () => {
+  const hits = [
+    { _source: { nr_processo: "1", dtjulgamento: "2026-02-01", ds_modelo_documento: "recurso do autor provido, do réu desprovido" } },
+    { _source: { nr_processo: "2", dtjulgamento: "2026-02-02", ds_modelo_documento: "RECURSO PROVIDO." } },
+    { _source: { nr_processo: "3", dtjulgamento: "2026-02-03", ds_modelo_documento: "recurso desprovido." } },
+  ];
+  const { contagem, semResultado } = resumoResultadosPagina(hits);
+  assert.equal(semResultado, 1, "o documento que declara os dois lados não pode ser jogado para PROVIDO nem DESPROVIDO");
+  assert.equal(contagem.PROVIDO, 1);
+  assert.equal(contagem.DESPROVIDO, 1);
+});
+
+test("formatBusca: resumo de resultados só aparece com 3+ hits, soma pelos dois pares de OPOSTOS e avisa quando a ordenação enviesa", () => {
+  const src = (over) => ({ tipo: "ACÓRDÃO", ds_classe_judicial: "APELAÇÃO CÍVEL", grau_jurisdicao: 2, ...over });
+  const doisHits = {
+    hits: {
+      total: { value: 2 },
+      hits: [
+        { _source: src({ nr_processo: "1", dtjulgamento: "2026-03-01", id_processo_documento: 1, ds_modelo_documento: "RECURSO PROVIDO." }) },
+        { _source: src({ nr_processo: "2", dtjulgamento: "2026-03-02", id_processo_documento: 2, ds_modelo_documento: "recurso desprovido." }) },
+      ],
+    },
+  };
+  assert.doesNotMatch(
+    formatBusca(doisHits, "x", ["ACÓRDÃO"], "relevantes", 1, 10),
+    /Nesta página:/,
+    "com menos de 3 hits a linha de resumo não deveria aparecer"
+  );
+
+  const tresHits = {
+    hits: {
+      total: { value: 3 },
+      hits: [
+        ...doisHits.hits.hits,
+        { _source: src({ nr_processo: "3", dtjulgamento: "2026-03-03", id_processo_documento: 3, ds_modelo_documento: "recurso do autor provido, do réu desprovido" }) },
+      ],
+    },
+  };
+  const out = formatBusca(tresHits, "x", ["ACÓRDÃO"], "relevantes", 1, 10);
+  assert.match(out, /Nesta página: 1 provido, 1 desprovido, 1 sem resultado identificável\./);
+  assert.match(out, /Contagem por JULGAMENTO/);
+  assert.match(out, /enviesa a amostra/, 'ordenação "relevantes" deveria avisar que enviesa');
+  assert.match(out, /nunca conclusão/);
+
+  const outRecentes = formatBusca(tresHits, "x", ["ACÓRDÃO"], "recentes", 1, 10);
+  assert.doesNotMatch(outRecentes, /enviesa a amostra/, 'ordenação "recentes" não precisa do aviso de viés');
 });

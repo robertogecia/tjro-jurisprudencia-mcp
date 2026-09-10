@@ -165,6 +165,41 @@ export const resultadoDe = (texto) => {
 export const ladoDe = (conjunto, [a, b]) =>
   conjunto.has(a) && conjunto.has(b) ? null : conjunto.has(a) ? a : conjunto.has(b) ? b : null;
 
+export const ROTULOS_RESULTADO = { PROVIDO: "provido", DESPROVIDO: "desprovido", ACOLHIDO: "acolhido", REJEITADO: "rejeitado" };
+
+// Resumo 100% OFFLINE (só sobre o texto já trazido pela página, nenhuma requisição
+// nova) de quantos JULGAMENTOS declaram cada resultado. Dedup por julgamento — nº do
+// processo + data de julgamento — e não por documento: ementa e acórdão do MESMO
+// julgado não podem contar em dobro e inflar a amostra. Sem data, cada documento
+// conta por si (mesma cautela do red team 04/09/2026, achado 6: nunca presumir
+// "mesmo julgamento" por falta de dado). Um julgamento só entra num lado quando
+// ladoDe() é inequívoco para ALGUM par de OPOSTOS e nenhum outro par também decide
+// (um acórdão que resolve dois recursos diferentes com resultados diferentes não diz
+// uma coisa só) — do contrário cai em "sem resultado identificável", nunca é forçado
+// para um lado. Índice é indício: isto é amostragem para decidir o que ler, nunca
+// posição sobre a tese (recurso provido por outro fundamento também conta como
+// provido e nada diz sobre a tese buscada).
+export function resumoResultadosPagina(hits) {
+  const porJulgamento = new Map();
+  hits.forEach((h, i) => {
+    const s = h._source || {};
+    const proc = String(s.nr_processo || "").replace(/\D/g, "");
+    const data = String(s.dtjulgamento || "");
+    const chave = proc && data ? `${proc}|${data}` : `#${i}`;
+    if (!porJulgamento.has(chave)) porJulgamento.set(chave, new Set());
+    const acumulado = porJulgamento.get(chave);
+    for (const r of resultadoDe(limpar(s.ds_modelo_documento || "", 0))) acumulado.add(r);
+  });
+  const contagem = { PROVIDO: 0, DESPROVIDO: 0, ACOLHIDO: 0, REJEITADO: 0 };
+  let semResultado = 0;
+  for (const conjunto of porJulgamento.values()) {
+    const lados = OPOSTOS.map((par) => ladoDe(conjunto, par)).filter(Boolean);
+    if (lados.length === 1) contagem[lados[0]] += 1;
+    else semResultado += 1; // 0 lados (sem sinal) ou >1 (decide mais de uma coisa): não força
+  }
+  return { contagem, semResultado, totalJulgamentos: porJulgamento.size };
+}
+
 // Índice é indício, texto é prova: o campo "Câmara" do cadastro do TJRO já saiu
 // errado (índice "3ª Câmara Cível", acórdão "1ª Câmara Cível" duas vezes —
 // 04/09/2026), e o JusRatio herda o mesmo cadastro. Extração conservadora: só
@@ -260,6 +295,20 @@ export function buildBuscaBody(o) {
   // O índice grava classes em CAIXA ALTA e o filtro .raw é sensível a caixa.
   if (o.classe) fields["ds_classe_judicial.raw"] = o.classe.toUpperCase();
   if (o.orgaoColegiado) fields["ds_orgao_julgador_colegiado.raw"] = o.orgaoColegiado;
+  // Filtro SERVER-SIDE confirmado por investigação real em 09/09/2026 (4
+  // requisições ao portal, espaçadas ≥30s): "dano moral"/ACÓRDÃO sem filtro deu
+  // total=203480; com este campo = "Alexandre Miguel" deu total=7202 e os 3
+  // hits da amostra vieram todos daquele relator — mudança coerente, não
+  // ignorada nem zerada. Só ESTA hipótese foi testada: metade do orçamento de
+  // 4 requisições foi gasta descobrindo que tipo=EMENTA não carrega
+  // nome_relator_acordao/processo (vêm vazios, mesmo em ementas de 2017) — só
+  // ACÓRDÃO carrega —, então "nome_relator_acordao" sem .raw e
+  // "nome_relator_processo.raw" ficaram sem testar. NÃO uppercase aqui — ao
+  // contrário de ds_classe_judicial (sempre CAIXA ALTA no índice), o relator
+  // testado saiu em Title Case (outro relator da MESMA amostra estava em CAIXA
+  // ALTA) — forçar maiúscula quebraria exatamente o caso que funcionou. Grafia
+  // e acentuação exigidas são as do índice; ver aviso de zero-resultado.
+  if (o.relator) fields["nome_relator_acordao.raw"] = o.relator;
   if (o.nrProcesso) fields.nr_processo = String(o.nrProcesso).replace(/\D/g, "");
   if (o.dataInicio) fields.dtjulgamento_inicio = o.dataInicio;
   if (o.dataFim) fields.dtjulgamento_fim = o.dataFim;
@@ -882,6 +931,29 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
         "não a ementa inteira. Ementa numerada costuma ENUNCIAR a tese nos primeiros itens e APLICÁ-LA " +
         "nos últimos, às vezes com alcance menor — abra o inteiro teor antes de fichar ou citar._"
     );
+
+  // Resumo 100% offline dos resultados DESTA página (ver resumoResultadosPagina).
+  // Só com amostra mínima (3+): com 1-2 hits, um resumo teria peso de conclusão
+  // que a amostra não sustenta.
+  if (hits.length >= 3) {
+    const { contagem, semResultado } = resumoResultadosPagina(hits);
+    const partes = Object.entries(contagem)
+      .filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => `${n} ${ROTULOS_RESULTADO[k]}${n > 1 ? "s" : ""}`);
+    if (semResultado > 0) partes.push(`${semResultado} sem resultado identificável`);
+    if (partes.length) {
+      const enviesa = ordenacao === "relevantes" ? ' — enviesa a amostra; prefira "recentes" ou "antigos" para uma leitura mais honesta' : "";
+      out.push(
+        `\n_Nesta página: ${partes.join(", ")}. Contagem por JULGAMENTO (nº do processo + data de ` +
+          "julgamento) — ementa e acórdão do MESMO julgado contam uma vez só. Documento que declara os " +
+          'dois lados de um par entra em "sem resultado identificável", nunca num dos lados. Resultado ' +
+          "não é posição sobre a tese: recurso provido por outro fundamento conta como provido e nada diz " +
+          `sobre a tese buscada. É a amostra desta página, na ordenação "${ordenacao}"${enviesa}. Indício ` +
+          "para escolher o que ler, nunca conclusão._"
+      );
+    }
+  }
 
   if (total > pagina * porPagina) {
     if ((pagina + 1) * porPagina > JANELA_MAXIMA) {
