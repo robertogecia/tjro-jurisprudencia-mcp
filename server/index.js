@@ -24,7 +24,7 @@ import {
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
-const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.5.1" });
+const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.6.0" });
 
 server.registerTool(
   "buscar_jurisprudencia_tjro",
@@ -38,6 +38,15 @@ server.registerTool(
       "Um NÚMERO de processo pode ter vários julgados (acórdão original, embargos, segundos embargos, voto vencido): " +
       "a resposta avisa quando o mesmo número aparece mais de uma vez e quando dois documentos do mesmo julgamento " +
       "declaram resultado oposto (provável voto vencido indexado) — cite pelo id + data de julgamento, nunca só pelo número. " +
+      "Use relator para amostragem dirigida por um(a) desembargador(a) específico(a) (ex.: saber como ele(a) decide " +
+      "uma tese antes de sortear ministro/câmara): filtro SERVER-SIDE exato sobre o relator do acórdão — grafia e " +
+      "maiúsculas IGUAIS ao índice (confirmado por teste: este campo NÃO tem padrão único de caixa — o mesmo índice " +
+      "guarda relatores em Title Case e outros em CAIXA ALTA; se vier zero, rode sem o filtro, copie o texto exato " +
+      "do campo \"Relator(a)\" de um resultado e repita). Só funciona com tipo incluindo ACÓRDÃO — em EMENTA esse " +
+      "campo costuma vir vazio no índice. Quando a página trouxer 3 ou mais resultados, o rodapé soma quantos " +
+      "declaram cada resultado (provido/desprovido/acolhido/rejeitado) NESTA página, uma vez por julgamento " +
+      "(nº do processo + data — ementa e acórdão do mesmo julgado não contam em dobro): é indício para escolher o " +
+      "que ler, nunca conclusão sobre a tese (recurso provido por outro fundamento também conta como provido). " +
       "Termos soltos combinam por OR (use \"a AND b\" ou termo_exato). O trecho exibido é um FRAGMENTO " +
       "(até 800 caracteres) do local do match, não a peça inteira, e só corresponde à ementa oficial quando o " +
       "tipo é EMENTA: ementa numerada costuma ENUNCIAR a tese nos primeiros itens e APLICÁ-LA nos últimos, às " +
@@ -58,6 +67,16 @@ server.registerTool(
       grau: z.number().int().optional().describe("1 (primeiro grau) ou 2 (câmaras). Omitir = ambos. Com grau=1, a busca é ajustada automaticamente para tipo=SENTENÇA."),
       classe_judicial: z.string().optional().describe('Classe EXATA em CAIXA ALTA (aplicada automaticamente). Ex.: "APELAÇÃO CÍVEL", "RECURSO INOMINADO CÍVEL".'),
       orgao_colegiado: z.string().optional().describe('Câmara EXATA em Formato de Título, sensível a maiúsculas. Ex.: "1ª Câmara Cível", "2ª Câmara Criminal", "1ª Turma Recursal".'),
+      relator: z
+        .string()
+        .optional()
+        .describe(
+          'Filtra pelo(a) relator(a) do acórdão (filtro SERVER-SIDE, exato). Grafia e acentuação IGUAIS ao índice — ' +
+            "NÃO há padrão único de maiúsculas (diferente de classe_judicial): o mesmo índice guarda relatores em " +
+            'Title Case (ex.: "Alexandre Miguel") e outros em CAIXA ALTA. Se vier zero resultados, rode uma busca ' +
+            'sem este filtro, copie o texto exato do campo "Relator(a)" de um resultado e repita — não adivinhe a ' +
+            "caixa. Só filtra o campo do ACÓRDÃO: inclua ACÓRDÃO em tipo (esse campo costuma vir vazio em EMENTA)."
+        ),
       data_inicio: z.string().optional().describe("Data inicial de julgamento, formato AAAA-MM-DD."),
       data_fim: z.string().optional().describe("Data final de julgamento, formato AAAA-MM-DD."),
       nr_processo: z.string().optional().describe("Filtra por um número de processo específico (com ou sem máscara)."),
@@ -92,6 +111,11 @@ server.registerTool(
       const filtros = [];
       if (a.classe_judicial) filtros.push(`classe_judicial="${a.classe_judicial}"`);
       if (a.orgao_colegiado) filtros.push(`orgao_colegiado="${a.orgao_colegiado}"`);
+      if (a.relator)
+        filtros.push(
+          `relator="${a.relator}" (grafia e maiúsculas EXATAS como no índice — não há padrão único de caixa; ` +
+            'confira o campo "Relator(a)" de um resultado sem filtro antes de repetir; só vale para tipo ACÓRDÃO)'
+        );
       const data = await post(
         buildBuscaBody({
           consulta: a.consulta,
@@ -99,6 +123,7 @@ server.registerTool(
           grau: a.grau,
           classe: a.classe_judicial,
           orgaoColegiado: a.orgao_colegiado,
+          relator: a.relator,
           dataInicio: a.data_inicio,
           dataFim: a.data_fim,
           nrProcesso: a.nr_processo,

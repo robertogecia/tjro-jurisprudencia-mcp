@@ -29,8 +29,11 @@ Peça em linguagem natural, por exemplo:
 São três ferramentas:
 
 - **`buscar_jurisprudencia_tjro`** — pesquisa por tema, com filtros de tipo de peça,
-  grau, classe judicial, câmara e período. Cada resultado traz uma citação pronta
-  para colar em peça e o link direto para a decisão no portal.
+  grau, classe judicial, câmara, **relator** e período. Cada resultado traz uma
+  citação pronta para colar em peça e o link direto para a decisão no portal.
+  Com 3 ou mais resultados na página, o rodapé soma quantos declaram cada
+  resultado (provido/desprovido/acolhido/rejeitado) — ver "Filtro por relator e
+  resumo de resultados" abaixo.
 - **`obter_inteiro_teor_tjro`** — texto integral das peças (acórdão, ementa, voto,
   relatório) de um processo específico.
 - **`diagnostico_ritmo_tjro`** — explica por que as buscas podem estar falhando
@@ -62,10 +65,52 @@ quando você precisa de:
   uso; não consome nenhuma cota de plano pago.
 - **Link direto para o portal oficial do tribunal** — em vez do link de um
   intermediário, útil quando a peça exige citar a fonte primária.
+- **Saber como um(a) desembargador(a) específico(a) decide uma tese** — antes de
+  o processo ter câmara/relator sorteados, ou para achar (ou afastar) um
+  precedente próprio dele(a), o filtro `relator` restringe a busca, no próprio
+  servidor do TJRO, a um só relator — sem precisar ler acórdão por acórdão.
 
 Para teses vinculantes (Súmula Vinculante, Tema Repetitivo, Repercussão Geral),
 qualquer base nacional (STF/STJ) já resolve, já que obrigam o juízo de Rondônia
 de qualquer forma.
+
+## Filtro por relator e resumo de resultados
+
+**`relator` é filtro no SERVIDOR do TJRO** (não é filtro sobre a página trazida
+pelo Claude) — confirmado por teste real: pedir um relator muda o total de
+documentos e todos os resultados voltam daquele relator. Mas é comparação
+EXATA, sensível a maiúsculas e acentos, e **este campo não tem uma única
+convenção de caixa no índice** — o mesmo teste achou relatores gravados em
+Title Case ("Alexandre Miguel") e outros em CAIXA ALTA. Se vier zero
+resultados:
+
+1. Repita a mesma busca sem o filtro `relator`;
+2. Copie o texto exato do campo **Relator(a)** de um resultado real;
+3. Refaça com esse texto — não tente adivinhar a caixa.
+
+O filtro só enxerga o relator do **ACÓRDÃO**: no índice, documentos do tipo
+EMENTA costumam trazer esse campo vazio — inclua `ACÓRDÃO` em `tipo` para o
+filtro valer.
+
+**Resumo de resultados da página** — quando a busca traz 3 ou mais resultados,
+o rodapé soma quantos declaram cada resultado (provido/desprovido/acolhido/
+rejeitado), por exemplo `Nesta página: 7 desprovidos, 3 providos, 2 sem
+resultado identificável`. É **100% offline** (lê só o texto já trazido pela
+página, nenhuma requisição a mais) e existe para tornar a amostragem dirigida
+barata — ver como um relator específico costuma decidir, sem ler acórdão por
+acórdão. Três ressalvas que valem sempre:
+
+- **Não é posição sobre a tese.** Um recurso pode ser provido por um fundamento
+  que nada tem a ver com a tese que você está pesquisando.
+- **É a amostra desta página, na ordenação pedida.** `relevantes` tende a
+  enviesar (a resposta avisa quando isso ocorre); para amostragem, prefira
+  `recentes` ou `antigos`, e aumente `por_pagina` (até 50) em vez de paginar.
+- **É indício para escolher o que ler, nunca conclusão.** Documento que declara
+  os dois lados de um resultado (ex.: ementa que registra o voto vencido) entra
+  em "sem resultado identificável", nunca é forçado para um lado.
+
+A contagem é por **julgamento** (nº do processo + data), não por documento: a
+ementa e o acórdão do mesmo julgado contam uma vez só.
 
 ## Avisos importantes
 
