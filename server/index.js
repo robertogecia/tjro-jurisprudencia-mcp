@@ -16,6 +16,8 @@ import {
   normTipos,
   buildBuscaBody,
   buildInteiroBody,
+  GRUPOS_MAX,
+  TERMOS_POR_GRUPO_MAX,
   formatBusca,
   formatInteiro,
   msgErro,
@@ -25,7 +27,7 @@ import {
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
-const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.6.1" });
+const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.7.0" });
 
 server.registerTool(
   "buscar_jurisprudencia_tjro",
@@ -34,7 +36,7 @@ server.registerTool(
     description:
       "Pesquisa jurisprudência do Tribunal de Justiça de Rondônia (TJRO) no portal público JURIS. " +
       "Cobre ~4 milhões de documentos (ementas, acórdãos, sentenças, votos) de 1º e 2º grau. " +
-      "Ideal para precedentes LOCAIS de Rondônia, que bases nacionais não trazem. " +
+      "Fonte dos precedentes LOCAIS de Rondônia, de todos os períodos. " +
       "Cada resultado traz citação pronta para peça, o ID DO DOCUMENTO (chave única daquela decisão) e link direto para a decisão no portal. " +
       "Um NÚMERO de processo pode ter vários julgados (acórdão original, embargos, segundos embargos, voto vencido): " +
       "a resposta avisa quando o mesmo número aparece mais de uma vez e quando dois documentos do mesmo julgamento " +
@@ -54,13 +56,19 @@ server.registerTool(
       "vezes com alcance menor — abra o inteiro teor antes de fichar ou citar. " +
       "Sempre confirme número, relator, câmara, data e ementa no inteiro teor antes de citar. " +
       "USE SOMENTE para casos da jurisdição do TJRO (1º ou 2º grau de Rondônia) — jurisprudência " +
-      "do TJRO não tem autoridade em outro tribunal. A busca é por PALAVRAS, não semântica: para " +
-      "jurisprudência de 2020+, uma base com busca semântica costuma ser o melhor ponto de partida, " +
-      "e esta ferramenta rende mais nas lacunas dela (anterior a 2020, SENTENÇA de 1º grau, link " +
-      "oficial do tribunal). O portal limita acesso automatizado: prefira UMA busca bem construída " +
-      "(com por_pagina maior) a várias buscas seguidas.",
+      "do TJRO não tem autoridade em outro tribunal. " +
+      "A busca casa PALAVRAS, não sentido, e julgados do mesmo assunto usam vocabulários diferentes " +
+      "— então monte a busca com `grupos`: cada grupo é uma lista de sinônimos ou expressões " +
+      "equivalentes (combinados por OR) e os grupos se somam por AND; ex.: " +
+      'grupos=[["dano moral"],["negativação","inscrição indevida","cadastro de inadimplentes","apontamento"]] ' +
+      "(teste real: +37% de julgados frente ao termo único, na mesma requisição). Duas técnicas que " +
+      "rendem mais que várias buscas: (1) ancorar pela súmula, tema ou IRDR que os julgados do assunto " +
+      'citam (ex.: um grupo ["Súmula 385"]) — acha quem fala do mesmo tema com outras palavras; ' +
+      "(2) depois da 1ª busca, abrir o inteiro teor do resultado mais certeiro e colher as palavras e " +
+      "citações que ele usa para a próxima. O portal limita acesso automatizado: prefira UMA busca " +
+      "bem construída (com por_pagina maior) a várias seguidas; um ciclo completo cabe em 4 a 6 consultas.",
     inputSchema: {
-      consulta: z.string().describe('Termo(s) de busca; termos soltos combinam por OR — use "a AND b" para exigir todos, ou termo_exato para a frase exata. Curinga no FIM da palavra é aceito e rende mais numa só busca: "consign*" pega consignado/consignação/consignatário (curinga no início não é permitido). Ex.: "dano moral negativação".'),
+      consulta: z.string().describe('Termo(s) de busca livres — pode ser "" quando usar grupos; termos soltos combinam por OR — use "a AND b" para exigir todos, ou termo_exato para a frase exata. Curinga no FIM da palavra é aceito e rende mais numa só busca: "consign*" pega consignado/consignação/consignatário (curinga no início não é permitido). Ex.: "dano moral negativação".'),
       tipo: z
         .array(z.string())
         .optional()
@@ -77,6 +85,25 @@ server.registerTool(
             'Title Case (ex.: "Alexandre Miguel") e outros em CAIXA ALTA. Se vier zero resultados, rode uma busca ' +
             'sem este filtro, copie o texto exato do campo "Relator(a)" de um resultado e repita — não adivinhe a ' +
             "caixa. Só filtra o campo do ACÓRDÃO: inclua ACÓRDÃO em tipo (esse campo costuma vir vazio em EMENTA)."
+        ),
+      grupos: z
+        .array(z.array(z.string()))
+        .optional()
+        .describe(
+          "Grupos de sinônimos: cada grupo é uma lista de palavras ou expressões equivalentes, combinadas por OR; " +
+            "os grupos se somam por AND (e somam por AND à consulta, se houver). Expressão com espaço vira frase " +
+            'exata. Curinga só no FIM de palavra única ("consign*"). A ferramenta monta os parênteses e escapa cada ' +
+            `termo — não escreva sintaxe. Até ${GRUPOS_MAX} grupos e ${TERMOS_POR_GRUPO_MAX} termos por grupo. ` +
+            'Ex.: [["dano moral"],["negativação","inscrição indevida","cadastro de inadimplentes"]].'
+        ),
+      assunto: z
+        .string()
+        .optional()
+        .describe(
+          'Filtra pelo assunto CNJ (Tabela Processual Unificada), grafia EXATA — copie do campo "Assunto:" de um ' +
+            "resultado. É RUIDOSO: o assunto é lançado na distribuição, cada processo tem vários e recurso herda o " +
+            "do principal (teste real: 7 de 20 resultados eram de outro tema). Use SEMPRE junto com consulta ou " +
+            "grupos, nunca sozinho."
         ),
       data_inicio: z.string().optional().describe("Data inicial de julgamento, formato AAAA-MM-DD."),
       data_fim: z.string().optional().describe("Data final de julgamento, formato AAAA-MM-DD."),
@@ -108,6 +135,9 @@ server.registerTool(
               "Refine com filtros (tipo, grau, classe, datas) ou mude a ordenação (recentes/antigos) para alcançar outros documentos.",
           }],
         };
+      const temGrupos = Array.isArray(a.grupos) && a.grupos.some((g) => Array.isArray(g) && g.some((t) => String(t).trim()));
+      if (!String(a.consulta || "").trim() && !temGrupos)
+        return { content: [{ type: "text", text: "Informe a consulta ou pelo menos um grupo de termos." }] };
       const ordenacao = ORDENACOES[a.ordenacao] ? a.ordenacao : "relevantes";
       const filtros = [];
       if (a.classe_judicial) filtros.push(`classe_judicial="${a.classe_judicial}"`);
@@ -117,14 +147,19 @@ server.registerTool(
           `relator="${a.relator}" (grafia e maiúsculas EXATAS como no índice — não há padrão único de caixa; ` +
             'confira o campo "Relator(a)" de um resultado sem filtro antes de repetir; só vale para tipo ACÓRDÃO)'
         );
-      const data = await post(
-        buildBuscaBody({
+      if (a.assunto)
+        filtros.push(
+          `assunto="${a.assunto}" (grafia EXATA da Tabela Processual Unificada do CNJ — copie do campo "Assunto:" de um resultado)`
+        );
+      const corpo = buildBuscaBody({
           consulta: a.consulta,
           tipo,
           grau: a.grau,
           classe: a.classe_judicial,
           orgaoColegiado: a.orgao_colegiado,
           relator: a.relator,
+          grupos: a.grupos,
+          assunto: a.assunto,
           dataInicio: a.data_inicio,
           dataFim: a.data_fim,
           nrProcesso: a.nr_processo,
@@ -132,12 +167,14 @@ server.registerTool(
           ordenacao,
           pagina,
           porPagina,
-        })
-      );
+        });
+      const data = await post(corpo);
       return {
         content: [{
           type: "text",
-          text: comCredito(formatBusca(data, a.consulta, tipo, ordenacao, pagina, porPagina, filtros, nota, !!a.termo_exato)),
+          text: comCredito(
+            formatBusca(data, a.consulta, tipo, ordenacao, pagina, porPagina, filtros, nota, !!a.termo_exato, temGrupos ? corpo.fields.query : "")
+          ),
         }],
       };
     } catch (e) {

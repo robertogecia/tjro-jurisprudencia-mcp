@@ -28,8 +28,9 @@ Peça em linguagem natural, por exemplo:
 
 São três ferramentas:
 
-- **`buscar_jurisprudencia_tjro`** — pesquisa por tema, com filtros de tipo de peça,
-  grau, classe judicial, câmara, **relator** e período. Cada resultado traz uma
+- **`buscar_jurisprudencia_tjro`** — pesquisa por tema, com **grupos de sinônimos**
+  e filtros de tipo de peça, grau, classe judicial, câmara, **relator**, **assunto
+  do CNJ** e período. Cada resultado traz uma
   citação pronta para colar em peça e o link direto para a decisão no portal.
   Com 3 ou mais resultados na página, o rodapé soma quantos declaram cada
   resultado (provido/desprovido/acolhido/rejeitado) — ver "Filtro por relator e
@@ -40,9 +41,8 @@ São três ferramentas:
   (limite de ritmo, bloqueio em curso, histórico). Não consulta o portal.
 
 > A busca casa **palavras**, não sentido: um julgado que diga "inscrição indevida
-> em cadastro de inadimplentes" não aparece numa busca por "negativação". Vale
-> usar sinônimos, o operador `AND` (`dano AND moral`) e o curinga no fim da
-> palavra — `consign*` pega consignado, consignação e consignatário de uma vez.
+> em cadastro de inadimplentes" não aparece numa busca por "negativação". Por isso
+> a extensão aceita **grupos de sinônimos** — ver "Como pesquisar bem" abaixo.
 
 ## Quando usar isto (e quando usar outra coisa)
 
@@ -50,11 +50,11 @@ São três ferramentas:
 Jurisprudência do TJRO não tem autoridade em outro tribunal — para um processo
 que tramita em outro estado, use a fonte daquele tribunal ou uma base nacional.
 
-Bases nacionais de jurisprudência com busca semântica (ex.: JusRatio) hoje **já
-indexam acórdãos do TJRO** de 2020 em diante, e para a maioria das pesquisas são
-o melhor ponto de partida — trazem síntese, verificação de precedentes superados
-e cotas generosas. Esta extensão é complementar, e vale a pena especificamente
-quando você precisa de:
+Esta extensão consulta o **próprio portal oficial** do TJRO, e por isso cobre o
+tribunal inteiro: todos os períodos, 1º e 2º grau. Algumas bases nacionais com
+busca semântica também indexam acórdãos do TJRO de 2020 em diante e podem
+complementar, se você tiver acesso — mas elas herdam o mesmo cadastro de
+metadados do tribunal, e não alcançam o que vem abaixo. O que a extensão entrega:
 
 - **Precedente anterior a 2020** — o portal oficial do TJRO tem histórico mais
   longo do que a maioria das bases indexadas por terceiros.
@@ -111,6 +111,34 @@ acórdão. Três ressalvas que valem sempre:
 
 A contagem é por **julgamento** (nº do processo + data), não por documento: a
 ementa e o acórdão do mesmo julgado contam uma vez só.
+
+## Como pesquisar bem
+
+A busca é por palavras, e julgados do mesmo assunto usam vocabulários diferentes.
+Não é detalhe: num estudo clássico sobre uma base de litígio real, advogados
+acreditavam ter encontrado 75% dos documentos relevantes, e o que de fato
+encontraram foi cerca de 20%. Três técnicas resolvem a maior parte disso, e cabem juntas em
+quatro a seis consultas:
+
+1. **Grupos de sinônimos.** O parâmetro `grupos` recebe listas de expressões
+   equivalentes: dentro de cada lista os termos se somam por OU, e as listas se
+   combinam por E. A extensão monta os parênteses e protege cada termo, então não
+   é preciso escrever sintaxe. Exemplo:
+   `grupos = [["dano moral"], ["negativação", "inscrição indevida", "cadastro de inadimplentes"]]`.
+   No teste real, isso trouxe **37% mais julgados** do que o termo único, na mesma
+   consulta. Curinga só no fim de palavra única (`consign*`).
+2. **Âncora pela citação.** Julgados do mesmo assunto costumam citar a mesma
+   súmula, tema repetitivo ou IRDR, mesmo quando descrevem o fato com outras
+   palavras. Um grupo como `["Súmula 385"]` acha esses julgados.
+3. **Colher o vocabulário do melhor resultado.** Abra o inteiro teor do julgado
+   mais certeiro, veja que palavras e que citações ele usa, e busque de novo com
+   elas. É o que acha o vocabulário da própria câmara, que nenhuma lista prevê.
+
+O filtro `assunto` (classificação da Tabela Processual Unificada do CNJ) funciona,
+mas é **ruidoso**: o assunto é escolhido na distribuição, cada processo tem vários
+e o recurso herda o do processo principal. No teste real, 7 dos 20 primeiros
+resultados eram de outro tema. Use sempre junto com texto, nunca sozinho, e copie
+a grafia exata do campo "Assunto:" de um resultado.
 
 ## Avisos importantes
 

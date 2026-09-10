@@ -64,6 +64,47 @@ export const escapeLucene = (t) => {
   return t.replace(LUCENE, "\\$1").replace(/([\p{L}\p{N}])\\\*(?=\s|$)/gu, "$1*");
 };
 
+// ------------------------------------------------------ grupos de sinônimos ---
+// A busca do portal casa PALAVRAS, e julgados do mesmo assunto usam vocabulários
+// diferentes ("negativação", "inscrição indevida", "cadastro de inadimplentes").
+// Teste real de 10/09/2026: `"dano moral" AND negativação` = 36.922 documentos;
+// com o grupo `(negativação OR "inscrição indevida" OR "cadastro de inadimplentes")`
+// = 50.792, +37% numa requisição só. O backend aceita parênteses e frases, mas a
+// consulta livre escapa os dois (proteção contra sintaxe malformada), então o
+// agrupamento é montado AQUI, termo a termo, nunca a partir de sintaxe crua:
+// cada termo é escapado, expressão com espaço vira frase entre aspas, e os
+// grupos são sempre parentizados — o query_string do Lucene NÃO respeita
+// precedência entre AND e OR (documentação da Elastic), então sem parênteses
+// explícitos a consulta sairia com outro sentido.
+export const GRUPOS_MAX = 6;
+export const TERMOS_POR_GRUPO_MAX = 12;
+export const TERMO_MAX_CHARS = 80;
+const RESERVADAS = /^(AND|OR|NOT)$/;
+
+export const termoParaQuery = (bruto) => {
+  const t = String(bruto ?? "").replace(/\s+/g, " ").trim().slice(0, TERMO_MAX_CHARS).trim();
+  if (!t) return "";
+  // Frase: o Lucene não expande curinga dentro de aspas, então tudo é literal,
+  // inclusive o "*" (escapado junto com o resto).
+  if (/\s/.test(t)) return `"${t.replace(LUCENE, "\\$1")}"`;
+  // Palavra reservada isolada viraria operador e quebraria a consulta.
+  if (RESERVADAS.test(t)) return `"${t}"`;
+  // Palavra única: mesmo escape da consulta livre — curinga FINAL preservado
+  // ("consign*"), curinga inicial escapado (varredura do índice inteiro).
+  return escapeLucene(t);
+};
+
+export function montarGrupos(grupos) {
+  if (!Array.isArray(grupos)) return "";
+  const partes = [];
+  for (const g of grupos.slice(0, GRUPOS_MAX)) {
+    const termos = (Array.isArray(g) ? g : [g]).slice(0, TERMOS_POR_GRUPO_MAX).map(termoParaQuery).filter(Boolean);
+    const unicos = [...new Set(termos)];
+    if (unicos.length) partes.push(`(${unicos.join(" OR ")})`);
+  }
+  return partes.join(" AND ");
+}
+
 export const cnj = (nr) => {
   const d = String(nr || "").replace(/\D/g, "");
   return d.length === 20
@@ -286,11 +327,15 @@ export const normTipos = (arr, padrao) => {
 export function buildBuscaBody(o) {
   // Escapar ANTES de aspear: na ordem inversa as aspas da frase exata viram
   // \" literais e a API trata os termos como busca solta (OR).
-  const c = o.consulta.trim();
-  const q = o.termoExato && c ? `"${escapeLucene(c)}"` : escapeLucene(o.consulta);
+  const c = String(o.consulta ?? "").trim();
+  const q = o.termoExato && c ? `"${escapeLucene(c)}"` : escapeLucene(c);
+  // Consulta livre e grupos se somam por AND; a livre vai parentizada para não
+  // ser reinterpretada pela falta de precedência do query_string.
+  const g = montarGrupos(o.grupos);
+  const query = g ? (q ? `(${q}) AND ${g}` : g) : q;
   // A API espera "tipo" como string ("A,B" p/ OR); array JSON zera os resultados,
   // mesmo com 1 único elemento.
-  const fields = { query: q, tipo: o.tipo.join(",") };
+  const fields = { query, tipo: o.tipo.join(",") };
   if (o.grau === 1 || o.grau === 2) fields.grau_jurisdicao = String(o.grau);
   // O índice grava classes em CAIXA ALTA e o filtro .raw é sensível a caixa.
   if (o.classe) fields["ds_classe_judicial.raw"] = o.classe.toUpperCase();
@@ -309,6 +354,13 @@ export function buildBuscaBody(o) {
   // ALTA) — forçar maiúscula quebraria exatamente o caso que funcionou. Grafia
   // e acentuação exigidas são as do índice; ver aviso de zero-resultado.
   if (o.relator) fields["nome_relator_acordao.raw"] = o.relator;
+  // Assunto CNJ (Tabela Processual Unificada): filtro SERVER-SIDE confirmado em
+  // 10/09/2026 — com "Inclusão Indevida em Cadastro de Inadimplentes", todos os
+  // resultados vieram desse assunto. Mas é RUIDOSO por construção (Manual das
+  // TPU do CNJ): lançado pelo advogado na distribuição, vários por processo,
+  // recurso herda o do principal — 7 dos 20 primeiros eram casos de energia
+  // elétrica. Grafia exata, sem forçar caixa. Só serve somado a texto.
+  if (o.assunto) fields["ds_assunto_trf.raw"] = o.assunto;
   if (o.nrProcesso) fields.nr_processo = String(o.nrProcesso).replace(/\D/g, "");
   if (o.dataInicio) fields.dtjulgamento_inicio = o.dataInicio;
   if (o.dataFim) fields.dtjulgamento_fim = o.dataFim;
@@ -575,7 +627,7 @@ export function reservarRequisicao(agora = Date.now()) {
           "O TJRO bloqueou uma consulta recente por suspeita de automação; para não " +
           "prolongar o bloqueio, esta ferramenta está evitando novas tentativas por " +
           `mais ${fmtDuracao(e.bloqueadoAte - agora)}. Tente novamente depois disso. ` +
-          "Para jurisprudência recente, uma base com busca semântica pode atender enquanto isso.",
+          "Enquanto isso, o portal juris.tjro.jus.br segue acessível no navegador.",
       };
     }
     const janelaMs = ESCADA_JANELA_MS[e.indiceJanela];
@@ -807,13 +859,17 @@ export async function post(body, fetchImpl = fetch) {
 }
 
 // --------------------------------------------------------------- formatters -
-export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, filtros = [], nota = "", termoExato = false) {
+export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, filtros = [], nota = "", termoExato = false, consultaMontada = "") {
   const hitsObj = data.hits || {};
   const total = (hitsObj.total || {}).value || 0;
   const hits = hitsObj.hits || [];
   const out = [];
   if (nota) out.push(nota.trimEnd());
-  const criterio = termoExato
+  // Com grupos, a consulta que foi de fato ao portal é a montada: mostrá-la deixa
+  // conferível o que se buscou (e o que ficou de fora) sem adivinhar a sintaxe.
+  const criterio = consultaMontada
+    ? `casam a consulta montada \`${consultaMontada}\` (ementa e acórdão do MESMO julgado contam separado)`
+    : termoExato
     ? `contêm a expressão exata "${consulta}"`
     : `contêm ao menos um dos termos de "${consulta}" (busca OR; ementa e acórdão do MESMO julgado contam separado)`;
   out.push(
@@ -821,7 +877,9 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   );
   if (total > 5000 && !termoExato)
     out.push(
-      '_Dica: para restringir, use operador AND na consulta (ex.: "dano AND moral") ou termo_exato=true para expressão exata._'
+      consultaMontada
+        ? "_Dica: para restringir, acrescente um grupo com o fato que distingue o seu caso (o tipo de réu, o produto, a conduta) — os grupos se somam por AND._"
+        : '_Dica: para restringir, use operador AND na consulta (ex.: "dano AND moral"), termo_exato=true, ou `grupos` de sinônimos._'
     );
 
   if (total === 0 || hits.length === 0) {
@@ -838,9 +896,10 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
           ? `\nNenhum resultado. Você quis dizer: ${sugg.join(", ")}?`
           : "\nNenhum resultado. Esta busca casa PALAVRAS, não sentido: um julgado que diga " +
               '"inscrição indevida em cadastro de inadimplentes" não aparece numa busca por ' +
-              '"negativação". Tente sinônimos, termos mais amplos, ou o curinga final ' +
-              '(ex.: "consign*" pega consignado/consignação). Para jurisprudência de 2020 em ' +
-              "diante, uma base com busca semântica tende a achar o que a busca por palavras não acha."
+              '"negativação". Use `grupos` com sinônimos e expressões equivalentes ' +
+              '(ex.: [["negativação","inscrição indevida","cadastro de inadimplentes"]]), o curinga ' +
+              'final ("consign*" pega consignado/consignação), ou ancore pela súmula ou tema que ' +
+              'os julgados do assunto costumam citar (ex.: grupo ["Súmula 385"]).'
       );
     }
     return out.join("\n");
