@@ -26,6 +26,8 @@ import {
   ladoDe,
   OPOSTOS,
   extrairOrgaoDoTexto,
+  extrairOrgaoComOrigem,
+  orgaoDiverge,
   extrairRelatorDoTexto,
   relatorDiverge,
   resumoResultadosPagina,
@@ -844,6 +846,135 @@ test("red team 5/7: câmara só do cabeçalho, ordinal por extenso, 'Especializa
     ds_modelo_documento: "Terceira Câmara Cível Relator: Des. Rowilson Teixeira Agravante: A " + "w".repeat(700) + " já decidiu a 1ª Câmara Especializada Cível do TJSP",
   } }] } };
   assert.doesNotMatch(formatInteiro(data, nr), /Índice:/);
+});
+
+test("achado real 14/09/2026: câmara correta só no FECHO do acórdão (\"acordam os Magistrados...\"), fora dos 600 chars do cabeçalho", () => {
+  // Reconstrução fiel do processo 0803974-52.2025.8.22.0000: índice "3ª
+  // Câmara Cível", acórdão "1ª Câmara Cível" -- mas essa menção só aparece no
+  // fecho, depois de Relatório e Voto extensos.
+  const acordaoReal =
+    "PODER JUDICIÁRIO DO ESTADO DE RONDÔNIA Gabinete Des. Sansão Saldanha " +
+    "Número do processo: 0803974-52.2025.8.22.0000 Classe: Agravo de Instrumento RELATÓRIO " +
+    "lorem ipsum fundamentação ".repeat(40) +
+    "VOTO " + "lorem ipsum voto extenso ".repeat(40) +
+    "É como voto. EMENTA (...) ACÓRDÃO Vistos, relatados e discutidos estes autos, " +
+    "acordam os Magistrados da(o) 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, " +
+    "na conformidade da ata de julgamentos e das notas taquigráficas, em, RECURSO PARCIALMENTE " +
+    "PROVIDO NOS TERMOS DO VOTO DO RELATOR, À UNANIMIDADE. Porto Velho, 04 de julho de 2025";
+  assert.ok(acordaoReal.length > 600, "o teste só vale se o fecho ficar fora dos 600 chars");
+  assert.equal(extrairOrgaoDoTexto(acordaoReal), "1ª Câmara Cível");
+  // Variante "da" sem "(o)" e "Desembargadores" em vez de "Magistrados" (ED
+  // no AI 0806456-75.2022.8.22.0000, mesmo dia).
+  assert.equal(
+    extrairOrgaoDoTexto(
+      "z".repeat(700) +
+        " acordam os Desembargadores da 2ª Câmara Cível do Tribunal de Justiça do Estado de " +
+        "Rondônia, na conformidade da ata de julgamentos, em, EMBARGOS ACOLHIDOS."
+    ),
+    "2ª Câmara Cível"
+  );
+  // Duas fórmulas de fecho divergentes no mesmo texto: não arrisca.
+  assert.equal(
+    extrairOrgaoDoTexto(
+      "z".repeat(700) +
+        " acordam os Magistrados da 1ª Câmara Cível do Tribunal de Justiça [...] " +
+        "acordam os Magistrados da 2ª Câmara Cível do Tribunal de Justiça"
+    ),
+    null
+  );
+  // Fórmula de fecho de outro caso, só citada na fundamentação (prosa
+  // corrida, sem a frase fixa "acordam os Magistrados/Desembargadores
+  // da(o)"): não pega.
+  assert.equal(
+    extrairOrgaoDoTexto("z".repeat(700) + " como já decidiu a 4ª Câmara Cível em caso similar, sem usar a fórmula de acórdão"),
+    null
+  );
+});
+
+// Revisão criminal real (0804804-57.2021.8.22.0000), reconstruída: o relatório cita a
+// câmara do acórdão REVISADO dentro dos 600 chars; quem julgou foram as Reunidas.
+const REVISAO_CRIMINAL =
+  "Câmaras Criminais Reunidas / Gabinete Des. Álvaro Kalix Ferro Processo: 0804804-57.2021.8.22.0000 - " +
+  "REVISÃO CRIMINAL (12394) Relator: Des. VALDECI CASTELLAR CITON Data distribuição: 27/07/2021 " +
+  "RELATÓRIO Trata-se de revisão criminal em face do acórdão proferido por unanimidade pela 1ª Câmara " +
+  "Criminal desta Corte " + "fundamentação ".repeat(300) +
+  "ACÓRDÃO Vistos, relatados e discutidos estes autos, acordam os magistrados das Câmaras Criminais " +
+  "Reunidas do Tribunal de Justiça do Estado de Rondônia, na conformidade da ata de julgamentos e das " +
+  "notas taquigráficas, em, POR MAIORIA, CONHECER DA REVISÃO CRIMINAL. Porto Velho, 16 de dezembro de 2022.";
+
+test("fecho prevalece sobre o cabeçalho e pega colegiado sem número (revisão criminal real)", () => {
+  assert.deepEqual(extrairOrgaoComOrigem(REVISAO_CRIMINAL), { orgao: "Câmaras Criminais Reunidas", origem: "fecho" });
+  // Sem o fecho, cabeçalho que nomeia colegiado sem número não confia na câmara numerada ao lado.
+  assert.equal(extrairOrgaoDoTexto(REVISAO_CRIMINAL.split("ACÓRDÃO Vistos")[0]), null);
+  // Cabeçalho × fecho divergentes: vale a ata.
+  const cab2fecho1 =
+    "2ª Câmara Cível / Gabinete Des. X Processo: 1 " + "y ".repeat(900) +
+    "acordam os Magistrados da(o) 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, em, RECURSO PROVIDO.";
+  assert.deepEqual(extrairOrgaoComOrigem(cab2fecho1), { orgao: "1ª Câmara Cível", origem: "fecho" });
+  // Vírgula antes de "do Tribunal" e adjetivo antes da câmara não viram nome novo.
+  const pre = "z".repeat(700) + " acordam os Desembargadores da ";
+  assert.equal(extrairOrgaoDoTexto(pre + "2ª Câmara Cível, do Tribunal de Justiça, em, NEGAR PROVIMENTO."), "2ª Câmara Cível");
+  assert.equal(extrairOrgaoDoTexto(pre + "Egrégia Segunda Câmara Especial do Tribunal de Justiça, em, PROVER."), "2ª Câmara Especial");
+  // Fecho fora da janela de 2000 chars (acórdão antigo, fecho no alto): vale o cabeçalho.
+  const antigo =
+    "TRIBUNAL DE JUSTIÇA 2ª Câmara Criminal Relator: X ACÓRDÃO acordam os desembargadores da 2ª Câmara " +
+    "Criminal do Tribunal de Justiça do Estado de Rondônia, em, NEGAR PROVIMENTO. RELATÓRIO " + "v ".repeat(3000);
+  assert.deepEqual(extrairOrgaoComOrigem(antigo), { orgao: "2ª Câmara Criminal", origem: "cabeçalho" });
+});
+
+test("orgaoDiverge: câmara numerada compara exato; colegiado sem número tolera variação de nome", () => {
+  assert.equal(orgaoDiverge("1ª Câmara Cível", "3ª Câmara Cível"), true);
+  assert.equal(orgaoDiverge("1ª Câmara Cível", "1ª CÂMARA CÍVEL"), false);
+  assert.equal(orgaoDiverge("Câmaras Criminais Reunidas", "Câmaras Criminais Reunidas"), false);
+  assert.equal(orgaoDiverge("Tribunal Pleno", "Tribunal Pleno Judiciário"), false);
+  assert.equal(orgaoDiverge("Câmaras Cíveis Reunidas", "Câmaras Criminais Reunidas"), true);
+  assert.equal(orgaoDiverge("Câmaras Criminais Reunidas", "1ª Câmara Criminal"), true);
+  assert.equal(orgaoDiverge("1ª Câmara Cível", "—"), false);
+  assert.equal(orgaoDiverge(null, "1ª Câmara Cível"), false);
+});
+
+test("citação pronta usa a câmara do fecho quando o índice diverge (inteiro teor e busca)", () => {
+  const nr = "08039745220258220000";
+  const base = {
+    nr_processo: nr, ds_classe_judicial: "AGRAVO DE INSTRUMENTO", grau_jurisdicao: 2, dtjulgamento: "2025-07-15",
+    nome_relator_acordao: "EDENIR SEBASTIAO ALBUQUERQUE DA ROSA", ds_orgao_julgador_colegiado: "3ª Câmara Cível",
+  };
+  const acordao =
+    "PODER JUDICIÁRIO DO ESTADO DE RONDÔNIA Tribunal de Justiça de Rondônia Gabinete Des. Sansão Saldanha " +
+    "Número do processo: 0803974-52.2025.8.22.0000 RELATÓRIO " + "voto ".repeat(300) +
+    "ACÓRDÃO Vistos, relatados e discutidos estes autos, acordam os Magistrados da(o) 1ª Câmara Cível do " +
+    "Tribunal de Justiça do Estado de Rondônia, na conformidade da ata de julgamentos e das notas taquigráficas, " +
+    "em, RECURSO PARCIALMENTE PROVIDO NOS TERMOS DO VOTO DO RELATOR, À UNANIMIDADE. Porto Velho, 04 de julho de 2025";
+  const ementa = "EMENTA DIREITO PROCESSUAL CIVIL. AGRAVO DE INSTRUMENTO. ASTREINTES. RECURSO PARCIALMENTE PROVIDO.";
+  // Inteiro teor com a EMENTA primeiro: a Citação do topo (da ementa) herda o fecho do acórdão do mesmo julgamento.
+  const inteiro = formatInteiro({ hits: { total: { value: 2 }, hits: [
+    { _source: { ...base, tipo: "EMENTA", id_processo_documento: 28750280, ds_modelo_documento: ementa } },
+    { _source: { ...base, tipo: "ACÓRDÃO", id_processo_documento: 28750279, ds_modelo_documento: acordao } },
+  ] } }, nr);
+  assert.match(inteiro, /Relator\(a\): EDENIR SEBASTIAO ALBUQUERQUE DA ROSA · 1ª Câmara Cível \(⚠️ declarado no fecho do acórdão; o índice diz 3ª Câmara Cível\)/);
+  assert.match(inteiro, /Citação: \(TJ-RO - AGRAVO DE INSTRUMENTO: 0803974-52\.2025\.8\.22\.0000, Relator: EDENIR SEBASTIAO ALBUQUERQUE DA ROSA, Data de Julgamento: 15\/07\/2025, 1ª Câmara Cível\)/);
+  assert.match(inteiro, /Índice: 3ª Câmara Cível · fecho do acórdão \("acordam os Magistrados\.\.\."\): 1ª Câmara Cível — prevalece o texto/);
+  assert.doesNotMatch(inteiro, /cabeçalho desta peça: 1ª Câmara Cível/);
+  // Busca: o acórdão corrige a si mesmo; a ementa do MESMO julgamento herda; a sem data, não.
+  const busca = formatBusca({ hits: { total: { value: 3 }, hits: [
+    { _source: { ...base, tipo: "EMENTA", id_processo_documento: 28750280, ds_modelo_documento: ementa } },
+    { _source: { ...base, tipo: "ACÓRDÃO", id_processo_documento: 28750279, ds_modelo_documento: acordao } },
+    { _source: { ...base, tipo: "EMENTA", dtjulgamento: null, id_processo_documento: 1, ds_modelo_documento: ementa } },
+  ] } }, "x", ["ACÓRDÃO", "EMENTA"], "relevantes", 1, 10);
+  const blocos = busca.split("\n---\n").slice(1);
+  for (const b of blocos.slice(0, 2)) {
+    assert.match(b, /- Órgão: 1ª Câmara Cível \(2º grau\) — ⚠️ declarado no fecho do acórdão; o índice diz 3ª Câmara Cível/);
+    assert.match(b, /- Citação: \(.*, 1ª Câmara Cível\)/);
+  }
+  assert.match(blocos[2], /- Órgão: 3ª Câmara Cível \(2º grau\)\n/);
+  // Índice certo (Reunidas × Reunidas): nenhum aviso, Citação intacta.
+  const rc = formatInteiro({ hits: { total: { value: 1 }, hits: [{ _source: {
+    tipo: "ACÓRDÃO", nr_processo: "08048045720218220000", dtjulgamento: "2022-12-16", id_processo_documento: 7,
+    ds_classe_judicial: "REVISÃO CRIMINAL", ds_orgao_julgador_colegiado: "Câmaras Criminais Reunidas", ds_modelo_documento: REVISAO_CRIMINAL,
+  } }] } }, "08048045720218220000");
+  assert.doesNotMatch(rc, /Índice:|⚠️ declarado no fecho/);
+  assert.match(rc, /Citação: \(.*, Câmaras Criminais Reunidas\)/);
+  assert.equal(citacao(base).endsWith("3ª Câmara Cível)"), true); // sem fecho informado, fica o índice
 });
 
 test("red team 6: sem data de julgamento não se presume mesmo julgamento (busca) e cada peça conta como distinta (inteiro teor)", () => {
