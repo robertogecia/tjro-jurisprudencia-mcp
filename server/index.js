@@ -27,7 +27,7 @@ import {
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
-const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.7.1" });
+const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.7.2" });
 
 server.registerTool(
   "buscar_jurisprudencia_tjro",
@@ -200,6 +200,8 @@ server.registerTool(
       "divergem do que o texto do acórdão declara (prevalece o texto; o cadastro do portal erra a câmara com frequência). " +
       "A câmara vem do FECHO do acórdão (\"acordam os Magistrados da(o) ...\"), a ata do julgamento; sem fecho, do cabeçalho. " +
       "Quando o fecho diverge do índice, a Citação do cabeçalho já sai com a câmara do fecho. " +
+      "Cada peça traz o PRÓPRIO link do portal (\"· link ...\" no título da peça); o link do topo é o da peça mais recente. " +
+      "Para citar, use o link e o id da peça citada, nunca os de outra peça do mesmo número. " +
       "A saída é deduplicada e limitada a ~50 mil caracteres — se algo for truncado, um aviso indica como buscar o restante (filtrando por tipo).",
     inputSchema: {
       nr_processo: z.string().describe("Número do processo (CNJ), com ou sem máscara."),

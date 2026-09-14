@@ -166,7 +166,10 @@ a grafia exata do campo "Assunto:" de um resultado.
   documentos do mesmo julgamento declaram resultado oposto (provável voto
   vencido) e, no inteiro teor, quando a câmara ou o relator do **índice** não
   batem com o que o **texto do acórdão** declara. Cite pelo id + data de
-  julgamento, e pelo que o texto do acórdão diz.
+  julgamento, e pelo que o texto do acórdão diz. No inteiro teor, cada peça traz
+  o **próprio link** do portal: se a peça que você escreve leva link para o
+  julgado citado (para o juiz clicar e conferir), use o link e o id da mesma
+  peça, nunca os de outra peça do mesmo número.
 - **A câmara do cadastro erra com frequência.** Numa amostra de 82 acórdãos
   reais (14/09/2026), 15 dos 24 processos que o portal cadastra na "3ª Câmara
   Cível" foram julgados pela 1ª ou pela 2ª, e outras bases herdam o mesmo

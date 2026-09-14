@@ -767,6 +767,11 @@ test("inteiro teor: julgamentos distintos sob o mesmo número são listados com 
   assert.match(out, /Citação: .*· id 501/);
   assert.match(out, /Este número tem 2 julgamentos distintos — 10\/03\/2025: ACÓRDÃO, Rel\. ROWILSON TEIXEIRA, id 501; 05\/11\/2024: ACÓRDÃO, Rel\. ALEXANDRE MIGUEL, id 777/);
   assert.match(out, /## ACÓRDÃO — julgado em 2025-03-10 · Relator\(a\): ROWILSON TEIXEIRA · id 501/);
+  // Cada peça traz o PRÓPRIO link, e o do topo diz de qual peça é: a ficha copia o
+  // link da peça citada (ficha real guardou o id de uma peça com o link de outra).
+  assert.match(out, /Inteiro teor no portal \(ACÓRDÃO, id 501\): https:\/\/juris\.tjro\.jus\.br\/jurisprudencia\/\?id=501&/);
+  assert.match(out, /· id 501 · link https:\/\/juris\.tjro\.jus\.br\/jurisprudencia\/\?id=501&/);
+  assert.match(out, /· id 777 · link https:\/\/juris\.tjro\.jus\.br\/jurisprudencia\/\?id=777&/);
   assert.match(out, /Índice: 3ª Câmara Cível · cabeçalho desta peça: 1ª Câmara Cível — prevalece o texto/);
   const segunda = out.split("## ACÓRDÃO — julgado em 2024-11-05")[1];
   assert.doesNotMatch(segunda, /Índice:/); // índice e texto batem: nenhum aviso
