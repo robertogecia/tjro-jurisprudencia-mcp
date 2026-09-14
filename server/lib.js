@@ -1128,7 +1128,10 @@ export function formatInteiro(data, nrProcesso) {
     `**Processo ${cnj(nrProcesso)} — ${s0.ds_classe_judicial || ""}**`,
     `Relator(a): ${relator(s0)} · ${corrige0 ? `${corrige0} (⚠️ declarado no fecho do acórdão; o índice diz ${orgao(s0)})` : orgao(s0)} · Julgado em ${s0.dtjulgamento_str || s0.dtjulgamento || "—"}`,
     `Citação: ${citacao(s0, corrige0)}` + (idDocumento(s0) ? ` · id ${idDocumento(s0)}` : ""),
-    `Inteiro teor no portal: ${link(s0)}`,
+    // O link do topo é o da peça mais recente; cada peça abaixo traz o seu. A ficha
+    // copia o link da peça CITADA: uma ficha real guardou o id do acórdão com o link
+    // do relatório de outro julgamento, e a peça gerada levaria o juiz ao documento errado.
+    `Inteiro teor no portal (${s0.tipo}${idDocumento(s0) ? `, id ${idDocumento(s0)}` : ""}): ${link(s0)}`,
   ];
   // Sob o mesmo número, julgamentos distintos: a Citação acima é só da peça
   // mais recente. Quem cita "pelo número" pode estar citando outra decisão.
@@ -1168,7 +1171,8 @@ export function formatInteiro(data, nrProcesso) {
       `\n## ${s.tipo}` +
       (quando ? ` — julgado em ${quando}` : "") +
       (relator(s) !== "—" ? ` · Relator(a): ${relator(s)}` : "") +
-      (idDocumento(s) ? ` · id ${idDocumento(s)}` : "");
+      (idDocumento(s) ? ` · id ${idDocumento(s)}` : "") +
+      ` · link ${link(s)}`;
     if (usado >= ORCAMENTO_INTEIRO) {
       out.push(
         "\n_(limite de tamanho da resposta atingido — peças restantes omitidas; chame novamente filtrando por tipo ou abra o link do portal acima)_"
