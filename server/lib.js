@@ -150,9 +150,9 @@ export const dataBr = (iso) => {
 };
 
 // Citação pronta para colar em peça, no padrão forense. Segmentos sem dado são omitidos.
-// `orgaoDoFecho`: câmara que o próprio acórdão declara, quando diverge do índice —
-// a Citação é copiada literalmente para a peça, e foi por ela que um "3ª Câmara
-// Cível" errado do cadastro chegou a uma peça protocolada (14/09/2026).
+// `orgaoDoFecho`: câmara que o próprio acórdão declara, quando diverge do índice.
+// A Citação vai para a peça, e a câmara errada do cadastro ("3ª Câmara Cível" no
+// lugar da 1ª) já chegou a uma peça protocolada (14/09/2026).
 export const citacao = (s, orgaoDoFecho = null) => {
   const partes = [`TJ-RO - ${s.ds_classe_judicial || s.tipo || "Julgado"}: ${cnj(s.nr_processo || "")}`];
   const rel = relator(s);
