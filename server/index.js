@@ -27,7 +27,7 @@ import {
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
-const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.7.0" });
+const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.7.1" });
 
 server.registerTool(
   "buscar_jurisprudencia_tjro",
@@ -54,6 +54,10 @@ server.registerTool(
       "(até 800 caracteres) do local do match, não a peça inteira, e só corresponde à ementa oficial quando o " +
       "tipo é EMENTA: ementa numerada costuma ENUNCIAR a tese nos primeiros itens e APLICÁ-LA nos últimos, às " +
       "vezes com alcance menor — abra o inteiro teor antes de fichar ou citar. " +
+      "A CÂMARA do cadastro do portal erra com frequência (amostra real de 14/09/2026: 15 de 24 processos " +
+      "cadastrados na \"3ª Câmara Cível\" foram julgados pela 1ª ou pela 2ª): quando o acórdão da página declara " +
+      "outra câmara no fecho (\"acordam os Magistrados da(o) ...\"), o resultado mostra a câmara do fecho, avisa, " +
+      "e a Citação já sai com ela. Pela mesma razão, orgao_colegiado filtra pelo cadastro, não pelo julgamento. " +
       "Sempre confirme número, relator, câmara, data e ementa no inteiro teor antes de citar. " +
       "USE SOMENTE para casos da jurisdição do TJRO (1º ou 2º grau de Rondônia) — jurisprudência " +
       "do TJRO não tem autoridade em outro tribunal. " +
@@ -75,7 +79,7 @@ server.registerTool(
         .describe('Tipos de documento. Padrão ["EMENTA","ACÓRDÃO"]. Opções: ACÓRDÃO, EMENTA, DECISÃO, "DECISÃO DA PRESIDÊNCIA", SENTENÇA, VOTO, RELATÓRIO. Todos são peças de 2º grau, exceto SENTENÇA (única de 1º grau).'),
       grau: z.number().int().optional().describe("1 (primeiro grau) ou 2 (câmaras). Omitir = ambos. Com grau=1, a busca é ajustada automaticamente para tipo=SENTENÇA."),
       classe_judicial: z.string().optional().describe('Classe EXATA em CAIXA ALTA (aplicada automaticamente). Ex.: "APELAÇÃO CÍVEL", "RECURSO INOMINADO CÍVEL".'),
-      orgao_colegiado: z.string().optional().describe('Câmara EXATA em Formato de Título, sensível a maiúsculas. Ex.: "1ª Câmara Cível", "2ª Câmara Criminal", "1ª Turma Recursal".'),
+      orgao_colegiado: z.string().optional().describe('Câmara EXATA em Formato de Título, sensível a maiúsculas. Ex.: "1ª Câmara Cível", "2ª Câmara Criminal", "1ª Turma Recursal". Filtra pelo CADASTRO do portal, que erra a câmara com frequência (sobretudo "3ª Câmara Cível"): para a posição de uma câmara, confira a câmara declarada no fecho de cada acórdão, e saiba que julgados dela cadastrados em outra ficam de fora.'),
       relator: z
         .string()
         .optional()
@@ -193,7 +197,9 @@ server.registerTool(
       "Use o nr_processo devolvido por buscar_jurisprudencia_tjro quando precisar do teor completo, não só da ementa. " +
       "Se o processo tiver julgamentos distintos (original, embargos, segundos embargos), a resposta lista todos com data, relator e id " +
       "do documento — a Citação do cabeçalho é só da decisão mais recente. Cada peça avisa quando a câmara ou o relator do índice " +
-      "divergem do que o texto do acórdão declara (prevalece o texto; o cadastro do portal já saiu errado nesse campo). " +
+      "divergem do que o texto do acórdão declara (prevalece o texto; o cadastro do portal erra a câmara com frequência). " +
+      "A câmara vem do FECHO do acórdão (\"acordam os Magistrados da(o) ...\"), a ata do julgamento; sem fecho, do cabeçalho. " +
+      "Quando o fecho diverge do índice, a Citação do cabeçalho já sai com a câmara do fecho. " +
       "A saída é deduplicada e limitada a ~50 mil caracteres — se algo for truncado, um aviso indica como buscar o restante (filtrando por tipo).",
     inputSchema: {
       nr_processo: z.string().describe("Número do processo (CNJ), com ou sem máscara."),

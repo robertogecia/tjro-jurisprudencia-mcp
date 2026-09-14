@@ -150,13 +150,16 @@ export const dataBr = (iso) => {
 };
 
 // Citação pronta para colar em peça, no padrão forense. Segmentos sem dado são omitidos.
-export const citacao = (s) => {
+// `orgaoDoFecho`: câmara que o próprio acórdão declara, quando diverge do índice —
+// a Citação é copiada literalmente para a peça, e foi por ela que um "3ª Câmara
+// Cível" errado do cadastro chegou a uma peça protocolada (14/09/2026).
+export const citacao = (s, orgaoDoFecho = null) => {
   const partes = [`TJ-RO - ${s.ds_classe_judicial || s.tipo || "Julgado"}: ${cnj(s.nr_processo || "")}`];
   const rel = relator(s);
   if (rel !== "—") partes.push(`Relator: ${rel}`);
   const dj = s.dtjulgamento_str || dataBr(s.dtjulgamento);
   if (dj) partes.push(`Data de Julgamento: ${dj}`);
-  const org = orgao(s);
+  const org = orgaoDoFecho || orgao(s);
   if (org !== "—") partes.push(org);
   const dp = dataBr(s.dtpublicacao);
   if (dp) partes.push(`Data de Publicação: ${dp}`);
@@ -241,24 +244,59 @@ export function resumoResultadosPagina(hits) {
   return { contagem, semResultado, totalJulgamentos: porJulgamento.size };
 }
 
-// Índice é indício, texto é prova: o campo "Câmara" do cadastro do TJRO já saiu
-// errado (índice "3ª Câmara Cível", acórdão "1ª Câmara Cível" duas vezes —
-// 04/09/2026), e o JusRatio herda o mesmo cadastro. Extração conservadora: só
-// devolve quando o texto é unânime (uma única câmara mencionada).
+// Índice é indício, texto é prova: o campo "Câmara" do cadastro do TJRO sai
+// errado com frequência, e o JusRatio herda o mesmo cadastro. Medição de
+// 14/09/2026 sobre 82 acórdãos reais já trazidos por sessões anteriores: dos 24
+// processos que o índice põe na "3ª Câmara Cível", 15 foram julgados pela 1ª ou
+// pela 2ª. Extração conservadora: só devolve quando o texto é unânime.
 const TIPO_CAMARA = { civel: "Cível", criminal: "Criminal", especial: "Especial" };
 const ORDINAL = { primeira: "1", segunda: "2", terceira: "3", quarta: "4", quinta: "5" };
-// Só o CABEÇALHO (timbre): a fundamentação cita câmaras alheias ("como decidiu a
-// 4ª Câmara Cível", "1ª Câmara Especializada do TJSP") e isso ou desligava a
-// checagem ou, pior, apontava a câmara alheia como a do julgado (red team
-// 04/09/2026, achados 5 e 7). "\b" após o tipo impede "Especializada" ≈ "Especial".
-export const extrairOrgaoDoTexto = (texto) => {
-  const cab = String(texto || "").slice(0, 600);
-  const achados = new Set();
-  for (const m of cab.matchAll(/\b(\d{1,2}\s*[ªa°º]|primeira|segunda|terceira|quarta|quinta)\s*C[âa]mara\s+(C[íi]vel|Criminal|Especial)\b/gi)) {
-    const n = ORDINAL[fold(m[1])] || m[1].replace(/\D/g, "");
-    achados.add(`${n}ª Câmara ${TIPO_CAMARA[fold(m[2])] || m[2]}`);
+const RE_CAMARA = /\b(\d{1,2}\s*[ªa°º]|primeira|segunda|terceira|quarta|quinta)\s*C[âa]mara\s+(C[íi]vel|Criminal|Especial)\b/gi;
+const RE_CAMARA_UMA = /\b(\d{1,2}\s*[ªa°º]|primeira|segunda|terceira|quarta|quinta)\s*C[âa]mara\s+(C[íi]vel|Criminal|Especial)\b/i;
+const nomeCamara = (m) => `${ORDINAL[fold(m[1])] || m[1].replace(/\D/g, "")}ª Câmara ${TIPO_CAMARA[fold(m[2])] || m[2]}`;
+// 1º) O FECHO do acórdão, que é a ata do julgamento: "acordam os Magistrados
+// da(o) <órgão> do Tribunal de Justiça...". Fonte mais forte, por isso vem antes
+// do cabeçalho. Achado real de 14/09/2026 (sessão "Esther - SERASA - Embargos"):
+// no 0803974-52.2025.8.22.0000 (índice "3ª Câmara Cível") a "1ª Câmara Cível" só
+// aparece no fecho — o modelo novo de acórdão do PJe (46 das 82 peças medidas)
+// não traz câmara nenhuma no cabeçalho. Nas peças medidas, o fecho estava a menos
+// de 450 chars do fim; a janela de 2000 afasta o fecho de OUTRO acórdão transcrito
+// no relatório. Pega também colegiado sem número ("das Câmaras Criminais
+// Reunidas"): numa revisão criminal real (0804804-57.2021.8.22.0000), o relatório
+// cita a "1ª Câmara Criminal" do acórdão revisado dentro dos 600 chars, e o
+// cabeçalho sozinho mandava citar a câmara errada.
+const RE_FECHO = /acordam\s+os\s+(?:Magistrados|Desembargadores)\s+d(?:as|os|a|o)(?:\(o\))?\s+([^,;:.]{3,60}?)[\s,]+do\s+Tribunal\s+de\s+Justi[çc]a/gi;
+// 2º) Sem fecho (ementa, decisão, voto, acórdão antigo com o fecho no alto): o
+// CABEÇALHO, só os 600 primeiros chars — a fundamentação cita câmaras alheias
+// ("como decidiu a 4ª Câmara Cível") e isso apontava a câmara alheia como a do
+// julgado (red team 04/09/2026, achados 5 e 7). "\b" após o tipo impede
+// "Especializada" ≈ "Especial". Cabeçalho que nomeia colegiado sem número
+// (Reunidas, Pleno) não confia na câmara numerada ao lado: é a de origem.
+export const extrairOrgaoComOrigem = (texto) => {
+  const t = String(texto || "");
+  const doFecho = new Map();
+  for (const m of t.slice(-2000).matchAll(RE_FECHO)) {
+    const bruto = m[1].replace(/\s+/g, " ").trim();
+    const num = RE_CAMARA_UMA.exec(bruto);
+    const nome = num ? nomeCamara(num) : bruto;
+    doFecho.set(fold(nome), nome);
   }
-  return achados.size === 1 ? [...achados][0] : null;
+  if (doFecho.size) return doFecho.size === 1 ? { orgao: [...doFecho.values()][0], origem: "fecho" } : null;
+  const cab = t.slice(0, 600);
+  if (/\b(Reunidas|Pleno)\b/i.test(cab)) return null;
+  const achados = new Set([...cab.matchAll(RE_CAMARA)].map(nomeCamara));
+  return achados.size === 1 ? { orgao: [...achados][0], origem: "cabeçalho" } : null;
+};
+export const extrairOrgaoDoTexto = (texto) => extrairOrgaoComOrigem(texto)?.orgao ?? null;
+// Órgão do texto × do índice. Câmara numerada compara exato; colegiado sem número
+// tolera variação de nome ("Tribunal Pleno" ⊂ "Tribunal Pleno Judiciário").
+export const orgaoDiverge = (doTexto, doIndice) => {
+  if (!doTexto || !doIndice || doIndice === "—") return false;
+  const a = fold(doTexto).replace(/\s+/g, " ").trim();
+  const b = fold(doIndice).replace(/\s+/g, " ").trim();
+  if (a === b) return false;
+  if (!/^\d/.test(a) && !/^\d/.test(b) && (a.includes(b) || b.includes(a))) return false;
+  return true;
 };
 const ROTULOS_APOS_RELATOR =
   /\s+(Revisor|Vogal|Presidente|Processo|Agravante|Agravad[oa]|Apelante|Apelad[oa]|Embargante|Embargad[oa]|Recorrente|Recorrid[oa]|Origem|Data|Relat[oó]rio|Ementa|Assunto|Classe|[ÓO]rg[ãa]o|Sess[ãa]o)\b.*$/i;
@@ -915,7 +953,25 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   });
   const chaveProc = (i) => String((hits[i]._source || {}).nr_processo || "").replace(/\D/g, "") || `#${i}`;
   const chaveJulg = (i) => String((hits[i]._source || {}).dtjulgamento || "");
-  const resultados = hits.map((h) => resultadoDe(limpar((h._source || {}).ds_modelo_documento || "", 0)));
+  const textos = hits.map((h) => limpar((h._source || {}).ds_modelo_documento || "", 0));
+  const resultados = textos.map(resultadoDe);
+  // Câmara declarada no FECHO de cada acórdão da página (offline, sobre o texto já
+  // trazido). Vale também para os outros documentos do MESMO julgamento na página
+  // (nº + data; sem data não se presume — red team 04/09/2026, achado 6): a ementa
+  // não tem fecho. Fechos divergentes no mesmo julgamento: não arrisca.
+  const fechos = textos.map((x) => {
+    const r = extrairOrgaoComOrigem(x);
+    return r && r.origem === "fecho" ? r.orgao : null;
+  });
+  const fechoDoJulgamento = new Map();
+  hits.forEach((h, i) => {
+    if (!fechos[i] || !chaveJulg(i) || chaveProc(i).startsWith("#")) return;
+    const k = `${chaveProc(i)}|${chaveJulg(i)}`;
+    const antes = fechoDoJulgamento.get(k);
+    fechoDoJulgamento.set(k, antes === undefined || fold(antes) === fold(fechos[i]) ? fechos[i] : null);
+  });
+  const orgaoDoFechoDe = (i) =>
+    fechos[i] || (chaveJulg(i) && !chaveProc(i).startsWith("#") ? fechoDoJulgamento.get(`${chaveProc(i)}|${chaveJulg(i)}`) : null) || null;
   let houveCorte = false;
   const quandoDe = (s) => s.dtjulgamento_str || dataBr(s.dtjulgamento) || "?";
 
@@ -934,14 +990,18 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
     }
     if (t === "VOTO") rotulo += " (VOTO — pode ser voto vencido; não é o dispositivo do colegiado)";
     const assunto = s.ds_assunto_trf ? ` · Assunto: ${s.ds_assunto_trf}` : "";
+    const doFecho = orgaoDoFechoDe(i);
+    const corrige = doFecho && orgaoDiverge(doFecho, orgao(s)) ? doFecho : null;
     const linhas = [
       `\n---\n**${inicio + i}. ${s.tipo} · ${s.ds_classe_judicial || ""}**`,
       `- Processo: ${cnj(s.nr_processo || "")}`,
       `- Id. do documento: ${idDocumento(s) || "—"} (chave única desta decisão)`,
       `- Relator(a): ${relator(s)}`,
-      `- Órgão: ${orgao(s)} (${s.grau_jurisdicao}º grau)`,
+      corrige
+        ? `- Órgão: ${corrige} (${s.grau_jurisdicao}º grau) — ⚠️ declarado no fecho do acórdão; o índice diz ${orgao(s)}`
+        : `- Órgão: ${orgao(s)} (${s.grau_jurisdicao}º grau)`,
       `- Julgado em: ${s.dtjulgamento_str || s.dtjulgamento || "—"}${assunto}`,
-      `- Citação: ${citacao(s)}`,
+      `- Citação: ${citacao(s, corrige)}`,
       `- Inteiro teor: ${link(s)}`,
     ];
     const grupo = porProcesso.get(chaveProc(i));
@@ -1052,10 +1112,22 @@ export function formatInteiro(data, nrProcesso) {
   }
 
   const s0 = unicos[0][0];
+  // Câmara que o FECHO declara para o julgamento da Citação: o da própria peça ou
+  // o de outra peça do MESMO julgamento (a ementa não tem fecho). Sem data, só a
+  // própria peça; fechos divergentes, não arrisca.
+  const dataDe = (s) => s.dtjulgamento_str || dataBr(s.dtjulgamento) || "";
+  const fechos0 = new Map();
+  for (const [s, corpo] of unicos) {
+    if (s !== s0 && (!dataDe(s0) || dataDe(s) !== dataDe(s0))) continue;
+    const r = extrairOrgaoComOrigem(corpo);
+    if (r && r.origem === "fecho") fechos0.set(fold(r.orgao), r.orgao);
+  }
+  const fecho0 = fechos0.size === 1 ? [...fechos0.values()][0] : null;
+  const corrige0 = fecho0 && orgaoDiverge(fecho0, orgao(s0)) ? fecho0 : null;
   const out = [
     `**Processo ${cnj(nrProcesso)} — ${s0.ds_classe_judicial || ""}**`,
-    `Relator(a): ${relator(s0)} · ${orgao(s0)} · Julgado em ${s0.dtjulgamento_str || s0.dtjulgamento || "—"}`,
-    `Citação: ${citacao(s0)}` + (idDocumento(s0) ? ` · id ${idDocumento(s0)}` : ""),
+    `Relator(a): ${relator(s0)} · ${corrige0 ? `${corrige0} (⚠️ declarado no fecho do acórdão; o índice diz ${orgao(s0)})` : orgao(s0)} · Julgado em ${s0.dtjulgamento_str || s0.dtjulgamento || "—"}`,
+    `Citação: ${citacao(s0, corrige0)}` + (idDocumento(s0) ? ` · id ${idDocumento(s0)}` : ""),
     `Inteiro teor no portal: ${link(s0)}`,
   ];
   // Sob o mesmo número, julgamentos distintos: a Citação acima é só da peça
@@ -1105,10 +1177,11 @@ export function formatInteiro(data, nrProcesso) {
     }
     // Índice × texto: o campo do cadastro pode divergir do que o acórdão diz.
     const avisos = [];
-    const orgTexto = extrairOrgaoDoTexto(corpo);
-    if (orgTexto && orgao(s) !== "—" && fold(orgTexto) !== fold(orgao(s)))
+    const org = extrairOrgaoComOrigem(corpo);
+    if (org && orgaoDiverge(org.orgao, orgao(s)))
       avisos.push(
-        `⚠️ Índice: ${orgao(s)} · cabeçalho desta peça: ${orgTexto} — prevalece o texto (o cadastro do portal já saiu errado; cite pela câmara que o acórdão declara).`
+        `⚠️ Índice: ${orgao(s)} · ${org.origem === "fecho" ? 'fecho do acórdão ("acordam os Magistrados...")' : "cabeçalho desta peça"}: ` +
+          `${org.orgao} — prevalece o texto (o cadastro do portal já saiu errado; cite pela câmara que o acórdão declara).`
       );
     const relTexto = extrairRelatorDoTexto(corpo);
     if (relatorDiverge(relTexto, relator(s)))

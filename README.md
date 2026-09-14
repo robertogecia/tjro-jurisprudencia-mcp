@@ -165,9 +165,19 @@ a grafia exata do campo "Assunto:" de um resultado.
   extensão avisa quando o mesmo número aparece mais de uma vez, quando dois
   documentos do mesmo julgamento declaram resultado oposto (provável voto
   vencido) e, no inteiro teor, quando a câmara ou o relator do **índice** não
-  batem com o que o **texto do acórdão** declara — o cadastro do portal já saiu
-  errado nesse campo, e outras bases herdam o mesmo cadastro. Cite pelo id +
-  data de julgamento, e pelo que o texto do acórdão diz.
+  batem com o que o **texto do acórdão** declara. Cite pelo id + data de
+  julgamento, e pelo que o texto do acórdão diz.
+- **A câmara do cadastro erra com frequência.** Numa amostra de 82 acórdãos
+  reais (14/09/2026), 15 dos 24 processos que o portal cadastra na "3ª Câmara
+  Cível" foram julgados pela 1ª ou pela 2ª, e outras bases herdam o mesmo
+  cadastro. Por isso a extensão lê a câmara no **fecho do acórdão** ("acordam os
+  Magistrados da(o) 1ª Câmara Cível do Tribunal de Justiça..."), que é a ata do
+  julgamento; quando ele diverge do cadastro, a busca e o inteiro teor mostram a
+  câmara do fecho com um aviso, e a **citação pronta já sai com ela**. Sem fecho
+  no texto (ementa, decisão monocrática), vale o cabeçalho, com o mesmo aviso. O
+  filtro por câmara (`orgao_colegiado`) usa o cadastro: julgados de uma câmara
+  cadastrados em outra ficam de fora, o que pesa quando se quer a posição de uma
+  câmara.
 - **Rede do escritório:** se o escritório usa proxy que intercepta HTTPS e a busca
   falhar com erro de certificado, fale com o suporte de TI (pode ser necessário
   ajustar o certificado/CA do sistema).
