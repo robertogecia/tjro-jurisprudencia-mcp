@@ -34,6 +34,13 @@ import {
   comCredito,
   CREDITO,
   _resetCreditoParaTeste,
+  VERSAO,
+  RELEASES_PAGINA,
+  versaoMaisNova,
+  checarVersaoNova,
+  comAvisos,
+  iniciarChecagemVersao,
+  _resetAvisoParaTeste,
   montarGrupos,
   termoParaQuery,
   GRUPOS_MAX,
@@ -1189,4 +1196,62 @@ test("formatBusca mostra a consulta montada e o zero-resultado ensina grupos, n�
   const muitos = { hits: { total: { value: 9000 }, hits: [] } };
   assert.match(formatBusca(muitos, "", ["EMENTA"], "relevantes", 1, 10, [], "", false, montada), /acrescente um grupo/);
   assert.match(formatBusca(muitos, "dano moral", ["EMENTA"], "relevantes", 1, 10), /operador AND/);
+});
+
+// ---------------------------------------------------------------------------
+// v1.7.4 — aviso de versão nova (uma consulta ao GitHub, silêncio em qualquer falha).
+import { readFileSync } from "node:fs";
+
+test("VERSAO em lib.js bate com manifest.json e package.json (esquecer de subir um dos três)", () => {
+  const lerJson = (f) => JSON.parse(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"));
+  assert.equal(VERSAO, lerJson("manifest.json").version);
+  assert.equal(VERSAO, lerJson("package.json").version);
+});
+
+test("versaoMaisNova: compara numericamente e trata formato estranho como 'não é mais nova'", () => {
+  assert.equal(versaoMaisNova("1.7.3", "v1.7.4"), true);
+  assert.equal(versaoMaisNova("1.7.3", "1.10.0"), true); // 10 > 7, não comparação de texto
+  assert.equal(versaoMaisNova("1.7.3", "1.7.3"), false);
+  assert.equal(versaoMaisNova("1.7.3", "1.7.2"), false);
+  assert.equal(versaoMaisNova("1.7.3", "2.0.0-beta"), false);
+  assert.equal(versaoMaisNova("1.7.3", "<script>"), false);
+  assert.equal(versaoMaisNova("1.7.3", undefined), false);
+});
+
+const respostaGithub = (tag, ok = true) => async () => ({ ok, json: async () => ({ tag_name: tag, html_url: "https://evil.example/x" }) });
+
+test("checarVersaoNova: devolve a tag só quando é mais nova; qualquer falha vira null", async () => {
+  assert.equal(await checarVersaoNova({ atual: "1.7.3", fetchImpl: respostaGithub("v1.7.4") }), "1.7.4");
+  assert.equal(await checarVersaoNova({ atual: "1.7.3", fetchImpl: respostaGithub("v1.7.3") }), null);
+  assert.equal(await checarVersaoNova({ atual: "1.7.3", fetchImpl: respostaGithub("v9.9.9", false) }), null);
+  assert.equal(await checarVersaoNova({ atual: "1.7.3", fetchImpl: async () => { throw new Error("sem rede"); } }), null);
+});
+
+test("checarVersaoNova: desligável por variável de ambiente e limitado por timeout", async () => {
+  let chamou = false;
+  const espia = async () => { chamou = true; return { ok: true, json: async () => ({ tag_name: "v9.0.0" }) }; };
+  assert.equal(await checarVersaoNova({ fetchImpl: espia, env: { TJRO_MCP_SEM_AVISO_ATUALIZACAO: "1" } }), null);
+  assert.equal(chamou, false, "com a variável ligada nem deve consultar o GitHub");
+  const pendurada = (_url, { signal }) => new Promise((_, rej) => signal.addEventListener("abort", () => rej(new Error("abortado"))));
+  const t0 = Date.now();
+  assert.equal(await checarVersaoNova({ fetchImpl: pendurada, env: {}, timeoutMs: 50 }), null);
+  assert.ok(Date.now() - t0 < 1000);
+});
+
+test("comAvisos: aviso de versão sai uma vez, com endereço fixo (não o da API) e sem tom de instrução", async () => {
+  _resetCreditoParaTeste();
+  _resetAvisoParaTeste();
+  iniciarChecagemVersao({ atual: VERSAO, fetchImpl: respostaGithub("v99.0.0"), env: {} });
+  const primeira = await comAvisos("resultado 1");
+  assert.ok(primeira.endsWith(RELEASES_PAGINA + "_"), primeira);
+  assert.match(primeira, /v99\.0\.0/);
+  assert.doesNotMatch(primeira, /evil\.example/);
+  assert.doesNotMatch(primeira, /\b(diga|informe|mencione|sempre|repita)\b/i);
+  assert.equal(await comAvisos("resultado 2"), "resultado 2");
+
+  _resetCreditoParaTeste();
+  _resetAvisoParaTeste();
+  iniciarChecagemVersao({ atual: VERSAO, fetchImpl: respostaGithub(`v${VERSAO}`), env: {} });
+  const semNova = await comAvisos("resultado 3");
+  assert.doesNotMatch(semNova, /versão mais nova/);
 });

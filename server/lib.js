@@ -1227,3 +1227,79 @@ export function comCredito(texto) {
 export function _resetCreditoParaTeste() {
   creditoDado = false;
 }
+
+// ------------------------------------------------------- aviso de versão ---
+// Uma consulta ao GitHub (releases/latest) por processo, em segundo plano desde
+// a subida do servidor. Se houver versão MAIS NOVA, a primeira resposta ganha uma
+// linha factual com o endereço FIXO da página de releases (nunca uma URL vinda da
+// resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
+// Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
+// Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
+export const VERSAO = "1.7.4";
+export const RELEASES_API =
+  "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
+export const RELEASES_PAGINA =
+  "https://github.com/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
+const RE_TAG = /^v?(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/;
+
+// true só se `outra` for estritamente maior que `atual`; qualquer formato estranho é false.
+export function versaoMaisNova(atual, outra) {
+  const a = RE_TAG.exec(String(atual ?? "").trim());
+  const b = RE_TAG.exec(String(outra ?? "").trim());
+  if (!a || !b) return false;
+  for (let i = 1; i <= 3; i++) {
+    const x = Number(a[i]), y = Number(b[i]);
+    if (y !== x) return y > x;
+  }
+  return false;
+}
+
+// Devolve a tag nova (ex. "1.7.4") ou null. Nunca lança.
+export async function checarVersaoNova({
+  atual = VERSAO,
+  fetchImpl = globalThis.fetch,
+  env = process.env,
+  timeoutMs = 2000,
+} = {}) {
+  try {
+    if (env.TJRO_MCP_SEM_AVISO_ATUALIZACAO === "1" || typeof fetchImpl !== "function") return null;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetchImpl(RELEASES_API, {
+        signal: ctrl.signal,
+        headers: { Accept: "application/vnd.github+json", "User-Agent": "tjro-jurisprudencia-mcp" },
+      });
+      if (!r.ok) return null;
+      const tag = String((await r.json()).tag_name ?? "").trim();
+      return versaoMaisNova(atual, tag) ? tag.replace(/^v/, "") : null;
+    } finally {
+      clearTimeout(t);
+    }
+  } catch {
+    return null;
+  }
+}
+
+export const avisoAtualizacao = (novaVersao) =>
+  `_Há uma versão mais nova desta extensão (v${novaVersao}; a instalada é a v${VERSAO}): ${RELEASES_PAGINA}_`;
+
+let checagem = null;
+let avisoDado = false;
+export function iniciarChecagemVersao(opcoes) {
+  if (!checagem) checagem = checarVersaoNova(opcoes);
+  return checagem;
+}
+// Crédito + (uma vez) aviso de versão. Nunca atrasa a resposta além do timeout da checagem.
+export async function comAvisos(texto) {
+  const base = comCredito(texto);
+  if (avisoDado) return base;
+  const nova = await iniciarChecagemVersao();
+  if (!nova) return base;
+  avisoDado = true;
+  return `${base}\n\n${avisoAtualizacao(nova)}`;
+}
+export function _resetAvisoParaTeste() {
+  checagem = null;
+  avisoDado = false;
+}
