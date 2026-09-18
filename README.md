@@ -16,6 +16,29 @@ do Tribunal de Justiça de Rondônia** (portal oficial JURIS), sem login e sem p
 
 > Requisitos: Claude Desktop recente, no **Mac ou Windows**.
 
+## Onde funciona
+
+A extensão roda **no seu computador**: é ele que consulta o portal do TJRO. Por
+isso ela só aparece onde o Claude também roda instalado na máquina.
+
+| Onde | Funciona? |
+|---|---|
+| Claude Desktop, conversa normal | Sim |
+| Claude Desktop, modo Cowork (inclusive tarefas agendadas) | Sim — o Cowork enxerga as extensões instaladas no Desktop |
+| Claude Code | Sim, registrando o servidor manualmente (ver [Desenvolvimento](#desenvolvimento)) |
+| claude.ai no navegador | **Não** |
+| App do Claude no celular | **Não** |
+
+**Por que não no navegador nem no celular:** ali o Claude só usa conectores
+hospedados na internet, com endereço público. Para isso a extensão teria de rodar
+num servidor central, e as buscas de todos os usuários sairiam do mesmo IP — o
+bloqueio anti-automação do portal do TJRO derrubaria esse servidor em pouco tempo,
+e contorná-lo seria burlar a proteção do tribunal. Rodar em cada computador, com
+limite de ritmo próprio, é o que mantém a pesquisa estável e respeitosa com o portal.
+
+Uma skill que você suba no claude.ai continua funcionando no navegador, mas **sem**
+esta pesquisa: a jurisprudência do TJRO precisa ser buscada no Desktop (ou no Claude Code).
+
 ## Como usar
 
 Peça em linguagem natural, por exemplo:
@@ -285,6 +308,13 @@ npm install
 npm test                      # roda os testes automatizados (server/lib.js)
 node server/index.js          # roda o servidor via stdio
 npx @anthropic-ai/mcpb@latest pack . Jurisprudencia-TJRO.mcpb   # empacota a extensão
+```
+
+No **Claude Code**, depois do `npm install`, registre o servidor com o caminho
+absoluto da pasta:
+
+```bash
+claude mcp add tjro_jurisprudencia -- node /caminho/para/tjro-jurisprudencia-mcp/server/index.js
 ```
 
 ## Autor
