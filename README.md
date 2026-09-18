@@ -264,10 +264,21 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
   ao portal público do TJRO (o diagnóstico não faz requisição nenhuma). Não pedem login, token, chave
   de API nem qualquer dado além do texto da sua pesquisa — o mesmo que você
   digitaria na busca do próprio portal.
-- **Sem coleta de dados.** Nenhuma telemetria, analytics ou envio de dados a
-  qualquer servidor além do `juris-back.tjro.jus.br` (o backend do próprio TJRO).
+- **Sem coleta de dados.** Nenhuma telemetria ou analytics. A pesquisa só vai
+  para o `juris-back.tjro.jus.br` (o backend do próprio TJRO). A única outra
+  conexão é o **aviso de versão nova** (abaixo): um `GET` sem dados seus a
+  `api.github.com`, uma vez por sessão.
+- **Aviso de versão nova.** Ao subir, a extensão pergunta ao GitHub qual é a
+  release mais recente. Se houver uma mais nova que a instalada, a primeira
+  resposta da sessão termina com uma linha avisando, com o endereço da página
+  de releases (fixo no código, nunca tirado da resposta do GitHub). Ela **não
+  baixa nem instala nada** — atualizar continua sendo abrir o `.mcpb` novo e
+  confirmar. O GitHub vê o IP de quem consulta, como em qualquer acesso a
+  página sua; nenhum dado da pesquisa ou do caso vai junto. Sem internet, o
+  aviso simplesmente não aparece (a espera é de no máximo 2 segundos). Para
+  desligar, defina a variável de ambiente `TJRO_MCP_SEM_AVISO_ATUALIZACAO=1`.
 - **Pouco código, fácil de ler.** Toda a lógica fica em dois arquivos:
-  [`server/lib.js`](server/lib.js) (funções puras — sem rede) e
+  [`server/lib.js`](server/lib.js) (a lógica e as chamadas de rede) e
   [`server/index.js`](server/index.js) (só o registro das ferramentas MCP
   e a chamada HTTP). Juntos, menos de 500 linhas.
 - **Três dependências**, todas de projetos estabelecidos:

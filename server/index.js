@@ -23,11 +23,14 @@ import {
   msgErro,
   post,
   diagnosticoRitmo,
-  comCredito,
+  comAvisos,
+  iniciarChecagemVersao,
+  VERSAO,
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
-const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.7.3" });
+const server = new McpServer({ name: "Jurisprudência TJRO", version: VERSAO });
+iniciarChecagemVersao();
 
 server.registerTool(
   "buscar_jurisprudencia_tjro",
@@ -176,7 +179,7 @@ server.registerTool(
       return {
         content: [{
           type: "text",
-          text: comCredito(
+          text: await comAvisos(
             formatBusca(data, a.consulta, tipo, ordenacao, pagina, porPagina, filtros, nota, !!a.termo_exato, temGrupos ? corpo.fields.query : "")
           ),
         }],
@@ -217,7 +220,7 @@ server.registerTool(
     try {
       const tipo = normTipos(a.tipo, ["ACÓRDÃO", "EMENTA", "VOTO", "RELATÓRIO"]);
       const data = await post(buildInteiroBody(a.nr_processo, tipo));
-      return { content: [{ type: "text", text: comCredito(formatInteiro(data, a.nr_processo)) }] };
+      return { content: [{ type: "text", text: await comAvisos(formatInteiro(data, a.nr_processo)) }] };
     } catch (e) {
       return { content: [{ type: "text", text: `Erro ao consultar o TJRO: ${msgErro(e)}` }], isError: true };
     }
