@@ -27,7 +27,7 @@ import {
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
-const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.7.2" });
+const server = new McpServer({ name: "Jurisprudência TJRO", version: "1.7.3" });
 
 server.registerTool(
   "buscar_jurisprudencia_tjro",
@@ -72,7 +72,7 @@ server.registerTool(
       "citações que ele usa para a próxima. O portal limita acesso automatizado: prefira UMA busca " +
       "bem construída (com por_pagina maior) a várias seguidas; um ciclo completo cabe em 4 a 6 consultas.",
     inputSchema: {
-      consulta: z.string().describe('Termo(s) de busca livres — pode ser "" quando usar grupos; termos soltos combinam por OR — use "a AND b" para exigir todos, ou termo_exato para a frase exata. Curinga no FIM da palavra é aceito e rende mais numa só busca: "consign*" pega consignado/consignação/consignatário (curinga no início não é permitido). Ex.: "dano moral negativação".'),
+      consulta: z.string().default("").describe('Termo(s) de busca livres — pode ser "" quando usar grupos; termos soltos combinam por OR — use "a AND b" para exigir todos, ou termo_exato para a frase exata. Curinga no FIM da palavra é aceito e rende mais numa só busca: "consign*" pega consignado/consignação/consignatário (curinga no início não é permitido). Ex.: "dano moral negativação".'),
       tipo: z
         .array(z.string())
         .optional()
