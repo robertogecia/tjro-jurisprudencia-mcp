@@ -41,6 +41,8 @@ import {
   comAvisos,
   iniciarChecagemVersao,
   _resetAvisoParaTeste,
+  recibo,
+  gravarRecibos,
   montarGrupos,
   termoParaQuery,
   GRUPOS_MAX,
@@ -1254,4 +1256,30 @@ test("comAvisos: aviso de versão sai uma vez, com endereço fixo (não o da API
   iniciarChecagemVersao({ atual: VERSAO, fetchImpl: respostaGithub(`v${VERSAO}`), env: {} });
   const semNova = await comAvisos("resultado 3");
   assert.doesNotMatch(semNova, /versão mais nova/);
+});
+
+// ---------------------------------------------------------------------------
+// v1.7.5 — recibos do inteiro teor (cadeia de custódia da citação).
+import { mkdtempSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+test("recibo: grava o texto limpo por id do documento; id estranho ou texto vazio não gera arquivo", () => {
+  const pasta = mkdtempSync(join(tmpdir(), "recibos-"));
+  const data = { hits: { hits: [
+    { _source: { id_processo_documento: 123, nr_processo: "7000000-00.2020.8.22.0001", tipo: "ACÓRDÃO",
+                 dtjulgamento: "2022-11-30", ds_modelo_documento: "<p>ACORDAM os Magistrados da 1&ordf; C&acirc;mara C&iacute;vel</p>" } },
+    { _source: { id_processo_documento: "../x", ds_modelo_documento: "t" } },
+    { _source: { id_processo_documento: 5, ds_modelo_documento: "" } },
+  ] } };
+  assert.equal(gravarRecibos(data, pasta), 1);
+  assert.deepEqual(readdirSync(pasta), ["123.json"]);
+  const r = JSON.parse(readFileSync(join(pasta, "123.json"), "utf8"));
+  assert.equal(r.texto, "ACORDAM os Magistrados da 1ª Câmara Cível");
+  assert.equal(r.data_julgamento, "30/11/2022");
+  assert.equal(recibo({ id_processo_documento: "1; rm -rf", ds_modelo_documento: "x" }), null);
+});
+
+test("recibo: pasta impossível de criar não derruba a pesquisa", () => {
+  assert.equal(gravarRecibos({ hits: { hits: [{ _source: { id_processo_documento: 1, ds_modelo_documento: "x" } }] } }, "/dev/null/x"), 0);
 });

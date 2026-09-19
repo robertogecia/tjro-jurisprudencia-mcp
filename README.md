@@ -268,6 +268,13 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
   para o `juris-back.tjro.jus.br` (o backend do próprio TJRO). A única outra
   conexão é o **aviso de versão nova** (abaixo): um `GET` sem dados seus a
   `api.github.com`, uma vez por sessão.
+- **Recibo do inteiro teor (anti-alucinação).** Toda vez que o inteiro teor de
+  um processo é aberto, o texto que o portal entregou fica gravado em
+  `~/.tjro-jurisprudencia-recibos/<id do documento>.json`. Serve para conferir
+  depois, por script ou a olho, se o trecho que foi para a peça está mesmo no
+  documento do tribunal, e não só no que a IA diz ter lido. É texto público de
+  acórdão e fica só na sua máquina; pode apagar a pasta quando quiser. Outra
+  pasta: variável de ambiente `TJRO_MCP_DIR_RECIBOS`.
 - **Aviso de versão nova.** Ao subir, a extensão pergunta ao GitHub qual é a
   release mais recente. Se houver uma mais nova que a instalada, a primeira
   resposta da sessão termina com uma linha avisando, com o endereço da página

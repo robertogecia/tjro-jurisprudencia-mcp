@@ -24,6 +24,7 @@ import {
   post,
   diagnosticoRitmo,
   comAvisos,
+  gravarRecibos,
   iniciarChecagemVersao,
   VERSAO,
 } from "./lib.js";
@@ -220,6 +221,7 @@ server.registerTool(
     try {
       const tipo = normTipos(a.tipo, ["ACÓRDÃO", "EMENTA", "VOTO", "RELATÓRIO"]);
       const data = await post(buildInteiroBody(a.nr_processo, tipo));
+      gravarRecibos(data);
       return { content: [{ type: "text", text: await comAvisos(formatInteiro(data, a.nr_processo)) }] };
     } catch (e) {
       return { content: [{ type: "text", text: `Erro ao consultar o TJRO: ${msgErro(e)}` }], isError: true };
