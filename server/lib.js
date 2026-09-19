@@ -1228,6 +1228,47 @@ export function _resetCreditoParaTeste() {
   creditoDado = false;
 }
 
+// ----------------------------------------------------------------- recibos ---
+// Cadeia de custódia da citação: cada peça de inteiro teor que o portal devolveu
+// fica gravada em disco, por id do documento, com o texto limpo. Serve para
+// conferir depois, por script, se o trecho que foi para a ficha/peça está mesmo
+// no documento que o tribunal entregou — e não só no que o modelo diz ter lido.
+// É texto público de acórdão; nada sai da máquina. Falha de gravação é silenciosa.
+export const dirRecibos = (env = process.env) =>
+  env.TJRO_MCP_DIR_RECIBOS || path.join(os.homedir(), ".tjro-jurisprudencia-recibos");
+
+export function recibo(s, agora = new Date()) {
+  const id = idDocumento(s);
+  const texto = limpar(s.ds_modelo_documento || "", 0);
+  if (!/^\d{1,20}$/.test(id) || !texto) return null;
+  return {
+    id_documento: id,
+    nr_processo: s.nr_processo ?? null,
+    tipo: s.tipo ?? null,
+    data_julgamento: s.dtjulgamento_str || dataBr(s.dtjulgamento || "") || null,
+    obtido_em: agora.toISOString(),
+    texto,
+  };
+}
+
+export function gravarRecibos(data, pasta = dirRecibos()) {
+  let n = 0;
+  try {
+    fs.mkdirSync(pasta, { recursive: true });
+    for (const h of data?.hits?.hits || []) {
+      const r = recibo(h._source || {});
+      if (!r) continue;
+      const tmp = path.join(pasta, `.${r.id_documento}.${process.pid}.tmp`);
+      fs.writeFileSync(tmp, JSON.stringify(r));
+      fs.renameSync(tmp, path.join(pasta, `${r.id_documento}.json`));
+      n++;
+    }
+  } catch {
+    /* recibo é conferência extra, nunca condição da pesquisa */
+  }
+  return n;
+}
+
 // ------------------------------------------------------- aviso de versão ---
 // Uma consulta ao GitHub (releases/latest) por processo, em segundo plano desde
 // a subida do servidor. Se houver versão MAIS NOVA, a primeira resposta ganha uma
@@ -1235,7 +1276,7 @@ export function _resetCreditoParaTeste() {
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.4";
+export const VERSAO = "1.7.5";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
