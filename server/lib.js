@@ -1037,6 +1037,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
         }
       }
     }
+    linhas.push(...linhasDeSinais(s, inteiro));
     linhas.push(`- ${rotulo}: ${trecho || "(sem trecho)"}`);
     out.push(linhas.join("\n"));
   });
@@ -1228,6 +1229,60 @@ export function _resetCreditoParaTeste() {
   creditoDado = false;
 }
 
+// --------------------------------------------------------- sinais do julgado ---
+// Crítica pública a MCPs de jurisprudência (21/09/2026): busca por palavra não
+// pesa autoridade. Aqui NÃO se inventa nota nem se reordena — um número calculado
+// por mim viraria autoridade aparente, e citador comercial já erra o "treatment".
+// O que se faz é etiquetar, de graça, dois sinais que já estão no texto trazido:
+// (1) precedente QUALIFICADO citado pelo julgado — serve de peso e de âncora para
+// a próxima busca (julgado do mesmo assunto cita a mesma súmula/tema); (2) peça de
+// 1º grau, que não é precedente. Zero requisição a mais: lê só o que já veio.
+const RE_ANCORAS = [
+  [/s[úu]mula\s+vinculante\s+n?[º°.]*\s*(\d{1,4})/gi, (n) => `Súmula Vinculante ${n}`],
+  [/s[úu]mula\s+n?[º°.]*\s*(\d{1,4})/gi, (n) => `Súmula ${n}`],
+  [/tema\s+(?:repetitivo\s+|de\s+repercuss[ãa]o\s+geral\s+)?n?[º°.]*\s*(\d{1,4}(?:\.\d{3})?)/gi,
+    (n) => `Tema ${n}`],
+  [/\bIRDR\s+n?[º°.]*\s*(\d{1,4})/gi, (n) => `IRDR ${n}`],
+  [/\bIAC\s+n?[º°.]*\s*(\d{1,4})/gi, (n) => `IAC ${n}`],
+];
+const ANCORAS_MAX = 6;
+
+// Precedentes qualificados citados no texto, sem repetir, na ordem em que aparecem.
+export function ancoras(texto, max = ANCORAS_MAX) {
+  const achado = new Map();
+  for (const [re, rotular] of RE_ANCORAS) {
+    re.lastIndex = 0;
+    for (const m of String(texto || "").matchAll(re)) {
+      const n = m[1].replace(/\./g, "");
+      if (!n || n === "0") continue;
+      const nome = rotular(n);
+      // "Súmula Vinculante 47" já casou na regra anterior: não duplicar como "Súmula 47".
+      if (nome.startsWith("Súmula ") && achado.has(`Súmula Vinculante ${n}`)) continue;
+      if (!achado.has(nome)) achado.set(nome, m.index ?? 0);
+    }
+  }
+  return [...achado.entries()].sort((a, b) => a[1] - b[1]).map(([nome]) => nome).slice(0, max);
+}
+
+// true quando a peça é do 1º grau (sentença/juízo de origem): decisão de juiz não
+// é precedente — serve para ver como um juízo decide, nunca para citar como tese.
+export const ehPrimeiroGrau = (s) =>
+  String(s.grau_jurisdicao ?? "") === "1" || String(s.tipo || "").toUpperCase() === "SENTENÇA";
+
+export function linhasDeSinais(s, textoInteiro) {
+  const linhas = [];
+  if (ehPrimeiroGrau(s))
+    linhas.push(
+      "- ⚠️ 1º grau: sentença não é precedente — serve para ver como o juízo decide e que fundamentos cita, não para citar como jurisprudência."
+    );
+  const a = ancoras(textoInteiro);
+  if (a.length)
+    linhas.push(
+      `- Cita: ${a.join(" · ")} — precedente qualificado citado pelo julgado (peso, e âncora para a próxima busca); confirme a situação de cada um na fonte.`
+    );
+  return linhas;
+}
+
 // ----------------------------------------------------------------- recibos ---
 // Cadeia de custódia da citação: cada peça de inteiro teor que o portal devolveu
 // fica gravada em disco, por id do documento, com o texto limpo. Serve para
@@ -1276,7 +1331,7 @@ export function gravarRecibos(data, pasta = dirRecibos()) {
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.5";
+export const VERSAO = "1.7.6";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
