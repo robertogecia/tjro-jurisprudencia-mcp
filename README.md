@@ -73,19 +73,23 @@ São três ferramentas:
 Jurisprudência do TJRO não tem autoridade em outro tribunal — para um processo
 que tramita em outro estado, use a fonte daquele tribunal ou uma base nacional.
 
-Esta extensão consulta o **próprio portal oficial** do TJRO, e por isso cobre o
-tribunal inteiro: todos os períodos, 1º e 2º grau. Algumas bases nacionais com
-busca semântica também indexam acórdãos do TJRO de 2020 em diante e podem
-complementar, se você tiver acesso — mas elas herdam o mesmo cadastro de
-metadados do tribunal, e não alcançam o que vem abaixo. O que a extensão entrega:
+Esta extensão consulta o **próprio portal oficial** do TJRO (JURIS), que indexa
+cerca de 4 milhões de documentos de 1º e 2º grau. Ela vale o que o portal indexa:
+o que não está no índice do JURIS não aparece aqui. O que a extensão entrega:
 
-- **Precedente anterior a 2020** — o portal oficial do TJRO tem histórico mais
-  longo do que a maioria das bases indexadas por terceiros.
-- **Texto de SENTENÇA (1º grau)** — esta extensão busca a peça do juízo de origem
-  como documento próprio; bases de jurisprudência costumam indexar só acórdãos
-  de 2º grau.
-- **Pesquisa sem gastar cota** — a API do próprio TJRO é pública e sem limite de
-  uso; não consome nenhuma cota de plano pago.
+- **Documentos anteriores a 2020** — o índice do portal inclui peças de anos
+  anteriores (numa busca de 21/09/2026 vieram sentenças de 2017 e 2018).
+- **Texto de SENTENÇA (1º grau)** — o índice tem a sentença do juízo de origem
+  como documento próprio, tanto de Juizados Especiais quanto de varas cíveis
+  (conferido em 21/09/2026, de 2017 a 2026, com link para a peça). Use
+  `tipo=["SENTENÇA"]` ou `grau=1`. **Sentença de 1º grau não é precedente:** serve
+  para ver como um juízo ou comarca decide e para achar os fundamentos que ele
+  cita, não para citar como jurisprudência. Nos resultados, o campo
+  "Relator(a)" de uma sentença é o(a) juiz(a).
+- **Sem custo por consulta** — a busca usa a API pública do próprio site do TJRO;
+  não consome cota de plano pago. Isso não quer dizer sem limite: o portal bloqueia
+  rajadas, e por isso a extensão limita o próprio ritmo (ver "Se a busca parar de
+  funcionar").
 - **Link direto para o portal oficial do tribunal** — em vez do link de um
   intermediário, útil quando a peça exige citar a fonte primária.
 - **Saber como um(a) desembargador(a) específico(a) decide uma tese** — antes de
@@ -284,10 +288,11 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
   página sua; nenhum dado da pesquisa ou do caso vai junto. Sem internet, o
   aviso simplesmente não aparece (a espera é de no máximo 2 segundos). Para
   desligar, defina a variável de ambiente `TJRO_MCP_SEM_AVISO_ATUALIZACAO=1`.
-- **Pouco código, fácil de ler.** Toda a lógica fica em dois arquivos:
-  [`server/lib.js`](server/lib.js) (a lógica e as chamadas de rede) e
-  [`server/index.js`](server/index.js) (só o registro das ferramentas MCP
-  e a chamada HTTP). Juntos, menos de 500 linhas.
+- **Código pequeno e legível, sem código gerado.** Toda a lógica fica em dois
+  arquivos, cerca de 1.600 linhas no total: [`server/lib.js`](server/lib.js)
+  (montagem da busca, chamadas ao portal, formatação, controle de ritmo, recibos
+  e aviso de versão) e [`server/index.js`](server/index.js) (só o registro das
+  três ferramentas MCP).
 - **Três dependências**, todas de projetos estabelecidos:
   [`@modelcontextprotocol/sdk`](https://www.npmjs.com/package/@modelcontextprotocol/sdk)
   (SDK oficial da Anthropic para servidores MCP),
