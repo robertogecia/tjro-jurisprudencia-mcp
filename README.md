@@ -8,13 +8,38 @@ do Tribunal de Justiça de Rondônia** (portal oficial JURIS), sem login e sem p
 
 ## Instalar (2 minutos)
 
-1. Baixe o arquivo **`Jurisprudencia-TJRO.mcpb`** na aba [Releases](../../releases) deste repositório.
-2. Abra o **Claude Desktop** → **Configurações** (Settings) → **Extensões** (Extensions).
-3. **Arraste o arquivo `.mcpb`** para essa janela — ou clique em *Instalar extensão* e selecione o arquivo.
-4. Confirme a instalação e, se pedir, **reinicie o Claude Desktop**.
-5. Pronto. Não precisa instalar mais nada (o Claude Desktop já traz o Node.js necessário).
+### ⬇️ [BAIXE AQUI O ARQUIVO DE INSTALAÇÃO (`Jurisprudencia-TJRO.mcpb`)](https://github.com/robertogecia/tjro-jurisprudencia-mcp/releases/latest/download/Jurisprudencia-TJRO.mcpb)
+
+> **⚠️ NÃO use o botão verde “Code → Download ZIP” desta página.** Aquele zip é o
+> código-fonte e **não instala**: o Claude Desktop recusa (ou não reconhece) o
+> arquivo. O que instala é só o **`.mcpb`** do link acima.
+
+Depois de baixar:
+
+1. **Dê dois cliques** no arquivo `Jurisprudencia-TJRO.mcpb`, no Finder (Mac) ou no
+   Explorador de Arquivos (Windows). O Claude Desktop abre sozinho na tela de
+   instalação — é o caminho mais simples.
+   *Se nada acontecer*, abra o **Claude Desktop → Configurações (Settings) →
+   Extensões (Extensions)** e **arraste o `.mcpb`** para essa janela (ou use
+   *Instalar extensão* / *Advanced settings → Extensions*).
+2. Confirme a instalação e, se o app pedir, **reinicie o Claude Desktop**.
+3. **Abra uma conversa nova** e peça: *"pesquise no TJRO ementas sobre dano moral por
+   negativação indevida"*. Se a extensão estiver ativa, o Claude pede permissão para
+   usar a ferramenta `buscar_jurisprudencia_tjro`.
+
+Não precisa instalar mais nada: o Claude Desktop já traz o Node.js necessário.
 
 > Requisitos: Claude Desktop recente, no **Mac ou Windows**.
+
+**Se não funcionar:**
+
+| Sintoma | O que é |
+|---|---|
+| Arrastei o zip do GitHub e não instalou | Era o código-fonte. Baixe o `.mcpb` no link acima. |
+| Baixei e virou uma pasta, ou o arquivo sumiu | Algum navegador/descompactador abre o `.mcpb` como zip. Baixe de novo com o botão direito → *Salvar link como*, e não descompacte. |
+| Instalou, mas o Claude diz que não tem a ferramenta | Abra uma **conversa nova** (conversa antiga não enxerga extensão instalada depois) e confira se a extensão está **ativada** em Configurações → Extensões. |
+| A busca responde que o portal exigiu **verificação de navegador** | É o filtro de segurança do TJRO recusando o acesso automatizado **da sua rede**. Não é excesso de consultas e não adianta esperar; veja ["Se a busca parar de funcionar"](#se-a-busca-parar-de-funcionar). |
+| Não uso o Claude Desktop | Veja ["Onde funciona"](#onde-funciona): no navegador e no celular a extensão não roda. |
 
 ## Onde funciona
 
@@ -214,8 +239,27 @@ a grafia exata do campo "Assunto:" de um resultado.
 
 ## Se a busca parar de funcionar
 
-O portal do TJRO tem um filtro de segurança que pode bloquear temporariamente o
-acesso automatizado quando detecta volume alto de requisições em pouco tempo —
+São dois casos diferentes, e a mensagem de erro agora diz qual é.
+
+**1. "Verificação de navegador" (desafio JavaScript).** O filtro de segurança do
+portal (F5/TSPD) exige que o acesso execute um desafio em JavaScript, coisa que só
+navegador faz. **Não é excesso de consultas: esperar não resolve**, e a extensão
+não executa esse desafio nem contorna a proteção do tribunal. Isso varia por rede,
+por provedor e pelo programa que faz o acesso — em 21/09/2026 um usuário em Sergipe
+foi barrado já na primeira busca do dia, enquanto na máquina do autor, no mesmo dia,
+a extensão consultava normalmente e só o `curl` era recusado. O que fazer:
+
+- **teste em outra rede** (outro Wi-Fi, ou o celular como roteador);
+- **use o portal no navegador** enquanto isso — ele continua aberto a qualquer um;
+- **peça liberação ao tribunal**: `suporte@tjro.jus.br`, assunto "Acesso Bloqueado",
+  citando o endpoint `juris-back.tjro.jus.br/search/varios_parametros/` e dizendo que
+  é uso próprio, de baixo volume, sobre dado público.
+
+Se acontecer com você, [abra uma issue](../../issues) dizendo o estado e o provedor:
+é assim que dá para saber o alcance real do filtro.
+
+**2. Bloqueio por volume ("robotização").** O mesmo filtro bloqueia
+temporariamente quando detecta muitas requisições em pouco tempo —
 mesmo sendo dados públicos. Se isso acontecer, a mensagem de erro vai dizer
 claramente que é um bloqueio por suspeita de automação, não um bug. Não é uma
 falha permanente: costuma liberar sozinho depois de um tempo. A extensão já

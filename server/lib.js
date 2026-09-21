@@ -430,7 +430,28 @@ export const msgErro = (e) =>
 // Interpreta uma resposta 200 OK que não é JSON. O portal tem um WAF que devolve
 // uma página HTML "Página Bloqueada" em vez de erro HTTP quando suspeita de
 // automação — merece mensagem própria, não um erro cru de JSON.parse.
+// Desafio de navegador (F5 BIG-IP / TSPD): a página bloqueada traz o carregador
+// `/TSPD/` e `loaderConfig`. Aqui isso NÃO é problema de ritmo — esperar não
+// resolve, e subir a escada do disjuntor só pune o usuário por algo que ele não
+// causou. Relato de 21/09/2026 (defensor público em Sergipe): 2 buscas no dia,
+// bloqueio já na 1ª, navegador abrindo o portal normalmente no mesmo IP. Nesta
+// máquina, no mesmo dia, o cliente da extensão passava e só o `curl` era barrado
+// — ou seja, o que o filtro recusa varia por cliente e por rede, e a ferramenta
+// não tem como saber qual é o caso: diz o que observou e para por aí.
+export const ehDesafioNavegador = (texto) => /\/TSPD\/|loaderConfig/i.test(texto || "");
+
 export function diagnosticarRespostaNaoJson(contentType, texto) {
+  if (ehDesafioNavegador(texto)) {
+    return (
+      "O portal do TJRO respondeu com uma verificação de navegador (desafio JavaScript do " +
+      "filtro de segurança), em vez dos dados. Isso NÃO é excesso de consultas: esperar não " +
+      "resolve, e a extensão não executa esse desafio nem contorna a proteção do tribunal. " +
+      "Costuma variar por rede e por provedor — vale testar em outra conexão. Enquanto isso, " +
+      "o portal continua funcionando no navegador (juris.tjro.jus.br). Para acesso pela " +
+      "extensão, o caminho é pedir liberação ao tribunal: suporte@tjro.jus.br, assunto " +
+      '"Acesso Bloqueado", citando o endpoint juris-back.tjro.jus.br/search/varios_parametros/.'
+    );
+  }
   if (/robotiza|p[aá]gina bloqueada|\bstic\b/i.test(texto || "")) {
     return (
       'O portal do TJRO bloqueou esta consulta por suspeita de automação ("robotização"). ' +
@@ -707,7 +728,7 @@ export function reservarRequisicao(agora = Date.now()) {
 // forma quase permanente, já que a escada só relaxa após 100 sucessos consecutivos.
 // opts.esperaMinimaMs: piso do cooldown, para respeitar um cabeçalho Retry-After.
 export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?", opts = {}) {
-  const { subirEscada = true, esperaMinimaMs = 0 } = opts;
+  const { subirEscada = true, esperaMinimaMs = 0, tipo = null } = opts;
   transacao((e) => {
     // Fotografa o que estava acontecendo ANTES de mexer no estado — é isso que
     // permite descobrir depois se o bloqueio veio de rajada nossa ou de algo
@@ -716,6 +737,8 @@ export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?", o
     const incidente = {
       quando: agora,
       operacao,
+      tipo, // "desafio_navegador" | "robotizacao" | "status_NNN" — o diagnóstico separa os dois
+
       nivel: e.indiceJanela,
       janelaS: Math.round(ESCADA_JANELA_MS[e.indiceJanela] / 1000),
       reqsUltimos60s: reqs.filter((t) => agora - t <= 60_000).length,
@@ -775,12 +798,22 @@ export function diagnosticoRitmo(agora = Date.now()) {
     linhas.push(
       `- ${quando} · ${i.reqsUltimos60s} consultas no minuto anterior, ` +
         `${i.reqsNaJanela} na janela de ${fmtDuracao(i.janelaS * 1000)} · ` +
-        `intervalo desde a anterior: ${intervalo} · operação: ${i.operacao}`
+        `intervalo desde a anterior: ${intervalo} · operação: ${i.operacao}` +
+        (i.tipo === "desafio_navegador" ? " · **verificação de navegador** (não é ritmo)" : "")
     );
   }
 
   // Leitura do padrão: rajada nossa (muitas consultas antes) x algo fora do
   // nosso controle (bloqueio mesmo com pouquíssimo tráfego daqui).
+  const desafios = inc.filter((i) => i.tipo === "desafio_navegador").length;
+  if (desafios) {
+    linhas.push(
+      `\n**${desafios} de ${inc.length} foram verificação de navegador** (desafio JavaScript do filtro ` +
+        "de segurança do portal), e não excesso de consultas: aumentar o intervalo entre buscas não " +
+        "resolve esse caso. O portal segue abrindo no navegador; o que varia é a rede e o programa que " +
+        "faz o acesso. Para liberar o acesso pela extensão, o caminho é o tribunal (suporte@tjro.jus.br)."
+    );
+  }
   const media = inc.reduce((n, i) => n + i.reqsUltimos60s, 0) / inc.length;
   const comPoucoTrafego = inc.filter((i) => i.reqsUltimos60s <= 2).length;
   linhas.push(
@@ -877,12 +910,17 @@ export async function post(body, fetchImpl = fetch) {
     }
   }
   const ehBloqueio = !!texto && /robotiza|p[aá]gina bloqueada|\bstic\b/i.test(texto);
+  // Desafio de navegador não é ritmo: arma o disjuntor curto (não adianta insistir
+  // em rajada), mas NÃO alarga a janela — a escada existe para volume, e punir o
+  // ritmo aqui deixaria a ferramenta lenta por um motivo que não é o dela.
+  const ehDesafio = !!texto && ehDesafioNavegador(texto);
   if (ehBloqueio || r.status === 403 || r.status === 429) {
     const campos = body?.fields || {};
     const operacao = campos.nr_processo && !campos.query ? "inteiro_teor" : "busca";
     const retryAfterMs = (Number(r.headers.get("retry-after")) || 0) * 1000;
     registrarBloqueioDetectado(Date.now(), operacao, {
-      subirEscada: ehBloqueio, // status seco arma o disjuntor, mas não alarga a janela
+      subirEscada: ehBloqueio && !ehDesafio, // status seco e desafio de navegador armam o disjuntor, sem alargar a janela
+      tipo: ehDesafio ? "desafio_navegador" : ehBloqueio ? "robotizacao" : "status_" + r.status,
       esperaMinimaMs: retryAfterMs,
     });
   }
@@ -1331,7 +1369,7 @@ export function gravarRecibos(data, pasta = dirRecibos()) {
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.6";
+export const VERSAO = "1.7.7";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

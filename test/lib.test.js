@@ -43,6 +43,7 @@ import {
   _resetAvisoParaTeste,
   recibo,
   ancoras,
+  ehDesafioNavegador,
   ehPrimeiroGrau,
   linhasDeSinais,
   gravarRecibos,
@@ -1324,4 +1325,29 @@ test("sinais entram na saída da busca, sem nota nem reordenação inventadas", 
   assert.match(out, /não é precedente/);
   assert.match(out, /Cita: Súmula 385/);
   assert.doesNotMatch(out, /\b(nota|score|pontuação)\s*[:=]/i);
+});
+
+// ---------------------------------------------------------------------------
+// v1.7.7 — desafio de navegador (F5/TSPD) separado de bloqueio por ritmo.
+// HTML real devolvido pelo portal em 21/09/2026 (trecho).
+const HTML_TSPD = `<!DOCTYPE html><html lang="pt-br"><head><title>STIC - Página Bloqueada</title>
+<script>(function(){ window["loaderConfig"] = "/TSPD/?type=20"; })();</script></head>
+<body>Detectamos robotização neste acesso.</body></html>`;
+
+test("desafio de navegador: mensagem própria, sem mandar 'aguarde alguns minutos'", () => {
+  assert.equal(ehDesafioNavegador(HTML_TSPD), true);
+  assert.equal(ehDesafioNavegador("Página Bloqueada por robotização"), false);
+  const msg = diagnosticarRespostaNaoJson("text/html", HTML_TSPD);
+  assert.match(msg, /verificação de navegador/i);
+  assert.match(msg, /esperar não resolve/i);
+  assert.doesNotMatch(msg, /aguarde alguns minutos/i);
+  assert.match(msg, /suporte@tjro\.jus\.br/);
+  // não promete contornar a proteção
+  assert.doesNotMatch(msg, /headless|puppeteer|cookie|contorn(ar|o)\b/i);
+});
+
+test("bloqueio por robotização (sem TSPD) mantém a mensagem antiga, de ritmo", () => {
+  const msg = diagnosticarRespostaNaoJson("text/html", "STIC - Página Bloqueada: robotização detectada");
+  assert.match(msg, /aguarde alguns minutos/i);
+  assert.doesNotMatch(msg, /verificação de navegador/i);
 });
