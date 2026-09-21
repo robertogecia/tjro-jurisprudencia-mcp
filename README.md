@@ -272,6 +272,17 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
   para o `juris-back.tjro.jus.br` (o backend do próprio TJRO). A única outra
   conexão é o **aviso de versão nova** (abaixo): um `GET` sem dados seus a
   `api.github.com`, uma vez por sessão.
+- **Sinais do julgado, sem nota inventada.** Cada resultado que cita um precedente
+  qualificado (súmula, súmula vinculante, tema repetitivo ou de repercussão geral,
+  IRDR, IAC) ganha uma linha `Cita: …` com o que foi citado. Serve para dois fins:
+  é indício de peso do julgado e é **âncora para a próxima busca** — julgados do
+  mesmo assunto costumam citar a mesma súmula, mesmo escrevendo o fato com outras
+  palavras. Em 83 acórdãos reais (21/09/2026), 24 traziam alguma citação dessas.
+  Resultado de 1º grau ganha o aviso de que **sentença não é precedente**. A leitura
+  é feita no texto que já veio, sem nenhuma requisição a mais, e a extensão **não
+  pontua nem reordena** os resultados: nota calculada por máquina vira autoridade
+  aparente, e a situação de cada precedente citado (vigente, superado, distinguido)
+  continua sendo para conferir na fonte.
 - **Recibo do inteiro teor (anti-alucinação).** Toda vez que o inteiro teor de
   um processo é aberto, o texto que o portal entregou fica gravado em
   `~/.tjro-jurisprudencia-recibos/<id do documento>.json`. Serve para conferir

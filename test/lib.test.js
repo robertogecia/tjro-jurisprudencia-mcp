@@ -42,6 +42,9 @@ import {
   iniciarChecagemVersao,
   _resetAvisoParaTeste,
   recibo,
+  ancoras,
+  ehPrimeiroGrau,
+  linhasDeSinais,
   gravarRecibos,
   montarGrupos,
   termoParaQuery,
@@ -1282,4 +1285,43 @@ test("recibo: grava o texto limpo por id do documento; id estranho ou texto vazi
 
 test("recibo: pasta impossível de criar não derruba a pesquisa", () => {
   assert.equal(gravarRecibos({ hits: { hits: [{ _source: { id_processo_documento: 1, ds_modelo_documento: "x" } }] } }, "/dev/null/x"), 0);
+});
+
+// ---------------------------------------------------------------------------
+// v1.7.6 — sinais do julgado: âncoras (precedente qualificado citado) e 1º grau.
+test("ancoras: acha súmula/tema/IRDR/IAC no texto, na ordem do texto, sem repetir", () => {
+  const t = "Aplica-se a Súmula 385 do STJ e o Tema Repetitivo 1.300, além da Súmula Vinculante 47 " +
+            "e do IRDR nº 15. A Súmula 385 é citada de novo, e ainda o IAC 5.";
+  assert.deepEqual(ancoras(t), ["Súmula 385", "Tema 1300", "Súmula Vinculante 47", "IRDR 15", "IAC 5"]);
+  assert.deepEqual(ancoras("sem precedente qualificado nenhum"), []);
+  assert.deepEqual(ancoras(""), []);
+  assert.deepEqual(ancoras(null), []);
+});
+
+test("ancoras: 'Súmula Vinculante 47' não vira também 'Súmula 47'; número com ponto normaliza; teto respeitado", () => {
+  assert.deepEqual(ancoras("Súmula Vinculante 47"), ["Súmula Vinculante 47"]);
+  assert.deepEqual(ancoras("Tema 1.300"), ["Tema 1300"]);
+  assert.deepEqual(ancoras("Tema de repercussão geral nº 69"), ["Tema 69"]);
+  const muitos = "Súmula 1 Súmula 2 Súmula 3 Súmula 4 Súmula 5 Súmula 6 Súmula 7 Súmula 8";
+  assert.equal(ancoras(muitos).length, 6);
+  assert.equal(ancoras(muitos, 2).length, 2);
+});
+
+test("1º grau é etiquetado como não-precedente; acórdão de câmara não ganha etiqueta nenhuma", () => {
+  assert.equal(ehPrimeiroGrau({ tipo: "SENTENÇA" }), true);
+  assert.equal(ehPrimeiroGrau({ tipo: "ACÓRDÃO", grau_jurisdicao: "1" }), true);
+  assert.equal(ehPrimeiroGrau({ tipo: "ACÓRDÃO", grau_jurisdicao: "2" }), false);
+  assert.match(linhasDeSinais({ tipo: "SENTENÇA" }, "")[0], /não é precedente/);
+  assert.deepEqual(linhasDeSinais({ tipo: "ACÓRDÃO", grau_jurisdicao: "2" }, "texto sem âncora"), []);
+});
+
+test("sinais entram na saída da busca, sem nota nem reordenação inventadas", () => {
+  const hit = (extra) => ({ _source: Object.assign({
+    id_processo_documento: 1, nr_processo: "70000000020208220001", tipo: "SENTENÇA", grau_jurisdicao: "1",
+    ds_modelo_documento: "conforme a Súmula 385 do STJ, a negativação preexistente afasta o dano",
+  }, extra) });
+  const out = formatBusca({ hits: { total: { value: 1 }, hits: [hit({})] } }, "x", ["SENTENÇA"], "recentes", 1, 10);
+  assert.match(out, /não é precedente/);
+  assert.match(out, /Cita: Súmula 385/);
+  assert.doesNotMatch(out, /\b(nota|score|pontuação)\s*[:=]/i);
 });
