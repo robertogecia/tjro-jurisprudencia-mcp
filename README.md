@@ -298,17 +298,18 @@ Se acontecer com você, [abra uma issue](../../issues) dizendo o estado, o prove
 e a **versão instalada** (o `diagnostico_ritmo_tjro` mostra na primeira linha): é
 assim que dá para saber o alcance real do filtro.
 
-**Bloqueio já na primeira consulta, repetidamente.** Em 21 e 22/09/2026 chegaram
-dois relatos (Sergipe e Rondônia) de bloqueio logo na 1ª busca do dia, com o
-diagnóstico mostrando 1 consulta no minuto anterior — enquanto, no mesmo horário,
-a mesma busca passava normalmente a partir de outra rede. Isso não é excesso de
-consultas: é o filtro do tribunal recusando aquela conexão (IP compartilhado pelo
-provedor, rede corporativa, reputação do endereço). Desde a v1.7.8, bloqueio assim
-**não aperta mais o limite de ritmo** da ferramenta (antes, cada um subia um degrau
-e deixava a pesquisa mais lenta sem motivo). O que resolve é testar outra rede e,
-se for a sua conexão, pedir liberação ao tribunal. **A extensão não troca de IP, de
-identificação (User-Agent) nem usa proxy para contornar o filtro**, e sugestões nesse
-sentido não serão aceitas: seria burlar a proteção do portal.
+**⚠️ Situação em 22/09/2026: a extensão está sendo barrada pelo filtro do TJRO
+para todos.** Chegaram relatos de bloqueio logo na 1ª busca (Sergipe e Rondônia),
+e o diagnóstico inicial do autor foi que a causa estava na rede de quem relatou.
+**Esse diagnóstico estava errado**: a comparação foi feita com um cliente diferente
+do que a extensão usa. O teste controlado de 22/09 mostrou a causa real: o filtro
+do portal recusa requisições que se identificam como ferramenta automatizada — e a
+extensão, por princípio, se identifica honestamente. Com a identificação de
+navegador, a mesma requisição passa. Ou seja: não adianta trocar de rede nem
+esperar. O autor está decidindo como resolver sem contornar a proteção do tribunal
+às escondidas; enquanto isso, a pesquisa pelo site (juris.tjro.jus.br) continua
+funcionando normalmente no navegador. Desde a v1.7.8, esses bloqueios não apertam
+mais o limite de ritmo da ferramenta.
 
 **2. Bloqueio por volume ("robotização").** O mesmo filtro bloqueia
 temporariamente quando detecta muitas requisições em pouco tempo —
