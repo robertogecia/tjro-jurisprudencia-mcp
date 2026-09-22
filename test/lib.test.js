@@ -1351,3 +1351,37 @@ test("bloqueio por robotização (sem TSPD) mantém a mensagem antiga, de ritmo"
   assert.match(msg, /aguarde alguns minutos/i);
   assert.doesNotMatch(msg, /verificação de navegador/i);
 });
+
+// ---------------------------------------------------------------------------
+// v1.7.8 — bloqueio após consulta isolada não sobe a escada (relatos de 21 e 22/09/2026).
+test("bloqueio logo na 1ª consulta isolada arma o disjuntor mas NÃO alarga a janela", async () => {
+  limparTudo();
+  await assert.rejects(() =>
+    post({ fields: { query: "x" } }, async () => respostaFalsa(200, "text/html", HTML_BLOQUEIO_STIC))
+  );
+  const rel = diagnosticoRitmo();
+  assert.match(rel, /BLOQUEADO/); // pausa continua armando
+  assert.match(rel, /Nível atual: 1 de 5/); // mas a janela não apertou
+  assert.match(rel, /versão instalada: \d+\.\d+\.\d+/);
+});
+
+test("bloqueio depois de rajada desta máquina continua subindo a escada", async () => {
+  limparTudo();
+  const agora = Date.now();
+  for (let i = 0; i < 3; i++) reservarRequisicao(agora - 30_000 + i * 2_500);
+  await assert.rejects(() =>
+    post({ fields: { query: "x" } }, async () => respostaFalsa(200, "text/html", HTML_BLOQUEIO_STIC))
+  );
+  assert.match(diagnosticoRitmo(), /Nível atual: 2 de 5/);
+});
+
+test("diagnóstico com bloqueios sem volume manda testar outra rede e recusa contornar o filtro", async () => {
+  limparTudo();
+  await assert.rejects(() =>
+    post({ fields: { query: "x" } }, async () => respostaFalsa(200, "text/html", HTML_BLOQUEIO_STIC))
+  );
+  const rel = diagnosticoRitmo();
+  assert.match(rel, /OUTRA rede/);
+  assert.match(rel, /suporte@tjro\.jus\.br/);
+  assert.match(rel, /não troca de IP/);
+});

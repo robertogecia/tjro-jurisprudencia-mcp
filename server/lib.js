@@ -727,6 +727,19 @@ export function reservarRequisicao(agora = Date.now()) {
 // um 403 espúrio (proxy corporativo, hiccup de CDN) não pode alargar a janela de
 // forma quase permanente, já que a escada só relaxa após 100 sucessos consecutivos.
 // opts.esperaMinimaMs: piso do cooldown, para respeitar um cabeçalho Retry-After.
+// Bloqueio só ALARGA a janela quando veio depois de volume desta máquina. Relatos
+// de 21 e 22/09/2026 (defensor em Sergipe; advogado em Rondônia): bloqueio já na
+// 1ª consulta isolada, repetido, e a escada subindo a cada um — no 2º relato a
+// ferramenta chegou ao nível 3 (10 consultas a cada 10 min) sem nunca ter feito
+// rajada. A escada existe para responder a volume; subir por bloqueio que não
+// veio de volume só deixa a ferramenta lenta pelo motivo errado. O disjuntor (a
+// pausa depois do bloqueio) continua armando sempre — isso não muda.
+export const MIN_REQS_PARA_ESCADA = 3; // consultas desta máquina no minuto anterior
+export function consultasRecentes(agora = Date.now(), ms = 60_000) {
+  const e = comTrava(() => lerEstado());
+  return (e.requisicoes || []).filter((t) => agora - t <= ms).length;
+}
+
 export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?", opts = {}) {
   const { subirEscada = true, esperaMinimaMs = 0, tipo = null } = opts;
   transacao((e) => {
@@ -766,7 +779,7 @@ export function diagnosticoRitmo(agora = Date.now()) {
   const janelaMs = ESCADA_JANELA_MS[e.indiceJanela];
   const naJanela = (e.requisicoes || []).filter((t) => agora - t <= janelaMs).length;
   const linhas = [
-    "**Controle de ritmo do MCP TJRO**",
+    `**Controle de ritmo do MCP TJRO** (versão instalada: ${VERSAO})`,
     `- Nível atual: ${e.indiceJanela + 1} de ${ESCADA_JANELA_MS.length} ` +
       `(limite: ${JANELA_MAX_REQS} consultas a cada ${fmtDuracao(janelaMs)})`,
     `- Orçamento usado agora: ${naJanela}/${JANELA_MAX_REQS} nesta janela`,
@@ -824,7 +837,12 @@ export function diagnosticoRitmo(agora = Date.now()) {
     linhas.push(
       "A maioria dos bloqueios veio com pouquíssimo tráfego desta máquina — indício de que a " +
         "causa está fora do controle desta ferramenta (outro equipamento no mesmo IP, ou o " +
-        "próprio portal apertando o filtro). Espaçar mais as consultas aqui tende a não resolver."
+        "próprio portal apertando o filtro). Espaçar mais as consultas aqui tende a não resolver. " +
+        "Desde a v1.7.8, bloqueio assim não aperta mais o limite de ritmo. O teste que decide é " +
+        "repetir uma única busca em OUTRA rede (celular como roteador): se passar lá, o filtro do " +
+        "TJRO está recusando a sua conexão, e o caminho é pedir liberação ao tribunal " +
+        "(suporte@tjro.jus.br, assunto \"Acesso Bloqueado\"). Esta ferramenta não troca de IP " +
+        "nem de identificação para contornar o filtro, e não deve."
     );
   } else if (media >= 5) {
     linhas.push(
@@ -919,7 +937,9 @@ export async function post(body, fetchImpl = fetch) {
     const operacao = campos.nr_processo && !campos.query ? "inteiro_teor" : "busca";
     const retryAfterMs = (Number(r.headers.get("retry-after")) || 0) * 1000;
     registrarBloqueioDetectado(Date.now(), operacao, {
-      subirEscada: ehBloqueio && !ehDesafio, // status seco e desafio de navegador armam o disjuntor, sem alargar a janela
+      // status seco, desafio de navegador e bloqueio após consulta isolada armam o
+      // disjuntor, sem alargar a janela (ver MIN_REQS_PARA_ESCADA)
+      subirEscada: ehBloqueio && !ehDesafio && consultasRecentes() >= MIN_REQS_PARA_ESCADA,
       tipo: ehDesafio ? "desafio_navegador" : ehBloqueio ? "robotizacao" : "status_" + r.status,
       esperaMinimaMs: retryAfterMs,
     });
@@ -1369,7 +1389,7 @@ export function gravarRecibos(data, pasta = dirRecibos()) {
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.7";
+export const VERSAO = "1.7.8";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
