@@ -379,6 +379,16 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
   pontua nem reordena** os resultados: nota calculada por máquina vira autoridade
   aparente, e a situação de cada precedente citado (vigente, superado, distinguido)
   continua sendo para conferir na fonte.
+- **Quando algo dá errado, a própria mensagem de erro diz o que fazer.** Se
+  houver versão mais nova da extensão, o erro avisa (ela pode já ter a correção).
+  E, se o problema continuar, traz um link para **relatar o erro ao autor**: ele
+  abre o formulário de relato do GitHub já preenchido com dados técnicos —
+  versão, sistema operacional, tipo do erro e o estado do limitador de ritmo.
+  **Nada é enviado sozinho**: você lê, completa se quiser e decide se envia (é
+  preciso ter conta gratuita no GitHub). O relato é público, por isso ele **nunca
+  leva o texto da sua busca nem número de processo** — a busca pode descrever o
+  caso de um cliente. Erro de "muitas consultas em pouco tempo" não traz link de
+  relato, porque se resolve esperando.
 - **Recibo do inteiro teor (anti-alucinação).** Toda vez que o inteiro teor de
   um processo é aberto, o texto que o portal entregou fica gravado em
   `~/.tjro-jurisprudencia-recibos/<id do documento>.json`. Serve para conferir

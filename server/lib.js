@@ -1389,7 +1389,7 @@ export function gravarRecibos(data, pasta = dirRecibos()) {
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.8";
+export const VERSAO = "1.7.9";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
@@ -1436,7 +1436,7 @@ export async function checarVersaoNova({
 }
 
 export const avisoAtualizacao = (novaVersao) =>
-  `_Há uma versão mais nova desta extensão (v${novaVersao}; a instalada é a v${VERSAO}): ${RELEASES_PAGINA}_`;
+  `_Há uma versão mais nova desta extensão (v${novaVersao}; a instalada é a v${VERSAO})._ Baixe em: ${RELEASES_PAGINA}`;
 
 let checagem = null;
 let avisoDado = false;
@@ -1453,6 +1453,83 @@ export async function comAvisos(texto) {
   avisoDado = true;
   return `${base}\n\n${avisoAtualizacao(nova)}`;
 }
+// ------------------------------------------------- ajuda quando algo falha ---
+// Pedido do autor (22/09/2026): diante de um problema, a extensão sugere ao
+// usuário (a) atualizar, se houver versão mais nova, e (b) relatar o erro. Os
+// relatos que chegavam vinham sem versão, sem tipo de erro e às vezes com
+// sugestões de contornar o filtro do tribunal. O link abre o formulário de issue
+// do GitHub JÁ PREENCHIDO, para o usuário ler e decidir enviar — nada é enviado
+// sozinho. O texto leva só dado técnico: versão, sistema, tipo do erro e o
+// estado do limitador. NUNCA o texto da busca nem número de processo: a busca
+// pode descrever o caso de um cliente, e issue no GitHub é pública.
+export const ISSUES_NOVA = "https://github.com/robertogecia/tjro-jurisprudencia-mcp/issues/new";
+
+export function tipoDoErro(mensagem) {
+  const m = String(mensagem || "");
+  if (/verificação de navegador/i.test(m)) return "desafio_navegador";
+  if (/robotiza|suspeita de automação/i.test(m)) return "bloqueio_robotizacao";
+  if (/evitando novas tentativas|Muitas consultas em pouco tempo/i.test(m)) return "limite_de_ritmo";
+  if (/tempo esgotado/i.test(m)) return "timeout";
+  if (/^HTTP \d{3}/i.test(m)) return "http_" + m.slice(5, 8);
+  if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|certificate|CERT_/i.test(m)) return "rede_ou_certificado";
+  return "outro";
+}
+
+// Erros que o próprio usuário resolve esperando não merecem relato.
+const SEM_RELATO = new Set(["limite_de_ritmo"]);
+
+export function linkRelato(tipo, agora = Date.now(), plataforma = process.platform) {
+  let estado = "";
+  try {
+    const e = comTrava(() => lerEstado());
+    const inc = e.incidentes || [];
+    const tipos = inc.map((i) => i.tipo || "sem_tipo").slice(-5).join(", ") || "nenhum";
+    const recentes = (e.requisicoes || []).filter((t) => agora - t <= 60_000).length;
+    estado =
+      `- Nível do limitador: ${e.indiceJanela + 1} de ${ESCADA_JANELA_MS.length}\n` +
+      `- Consultas no último minuto: ${recentes}\n` +
+      `- Bloqueios registrados: ${inc.length} (últimos tipos: ${tipos})\n`;
+  } catch {
+    estado = "- Estado do limitador: indisponível\n";
+  }
+  const titulo = `Erro ${tipo} na v${VERSAO}`;
+  const corpo =
+    "**Relato gerado pela extensão** (revise antes de enviar; não inclua nome de parte, " +
+    "número de processo nem o texto da sua busca — issues são públicas)\n\n" +
+    `- Versão: ${VERSAO}\n- Sistema: ${plataforma}\n- Tipo do erro: ${tipo}\n` + estado +
+    "\n**O que eu estava fazendo:** \n\n" +
+    "**Estado e provedor de internet (ajuda a saber o alcance do filtro do TJRO):** \n\n" +
+    "**Testei em outra rede (ex.: celular como roteador)?** sim / não — resultado: \n";
+  return `${ISSUES_NOVA}?title=${encodeURIComponent(titulo)}&body=${encodeURIComponent(corpo)}`;
+}
+
+// Monta a mensagem de erro final: a causa, e em seguida o que o usuário pode fazer.
+// URL sempre no fim da linha e FORA do itálico: um "_" colado no endereço é
+// incorporado ao link por vários leitores de markdown e leva a uma página 404.
+export async function comAjudaNoErro(mensagem, opcoes = {}) {
+  const tipo = tipoDoErro(mensagem);
+  const partes = [`Erro ao consultar o TJRO: ${mensagem}`];
+  let nova = null;
+  try {
+    nova = await iniciarChecagemVersao(opcoes.checagem);
+  } catch {
+    nova = null;
+  }
+  if (nova)
+    partes.push(
+      `_Há uma versão mais nova desta extensão (v${nova}; a instalada é a v${VERSAO}), e ela pode já ` +
+        `corrigir este problema._ Baixe em: ${RELEASES_PAGINA}`
+    );
+  if (!SEM_RELATO.has(tipo))
+    partes.push(
+      `_Se o problema continuar${nova ? " depois de atualizar" : ""}, dá para relatá-lo ao autor por este ` +
+        `formulário, que já vem preenchido só com dados técnicos (versão, sistema e tipo do erro) — ` +
+        `revise antes de enviar, porque o relato fica público (é preciso ter conta gratuita no GitHub)._ ` +
+        `Formulário: ${linkRelato(tipo)}`
+    );
+  return partes.join("\n\n");
+}
+
 export function _resetAvisoParaTeste() {
   checagem = null;
   avisoDado = false;

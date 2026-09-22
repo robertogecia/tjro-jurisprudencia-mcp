@@ -24,6 +24,7 @@ import {
   post,
   diagnosticoRitmo,
   comAvisos,
+  comAjudaNoErro,
   gravarRecibos,
   iniciarChecagemVersao,
   VERSAO,
@@ -186,7 +187,7 @@ server.registerTool(
         }],
       };
     } catch (e) {
-      return { content: [{ type: "text", text: `Erro ao consultar o TJRO: ${msgErro(e)}` }], isError: true };
+      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
     }
   }
 );
@@ -224,7 +225,7 @@ server.registerTool(
       gravarRecibos(data);
       return { content: [{ type: "text", text: await comAvisos(formatInteiro(data, a.nr_processo)) }] };
     } catch (e) {
-      return { content: [{ type: "text", text: `Erro ao consultar o TJRO: ${msgErro(e)}` }], isError: true };
+      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
     }
   }
 );
