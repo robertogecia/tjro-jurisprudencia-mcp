@@ -1,45 +1,84 @@
-# Jurisprudência TJRO no Claude — instalação em 1 clique
+# Jurisprudência TJRO no Claude
 
 [![tests](https://github.com/robertogecia/tjro-jurisprudencia-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/robertogecia/tjro-jurisprudencia-mcp/actions/workflows/test.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Extensão MCP que dá ao **Claude Desktop** a capacidade de **pesquisar jurisprudência
-do Tribunal de Justiça de Rondônia** (portal oficial JURIS), sem login e sem programar.
+Isto ensina qualquer advogado — **sem conhecimento nenhum de informática** — a dar
+ao Claude a capacidade de pesquisar jurisprudência do TJRO (o portal oficial JURIS)
+dentro da própria conversa, sem precisar abrir o site do tribunal. Sem login e sem
+mexer em código.
 
-## Instalar (2 minutos)
+## Antes de começar: você já tem o "Claude Desktop"?
 
-### ⬇️ [BAIXE AQUI O ARQUIVO DE INSTALAÇÃO (`Jurisprudencia-TJRO.mcpb`)](https://github.com/robertogecia/tjro-jurisprudencia-mcp/releases/latest/download/Jurisprudencia-TJRO.mcpb)
+O "Claude Desktop" é o **programa** do Claude que você instala no computador
+(diferente de usar o Claude pelo site, no navegador). É ele que faz a pesquisa
+funcionar — sem ele instalado, nada dos passos abaixo funciona.
 
-> **⚠️ NÃO use o botão verde “Code → Download ZIP” desta página.** Aquele zip é o
-> código-fonte e **não instala**: o Claude Desktop recusa (ou não reconhece) o
-> arquivo. O que instala é só o **`.mcpb`** do link acima.
+- **Já tenho** (uso o Claude num aplicativo separado, não numa aba do navegador) →
+  pule para "Passo 1" abaixo.
+- **Não sei, ou uso só pelo navegador** → baixe primeiro o programa em
+  **[claude.com/download](https://claude.com/download)**, instale, crie sua conta
+  (ou entre com a que já tem) e volte aqui.
 
-Depois de baixar:
+## Instalar a pesquisa do TJRO (3 passos, uns 2 minutos)
 
-1. **Dê dois cliques** no arquivo `Jurisprudencia-TJRO.mcpb`, no Finder (Mac) ou no
-   Explorador de Arquivos (Windows). O Claude Desktop abre sozinho na tela de
-   instalação — é o caminho mais simples.
-   *Se nada acontecer*, abra o **Claude Desktop → Configurações (Settings) →
-   Extensões (Extensions)** e **arraste o `.mcpb`** para essa janela (ou use
-   *Instalar extensão* / *Advanced settings → Extensions*).
-2. Confirme a instalação e, se o app pedir, **reinicie o Claude Desktop**.
-3. **Abra uma conversa nova** e peça: *"pesquise no TJRO ementas sobre dano moral por
-   negativação indevida"*. Se a extensão estiver ativa, o Claude pede permissão para
-   usar a ferramenta `buscar_jurisprudencia_tjro`.
+### Passo 1 — Baixe o arquivo
 
-Não precisa instalar mais nada: o Claude Desktop já traz o Node.js necessário.
+### ⬇️ [CLIQUE AQUI PARA BAIXAR (`Jurisprudencia-TJRO.mcpb`)](https://github.com/robertogecia/tjro-jurisprudencia-mcp/releases/latest/download/Jurisprudencia-TJRO.mcpb)
 
-> Requisitos: Claude Desktop recente, no **Mac ou Windows**.
+Um arquivo chamado `Jurisprudencia-TJRO.mcpb` vai para a pasta **Downloads** (ou
+"Transferências") do seu computador — o mesmo lugar onde caem os PDFs que você
+baixa da internet. Você não precisa abri-lo agora, só saber onde ele está.
 
-**Se não funcionar:**
+> **⚠️ Atenção a um erro comum:** se em vez de clicar no botão acima você navegou
+> até a página principal do projeto no GitHub e clicou no botão verde
+> **"Code" → "Download ZIP"**, isso baixou o arquivo errado (o código-fonte do
+> programa, que não serve para instalar). Apague esse zip e use só o link do
+> botão acima.
 
-| Sintoma | O que é |
+### Passo 2 — Abra o arquivo baixado
+
+1. Abra a pasta **Downloads** do seu computador (no Mac, o ícone de seta para
+   baixo na barra de baixo da tela costuma abrir direto nela; no Windows, é
+   "Este Computador" → "Downloads", ou o ícone de pasta na barra de tarefas).
+2. Procure o arquivo **`Jurisprudencia-TJRO.mcpb`** e **dê dois cliques** nele,
+   como você faria para abrir uma foto ou um PDF.
+3. O programa Claude Desktop deve abrir sozinho, numa tela perguntando se você
+   quer instalar a extensão "Jurisprudência TJRO". Clique em **Instalar**
+   (ou "Install").
+
+   *Se, em vez disso, nada abrir:* o passo alternativo é abrir você mesmo o
+   Claude Desktop, ir em **Configurações** (o ícone de engrenagem) →
+   **Extensões**, e arrastar o arquivo `Jurisprudencia-TJRO.mcpb` para dentro
+   dessa janela com o mouse.
+
+### Passo 3 — Confirme e teste
+
+1. Se o Claude Desktop pedir para **reiniciar**, feche e abra o programa de novo.
+2. Comece uma **conversa nova** (bem importante: se você estava numa conversa
+   já aberta antes de instalar, abra outra).
+3. Digite algo como:
+   > *pesquise no TJRO acórdãos sobre dano moral por negativação indevida*
+4. O Claude deve perguntar se pode usar a ferramenta de pesquisa do TJRO — é
+   sinal de que funcionou. Autorize, e a busca aparece na conversa.
+
+**Pronto.** Você não precisa instalar mais nada além do Claude Desktop — o
+programa já traz tudo que a extensão precisa para rodar.
+
+> Funciona em computador **Mac ou Windows**. Em celular ou tablet, e no Claude
+> pelo site (sem instalar o programa), esta pesquisa não funciona — veja por quê
+> em ["Onde funciona"](#onde-funciona) mais abaixo.
+
+## Algo deu errado? Veja aqui antes de pedir ajuda
+
+| O que aconteceu | O que fazer |
 |---|---|
-| Arrastei o zip do GitHub e não instalou | Era o código-fonte. Baixe o `.mcpb` no link acima. |
-| Baixei e virou uma pasta, ou o arquivo sumiu | Algum navegador/descompactador abre o `.mcpb` como zip. Baixe de novo com o botão direito → *Salvar link como*, e não descompacte. |
-| Instalou, mas o Claude diz que não tem a ferramenta | Abra uma **conversa nova** (conversa antiga não enxerga extensão instalada depois) e confira se a extensão está **ativada** em Configurações → Extensões. |
-| A busca responde que o portal exigiu **verificação de navegador** | É o filtro de segurança do TJRO recusando o acesso automatizado **da sua rede**. Não é excesso de consultas e não adianta esperar; veja ["Se a busca parar de funcionar"](#se-a-busca-parar-de-funcionar). |
-| Não uso o Claude Desktop | Veja ["Onde funciona"](#onde-funciona): no navegador e no celular a extensão não roda. |
+| Baixei um arquivo, mas quando abro vira uma **pasta cheia de arquivos**, e não a tela de instalação | Você baixou o arquivo errado (o código-fonte, não o instalador). Volte ao topo desta página e use o botão **"CLIQUE AQUI PARA BAIXAR"**. |
+| Dei dois cliques no `.mcpb` e **não abriu nada** | Tente o caminho alternativo do Passo 2: abra o Claude Desktop → Configurações → Extensões, e arraste o arquivo para essa janela. |
+| Instalei, mas quando pergunto sobre o TJRO o Claude diz que **não tem essa ferramenta** | Confira se você abriu uma **conversa nova** depois de instalar (conversa antiga não percebe a instalação). Confira também se a extensão aparece **ativada** em Configurações → Extensões. |
+| A pesquisa dá erro dizendo que o portal pediu uma **"verificação de navegador"** | Não é um erro da extensão, nem falta de instalação correta: é o próprio site do TJRO recusando o acesso automático vindo da sua internet. Não adianta tentar de novo na hora — veja a explicação em ["Se a busca parar de funcionar"](#se-a-busca-parar-de-funcionar). |
+| Não tenho o Claude Desktop, só uso pelo site (navegador) ou pelo celular | Essa pesquisa **não funciona** nesses casos — precisa ser o programa instalado no computador. Veja ["Onde funciona"](#onde-funciona). |
+| Nenhuma linha acima resolveu | Peça ajuda a alguém com mais prática em informática do escritório, mostrando esta tabela — ou [abra uma issue](../../issues) aqui no GitHub descrevendo o que aconteceu. |
 
 ## Onde funciona
 
