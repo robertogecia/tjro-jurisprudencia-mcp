@@ -225,6 +225,16 @@ quatro a seis consultas:
    mais certeiro, veja que palavras e que citações ele usa, e busque de novo com
    elas. É o que acha o vocabulário da própria câmara, que nenhuma lista prevê.
 
+**Pesquisa longa com agentes (Cowork ou Claude Code).** Se você usa o Claude
+com subagentes, uma pesquisa extensa (várias teses, leitura de muitos inteiros
+teores) pode ir para **um agente separado, no modelo Sonnet**, que dá conta da
+busca e da leitura com custo menor; deixe a conclusão (o que o julgado decide e
+se serve ao caso) para a conversa principal. Duas regras: **um agente por vez
+consultando o TJRO, nunca vários em paralelo** — todos dividem o mesmo limite de
+ritmo desta máquina, e rajada é o que dispara o bloqueio do portal; e peça ao
+agente que abra o inteiro teor antes de afirmar o que um acórdão decide. Na
+conversa comum do Claude Desktop não há subagentes, e nada disso é necessário.
+
 O filtro `assunto` (classificação da Tabela Processual Unificada do CNJ) funciona,
 mas é **ruidoso**: o assunto é escolhido na distribuição, cada processo tem vários
 e o recurso herda o do processo principal. No teste real, 7 dos 20 primeiros
