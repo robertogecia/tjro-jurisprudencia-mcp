@@ -47,6 +47,8 @@ import {
   tipoDoErro,
   linkRelato,
   comAjudaNoErro,
+  bloqueioSistematico,
+  registrarSucesso as _registrarSucessoSis,
   ISSUES_NOVA,
   ehPrimeiroGrau,
   linhasDeSinais,
@@ -1385,8 +1387,8 @@ test("diagnóstico com bloqueios sem volume manda testar outra rede e recusa con
     post({ fields: { query: "x" } }, async () => respostaFalsa(200, "text/html", HTML_BLOQUEIO_STIC))
   );
   const rel = diagnosticoRitmo();
-  assert.match(rel, /OUTRA rede/);
-  assert.match(rel, /suporte@tjro\.jus\.br/);
+  assert.match(rel, /trocar de conexão não resolve/);
+  assert.match(rel, /juris\.tjro\.jus\.br/);
   assert.match(rel, /não troca de IP/);
 });
 
@@ -1442,4 +1444,60 @@ test("nenhum link sai colado em sublinhado (vira parte do endereço e dá 404)",
     checagem: { atual: VERSAO, fetchImpl: async () => ({ ok: true, json: async () => ({ tag_name: "v99.0.0" }) }), env: {} },
   });
   for (const url of out.match(/https:\/\/\S+/g)) assert.doesNotMatch(url, /_$/, url);
+});
+
+// ---------------------------------------------------------------------------
+// v1.7.10 — aviso em linguagem simples e detecção de bloqueio sistemático,
+// aprendida pelo histórico compartilhado entre sessões (22/09/2026).
+const bloquearUmaVez = () =>
+  assert.rejects(() => post({ fields: { query: "x" } }, async () => respostaFalsa(200, "text/html", HTML_BLOQUEIO_STIC)));
+
+test("bloqueio: primeira linha diz ao leigo que foi o anti-robô do TJRO, não erro dele", async () => {
+  limparTudo();
+  await bloquearUmaVez();
+  const out = await comAjudaNoErro(diagnosticarRespostaNaoJson("text/html", HTML_BLOQUEIO_STIC), {
+    checagem: { env: { TJRO_MCP_SEM_AVISO_ATUALIZACAO: "1" } },
+  });
+  const [primeira, segunda] = out.split("\n\n");
+  assert.match(primeira, /O site do TJRO bloqueou esta pesquisa/);
+  assert.match(primeira, /não foi erro seu/);
+  assert.match(segunda, /passageiro/); // 1 bloqueio só: ainda não é sistemático
+  assert.match(out, /Detalhe técnico:/);
+});
+
+test("2 bloqueios com pouco tráfego e nenhum sucesso no meio = sistemático; um sucesso zera", async () => {
+  limparTudo();
+  assert.equal(bloqueioSistematico(), null);
+  await bloquearUmaVez();
+  assert.equal(bloqueioSistematico(), null);
+  // 2º bloqueio: o disjuntor está armado, então registra direto (é o que post() faria depois da pausa)
+  registrarBloqueioDetectado(Date.now(), "busca", { subirEscada: false });
+  const sis = bloqueioSistematico();
+  assert.ok(sis && sis.vezes === 2, JSON.stringify(sis));
+  const out = await comAjudaNoErro(diagnosticarRespostaNaoJson("text/html", HTML_BLOQUEIO_STIC), {
+    checagem: { env: { TJRO_MCP_SEM_AVISO_ATUALIZACAO: "1" } },
+  });
+  assert.match(out, /já aconteceu 2 vezes/);
+  assert.match(out, /esperar\s+ou tentar de novo agora não resolve/);
+  assert.match(out, /https:\/\/juris\.tjro\.jus\.br/);
+  _registrarSucessoSis(); // uma consulta que deu certo (em qualquer sessão) desfaz o diagnóstico
+  assert.equal(bloqueioSistematico(), null);
+});
+
+test("erro que não é bloqueio (HTTP 502) não ganha o aviso de anti-robô", async () => {
+  limparTudo();
+  const out = await comAjudaNoErro("HTTP 502", { checagem: { env: { TJRO_MCP_SEM_AVISO_ATUALIZACAO: "1" } } });
+  assert.match(out, /^Erro ao consultar o TJRO: HTTP 502/);
+  assert.doesNotMatch(out, /anti-robô/);
+});
+
+test("com bloqueio sistemático, nada na mensagem manda aguardar", async () => {
+  limparTudo();
+  await bloquearUmaVez();
+  registrarBloqueioDetectado(Date.now(), "busca", { subirEscada: false });
+  const out = await comAjudaNoErro(diagnosticarRespostaNaoJson("text/html", HTML_BLOQUEIO_STIC), {
+    checagem: { env: { TJRO_MCP_SEM_AVISO_ATUALIZACAO: "1" } },
+  });
+  assert.doesNotMatch(out, /aguarde alguns minutos/i);
+  assert.doesNotMatch(decodeURIComponent(out), /outra rede/i);
 });

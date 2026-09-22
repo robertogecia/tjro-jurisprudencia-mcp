@@ -446,8 +446,7 @@ export function diagnosticarRespostaNaoJson(contentType, texto) {
       "O portal do TJRO respondeu com uma verificação de navegador (desafio JavaScript do " +
       "filtro de segurança), em vez dos dados. Isso NÃO é excesso de consultas: esperar não " +
       "resolve, e a extensão não executa esse desafio nem contorna a proteção do tribunal. " +
-      "Costuma variar por rede e por provedor — vale testar em outra conexão. Enquanto isso, " +
-      "o portal continua funcionando no navegador (juris.tjro.jus.br). Para acesso pela " +
+      "Enquanto isso, o portal continua funcionando no navegador (juris.tjro.jus.br). Para acesso pela " +
       "extensão, o caminho é pedir liberação ao tribunal: suporte@tjro.jus.br, assunto " +
       '"Acesso Bloqueado", citando o endpoint juris-back.tjro.jus.br/search/varios_parametros/.'
     );
@@ -532,6 +531,7 @@ const ESTADO_PADRAO = {
   incidentes: [],
   ultimaRequisicaoEm: 0,
   totalRequisicoes: 0,
+  ultimoSucessoEm: 0, // epoch(ms) da última consulta que trouxe dados (qualquer sessão)
 };
 
 // Pausa síncrona curta (só usada para esperar a trava, na casa dos milissegundos).
@@ -608,6 +608,7 @@ function lerEstado() {
     indiceJanela: Math.max(0, Math.min(num(d.indiceJanela, 0), ESCADA_JANELA_MS.length - 1)),
     backoffMs: Math.max(BACKOFF_INICIAL_MS, Math.min(num(d.backoffMs, BACKOFF_INICIAL_MS), BACKOFF_MAXIMO_MS)),
     incidentes: Array.isArray(d.incidentes) ? d.incidentes.slice(-MAX_INCIDENTES) : [],
+    ultimoSucessoEm: Math.max(0, Math.min(num(d.ultimoSucessoEm, 0), agora + MARGEM_FUTURO_MS)),
   };
 }
 
@@ -838,11 +839,11 @@ export function diagnosticoRitmo(agora = Date.now()) {
       "A maioria dos bloqueios veio com pouquíssimo tráfego desta máquina — indício de que a " +
         "causa está fora do controle desta ferramenta (outro equipamento no mesmo IP, ou o " +
         "próprio portal apertando o filtro). Espaçar mais as consultas aqui tende a não resolver. " +
-        "Desde a v1.7.8, bloqueio assim não aperta mais o limite de ritmo. O teste que decide é " +
-        "repetir uma única busca em OUTRA rede (celular como roteador): se passar lá, o filtro do " +
-        "TJRO está recusando a sua conexão, e o caminho é pedir liberação ao tribunal " +
-        "(suporte@tjro.jus.br, assunto \"Acesso Bloqueado\"). Esta ferramenta não troca de IP " +
-        "nem de identificação para contornar o filtro, e não deve."
+        "Desde a v1.7.8, bloqueio assim não aperta mais o limite de ritmo. Em 22/09/2026 o autor " +
+        "confirmou que o filtro do TJRO está recusando as consultas desta extensão em si (pela forma " +
+        "como ela se identifica), e não a rede de quem usa: trocar de conexão não resolve. O caminho " +
+        "é pesquisar pelo site (juris.tjro.jus.br) e acompanhar as versões novas. Esta ferramenta não " +
+        "troca de IP nem se disfarça para contornar o filtro sem que você decida isso."
     );
   } else if (media >= 5) {
     linhas.push(
@@ -857,9 +858,28 @@ export function diagnosticoRitmo(agora = Date.now()) {
 // deve continuar penalizando o uso normal futuro) e conta pra relaxar a escada
 // — depois de uma sequência longa sem novo bloqueio no nível atual, afrouxa um
 // degrau (o bloqueio anterior pode ter sido pontual, ou o TJRO ajustou o WAF).
+// Bloqueio SISTEMÁTICO (22/09/2026): o filtro do TJRO muda com o tempo, e há
+// fases em que ele recusa TODA consulta desta extensão, qualquer que seja o ritmo.
+// A ferramenta aprende isso pelo próprio histórico, que é compartilhado por todas
+// as sessões do computador: 2+ bloqueios nas últimas 24 h, cada um com pouco
+// tráfego (<= 2 consultas no minuto anterior), sem nenhuma consulta bem-sucedida
+// entre o primeiro deles e agora. Nesse caso, insistir ou esperar minutos não
+// resolve, e o usuário leigo precisa saber disso em linguagem simples.
+export const JANELA_SISTEMATICO_MS = 24 * 60 * 60_000;
+export function bloqueioSistematico(agora = Date.now()) {
+  const e = comTrava(() => lerEstado());
+  const recentes = (e.incidentes || []).filter(
+    (i) => agora - i.quando <= JANELA_SISTEMATICO_MS && (i.reqsUltimos60s ?? 99) <= 2
+  );
+  const semSucessoDepois = recentes.filter((i) => i.quando > (e.ultimoSucessoEm || 0));
+  if (semSucessoDepois.length < 2) return null;
+  return { vezes: semSucessoDepois.length, desde: semSucessoDepois[0].quando };
+}
+
 export function registrarSucesso() {
   transacao((e) => {
     e.backoffMs = BACKOFF_INICIAL_MS;
+    e.ultimoSucessoEm = Date.now();
     e.sucessos += 1;
     if (e.sucessos >= SUCESSOS_PARA_RELAXAR) {
       e.sucessos = 0; // reseta sempre, mesmo já no nível mínimo (não cresce sem limite)
@@ -1389,7 +1409,7 @@ export function gravarRecibos(data, pasta = dirRecibos()) {
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.9";
+export const VERSAO = "1.7.10";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
@@ -1498,8 +1518,8 @@ export function linkRelato(tipo, agora = Date.now(), plataforma = process.platfo
     "número de processo nem o texto da sua busca — issues são públicas)\n\n" +
     `- Versão: ${VERSAO}\n- Sistema: ${plataforma}\n- Tipo do erro: ${tipo}\n` + estado +
     "\n**O que eu estava fazendo:** \n\n" +
-    "**Estado e provedor de internet (ajuda a saber o alcance do filtro do TJRO):** \n\n" +
-    "**Testei em outra rede (ex.: celular como roteador)?** sim / não — resultado: \n";
+    "**A pesquisa funciona direto no site do TJRO (juris.tjro.jus.br), pelo navegador?** sim / não\n\n" +
+    "**Desde quando acontece?** \n";
   return `${ISSUES_NOVA}?title=${encodeURIComponent(titulo)}&body=${encodeURIComponent(corpo)}`;
 }
 
@@ -1508,7 +1528,37 @@ export function linkRelato(tipo, agora = Date.now(), plataforma = process.platfo
 // incorporado ao link por vários leitores de markdown e leva a uma página 404.
 export async function comAjudaNoErro(mensagem, opcoes = {}) {
   const tipo = tipoDoErro(mensagem);
-  const partes = [`Erro ao consultar o TJRO: ${mensagem}`];
+  const partes = [];
+  if (tipo === "desafio_navegador" || tipo === "bloqueio_robotizacao") {
+    let sis = null;
+    try {
+      sis = bloqueioSistematico(opcoes.agora);
+    } catch {
+      sis = null;
+    }
+    const quando = sis ? new Date(sis.desde).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "";
+    partes.push(
+      "🚫 **O site do TJRO bloqueou esta pesquisa.** Quem bloqueou foi o sistema anti-robô do próprio " +
+        "tribunal — não foi erro seu, nem falha de instalação."
+    );
+    partes.push(
+      sis
+        ? `Isso já aconteceu ${sis.vezes} vezes desde ${quando}, sempre com poucas pesquisas e sem nenhuma ` +
+            "que tenha dado certo no meio: o tribunal está recusando as consultas desta extensão, e esperar " +
+            "ou tentar de novo agora não resolve. Enquanto isso, a pesquisa funciona direto no site do " +
+            "tribunal, pelo navegador: https://juris.tjro.jus.br"
+        : "Pode ser passageiro. Aguarde alguns minutos antes de tentar de novo; se voltar a acontecer, " +
+            "a pesquisa também funciona direto no site do tribunal: https://juris.tjro.jus.br"
+    );
+  }
+  // Com o aviso leigo presente, o detalhe técnico é só a classificação: a mensagem
+  // técnica antiga manda "aguardar alguns minutos", o que contradiz o aviso quando
+  // o bloqueio é sistemático.
+  partes.push(
+    partes.length
+      ? `Detalhe técnico: o portal respondeu com a página de bloqueio do filtro anti-robô (tipo: ${tipo}).`
+      : `Erro ao consultar o TJRO: ${mensagem}`
+  );
   let nova = null;
   try {
     nova = await iniciarChecagemVersao(opcoes.checagem);
@@ -1529,6 +1579,7 @@ export async function comAjudaNoErro(mensagem, opcoes = {}) {
     );
   return partes.join("\n\n");
 }
+
 
 export function _resetAvisoParaTeste() {
   checagem = null;
