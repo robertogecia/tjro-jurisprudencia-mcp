@@ -308,7 +308,16 @@ extensão, por princípio, se identifica honestamente. Com a identificação de
 navegador, a mesma requisição passa. Ou seja: não adianta trocar de rede nem
 esperar. O autor está decidindo como resolver sem contornar a proteção do tribunal
 às escondidas; enquanto isso, a pesquisa pelo site (juris.tjro.jus.br) continua
-funcionando normalmente no navegador. Desde a v1.7.8, esses bloqueios não apertam
+funcionando normalmente no navegador.
+
+**Desde a v1.7.10, a própria extensão reconhece essa situação e avisa em linguagem
+simples.** Quando o portal bloqueia, a primeira linha da resposta diz que foi o
+sistema anti-robô do tribunal, e não um erro de quem usa. Se o bloqueio se repete
+com poucas pesquisas e sem nenhuma que tenha dado certo no meio (2 ou mais vezes em
+24 horas, contando todas as conversas abertas no computador), a extensão conclui que
+é sistemático e diz com clareza que esperar não resolve, indicando o site do
+tribunal. Basta uma pesquisa dar certo, em qualquer conversa, para esse diagnóstico
+se desfazer sozinho. Desde a v1.7.8, esses bloqueios não apertam
 mais o limite de ritmo da ferramenta.
 
 **2. Bloqueio por volume ("robotização").** O mesmo filtro bloqueia
@@ -457,6 +466,17 @@ absoluto da pasta:
 ```bash
 claude mcp add tjro_jurisprudencia -- node /caminho/para/tjro-jurisprudencia-mcp/server/index.js
 ```
+
+## Apoie o projeto
+
+A extensão é gratuita e de código aberto, e é mantida no tempo livre de um advogado:
+cada mudança do portal do TJRO exige diagnóstico, correção, testes e versão nova.
+Se ela economiza o seu tempo, você pode apoiar a continuidade do trabalho com
+qualquer valor, por **Pix**:
+
+> **Chave Pix (e-mail):** `robertogrecia@hotmail.com`
+
+O apoio é voluntário e não muda nada no uso: a extensão continua igual para todos.
 
 ## Autor
 
