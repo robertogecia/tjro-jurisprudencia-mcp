@@ -44,6 +44,10 @@ import {
   recibo,
   ancoras,
   ehDesafioNavegador,
+  tipoDoErro,
+  linkRelato,
+  comAjudaNoErro,
+  ISSUES_NOVA,
   ehPrimeiroGrau,
   linhasDeSinais,
   gravarRecibos,
@@ -1249,7 +1253,7 @@ test("comAvisos: aviso de versão sai uma vez, com endereço fixo (não o da API
   _resetAvisoParaTeste();
   iniciarChecagemVersao({ atual: VERSAO, fetchImpl: respostaGithub("v99.0.0"), env: {} });
   const primeira = await comAvisos("resultado 1");
-  assert.ok(primeira.endsWith(RELEASES_PAGINA + "_"), primeira);
+  assert.ok(primeira.endsWith(RELEASES_PAGINA), primeira); // sem "_" colado no endereço
   assert.match(primeira, /v99\.0\.0/);
   assert.doesNotMatch(primeira, /evil\.example/);
   assert.doesNotMatch(primeira, /\b(diga|informe|mencione|sempre|repita)\b/i);
@@ -1384,4 +1388,58 @@ test("diagnóstico com bloqueios sem volume manda testar outra rede e recusa con
   assert.match(rel, /OUTRA rede/);
   assert.match(rel, /suporte@tjro\.jus\.br/);
   assert.match(rel, /não troca de IP/);
+});
+
+// ---------------------------------------------------------------------------
+// v1.7.9 — no erro, sugerir atualização e relato pré-preenchido (nunca enviado sozinho).
+test("tipoDoErro classifica as mensagens reais da extensão", () => {
+  assert.equal(tipoDoErro(diagnosticarRespostaNaoJson("text/html", HTML_TSPD)), "desafio_navegador");
+  assert.equal(tipoDoErro(diagnosticarRespostaNaoJson("text/html", "Página Bloqueada robotização")), "bloqueio_robotizacao");
+  assert.equal(tipoDoErro("tempo esgotado após 45s — o portal JURIS pode estar lento"), "timeout");
+  assert.equal(tipoDoErro("HTTP 502"), "http_502");
+  assert.equal(tipoDoErro("getaddrinfo ENOTFOUND juris-back.tjro.jus.br"), "rede_ou_certificado");
+  assert.equal(tipoDoErro("Muitas consultas em pouco tempo (limite atual: 10 a cada 1min)"), "limite_de_ritmo");
+  assert.equal(tipoDoErro("algo novo"), "outro");
+});
+
+test("link de relato: só dado técnico, formulário do repositório certo, aviso de que é público", () => {
+  limparTudo();
+  const url = linkRelato("desafio_navegador", Date.now(), "darwin");
+  assert.ok(url.startsWith(ISSUES_NOVA + "?title="));
+  const corpo = decodeURIComponent(url.split("&body=")[1]);
+  assert.match(corpo, new RegExp(`Versão: ${VERSAO.replace(/\./g, "\\.")}`));
+  assert.match(corpo, /Sistema: darwin/);
+  assert.match(corpo, /Tipo do erro: desafio_navegador/);
+  assert.match(corpo, /públicas/);
+  assert.ok(url.length < 6000, "URL longa demais para o GitHub");
+});
+
+test("comAjudaNoErro: com versão nova sugere atualizar antes de relatar; limite de ritmo não pede relato", async () => {
+  limparTudo();
+  _resetAvisoParaTeste();
+  const comNova = await comAjudaNoErro("HTTP 502", {
+    checagem: { atual: VERSAO, fetchImpl: async () => ({ ok: true, json: async () => ({ tag_name: "v99.0.0" }) }), env: {} },
+  });
+  assert.match(comNova, /^Erro ao consultar o TJRO: HTTP 502/);
+  assert.match(comNova, /v99\.0\.0/);
+  assert.match(comNova, /depois de atualizar/);
+  assert.match(comNova, /issues\/new\?title=/);
+  // o texto é informação ao usuário, não ordem ao modelo
+  assert.doesNotMatch(comNova, /\b(diga|informe ao usuário|mencione|sempre|repita)\b/i);
+
+  _resetAvisoParaTeste();
+  const ritmo = await comAjudaNoErro("Muitas consultas em pouco tempo (limite atual: 10 a cada 1min)", {
+    checagem: { atual: VERSAO, fetchImpl: async () => ({ ok: true, json: async () => ({ tag_name: `v${VERSAO}` }) }), env: {} },
+  });
+  assert.doesNotMatch(ritmo, /issues\/new/);
+  assert.doesNotMatch(ritmo, /versão mais nova/);
+});
+
+test("nenhum link sai colado em sublinhado (vira parte do endereço e dá 404)", async () => {
+  limparTudo();
+  _resetAvisoParaTeste();
+  const out = await comAjudaNoErro("HTTP 502", {
+    checagem: { atual: VERSAO, fetchImpl: async () => ({ ok: true, json: async () => ({ tag_name: "v99.0.0" }) }), env: {} },
+  });
+  for (const url of out.match(/https:\/\/\S+/g)) assert.doesNotMatch(url, /_$/, url);
 });
