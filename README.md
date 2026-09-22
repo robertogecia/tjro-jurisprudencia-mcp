@@ -218,6 +218,14 @@ quatro a seis consultas:
    `grupos = [["dano moral"], ["negativação", "inscrição indevida", "cadastro de inadimplentes"]]`.
    No teste real, isso trouxe **37% mais julgados** do que o termo único, na mesma
    consulta. Curinga só no fim de palavra única (`consign*`).
+   **Cada grupo descreve o assunto ou o fato, nunca a conclusão do julgado.** Medido
+   em 22/09/2026, em 7 teses reais com buscas escritas às cegas: um grupo com as
+   palavras da conclusão ("não equivale", "é inócua", "não afasta") zerou a busca numa
+   tese e escondeu o acórdão certo noutra, que voltou ao 1º lugar só tirando esse
+   grupo. Cada acórdão escreve a conclusão de um jeito; a conclusão se confere lendo
+   o resultado. No mesmo teste, texto livre e grupos acharam o acórdão certo entre os
+   10 primeiros em 4 de 7 teses cada, errando em teses diferentes: se uma tese
+   decisiva não apareceu numa forma, tente a outra.
 2. **Âncora pela citação.** Julgados do mesmo assunto costumam citar a mesma
    súmula, tema repetitivo ou IRDR, mesmo quando descrevem o fato com outras
    palavras. Um grupo como `["Súmula 385"]` acha esses julgados.
