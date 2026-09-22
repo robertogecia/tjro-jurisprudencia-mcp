@@ -316,8 +316,10 @@ do que a extensão usa. O teste controlado de 22/09 mostrou a causa real: o filt
 do portal recusa requisições que se identificam como ferramenta automatizada — e a
 extensão, por princípio, se identifica honestamente. Com a identificação de
 navegador, a mesma requisição passa. Ou seja: não adianta trocar de rede nem
-esperar. O autor está decidindo como resolver sem contornar a proteção do tribunal
-às escondidas; enquanto isso, a pesquisa pelo site (juris.tjro.jus.br) continua
+esperar. **Decisão do autor:** a extensão continua se identificando honestamente — ela não
+será disfarçada de navegador, nem como opção, porque isso seria contornar a
+proteção do tribunal. O caminho escolhido é pedir ao TJRO a liberação formal do
+acesso. Enquanto isso, a pesquisa pelo site (juris.tjro.jus.br) continua
 funcionando normalmente no navegador.
 
 **Desde a v1.7.10, a própria extensão reconhece essa situação e avisa em linguagem
