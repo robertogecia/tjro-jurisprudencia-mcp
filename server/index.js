@@ -103,6 +103,7 @@ server.registerTool(
             "os grupos se somam por AND (e somam por AND à consulta, se houver). Expressão com espaço vira frase " +
             'exata. Curinga só no FIM de palavra única ("consign*"). A ferramenta monta os parênteses e escapa cada ' +
             `termo — não escreva sintaxe. Até ${GRUPOS_MAX} grupos e ${TERMOS_POR_GRUPO_MAX} termos por grupo. ` +
+            'Cada grupo descreve o ASSUNTO ou o FATO (o instituto, o objeto, a conduta), nunca a CONCLUSÃO do julgado: cada acórdão escreve a conclusão de um jeito ("não equivale", "é inócua", "não afasta"), e um grupo assim derruba a busca — medido em 22/09/2026, em 2 de 7 teses: numa zerou os resultados, noutra o acórdão certo sumiu e voltou ao 1º lugar só tirando o grupo da conclusão. ' +
             'Ex.: [["dano moral"],["negativação","inscrição indevida","cadastro de inadimplentes"]].'
         ),
       assunto: z
