@@ -249,6 +249,15 @@ ritmo desta máquina, e rajada é o que dispara o bloqueio do portal; e peça ao
 agente que abra o inteiro teor antes de afirmar o que um acórdão decide. Na
 conversa comum do Claude Desktop não há subagentes, e nada disso é necessário.
 
+**Economize consultas: o limite do TJRO é de volume.** Num teste de 23/09/2026,
+18 consultas espaçadas de 5 a 8 segundos foram bloqueadas em cerca de 3 minutos:
+espaçar não basta, o que conta é quantas saem em poucos minutos, somando todas as
+conversas abertas nesta máquina. Por isso: prefira 2 ou 3 buscas amplas (até 50
+resultados cada) a várias pequenas; escolha pela ementa e pelo trecho que a busca
+já mostra; e abra o inteiro teor só do que vai citar. **Inteiro teor já aberto nos
+últimos 7 dias volta do disco, sem nova consulta** (a resposta avisa "Do cache
+local"), então reabrir o mesmo acórdão não gasta nada.
+
 O filtro `assunto` (classificação da Tabela Processual Unificada do CNJ) funciona,
 mas é **ruidoso**: o assunto é escolhido na distribuição, cada processo tem vários
 e o recurso herda o do processo principal. No teste real, 7 dos 20 primeiros

@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  lerCacheInteiro,
+  gravarCacheInteiro,
+  CACHE_INTEIRO_MS,
   ehTurmaRecursal,
   orgaoMultiplo,
   buildBuscaBody,
@@ -1516,4 +1519,16 @@ test("sinal de Turma Recursal só para órgão de Juizado", () => {
   assert.ok(!ehTurmaRecursal({ ds_orgao_julgador_colegiado: "2ª Câmara Especial" }));
   assert.match(linhasDeSinais({ ds_orgao_julgador_colegiado: "1ª Turma Recursal" }, "").join(), /Juizados Especiais/);
   assert.equal(linhasDeSinais({ ds_orgao_julgador_colegiado: "1ª Câmara Cível" }, "").length, 0);
+});
+
+test("cache do inteiro teor: grava, lê, expira e ignora zero resultado", () => {
+  const pasta = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-cache-"));
+  const data = { hits: { hits: [{ _source: { nr_processo: "1" } }] } };
+  const t0 = new Date("2026-09-23T12:00:00Z");
+  assert.ok(gravarCacheInteiro("0801104-68.2024.8.22.0000", ["EMENTA", "ACÓRDÃO"], data, pasta, t0));
+  const c = lerCacheInteiro("08011046820248220000", ["ACÓRDÃO", "EMENTA"], pasta, t0.getTime() + 1000);
+  assert.deepEqual(c.data, data);
+  assert.equal(lerCacheInteiro("08011046820248220000", ["ACÓRDÃO", "EMENTA"], pasta, t0.getTime() + CACHE_INTEIRO_MS + 1), null);
+  assert.equal(lerCacheInteiro("08011046820248220000", ["VOTO"], pasta, t0.getTime()), null);
+  assert.equal(gravarCacheInteiro("9", ["EMENTA"], { hits: { hits: [] } }, pasta, t0), false);
 });

@@ -1408,6 +1408,44 @@ export function gravarRecibos(data, pasta = dirRecibos()) {
   return n;
 }
 
+// ------------------------------------------------ cache do inteiro teor ---
+// O WAF do TJRO conta VOLUME em poucos minutos (teste de 23/09/2026: 18 consultas
+// em ~3 min bloquearam mesmo espaçadas). Reabrir um acórdão já lido gastava cota à
+// toa; agora a resposta inteira fica em disco por 7 dias e volta sem rede. Acórdão
+// não muda, mas o processo pode ganhar peça nova (ED), por isso o prazo.
+export const dirCache = (env = process.env) =>
+  env.TJRO_MCP_DIR_CACHE || path.join(os.homedir(), ".tjro-jurisprudencia-cache");
+export const CACHE_INTEIRO_MS = 7 * 24 * 3600 * 1000;
+const chaveInteiro = (nr, tipo) =>
+  `inteiro-${String(nr || "").replace(/\D/g, "")}-${[...(tipo || [])].sort().join("_").replace(/[^A-Za-zÀ-ú_]/g, "")}.json`;
+
+export function lerCacheInteiro(nr, tipo, pasta = dirCache(), agora = Date.now()) {
+  try {
+    const c = JSON.parse(fs.readFileSync(path.join(pasta, chaveInteiro(nr, tipo)), "utf8"));
+    if (!c?.obtido_em || agora - Date.parse(c.obtido_em) > CACHE_INTEIRO_MS) return null;
+    return c;
+  } catch {
+    return null;
+  }
+}
+
+export function gravarCacheInteiro(nr, tipo, data, pasta = dirCache(), agora = new Date()) {
+  try {
+    if (!(data?.hits?.hits || []).length) return false; // zero resultado nunca vai para o cache
+    fs.mkdirSync(pasta, { recursive: true });
+    const alvo = path.join(pasta, chaveInteiro(nr, tipo));
+    const tmp = `${alvo}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ obtido_em: agora.toISOString(), data }));
+    fs.renameSync(tmp, alvo);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const notaCache = (obtidoEm) =>
+  `_(Do cache local: lido do TJRO em ${new Date(obtidoEm).toLocaleString("pt-BR", { timeZone: "America/Porto_Velho" })}; esta leitura não gastou consulta. Vale por 7 dias.)_\n\n`;
+
 // ------------------------------------------------------- aviso de versão ---
 // Uma consulta ao GitHub (releases/latest) por processo, em segundo plano desde
 // a subida do servidor. Se houver versão MAIS NOVA, a primeira resposta ganha uma
@@ -1415,7 +1453,7 @@ export function gravarRecibos(data, pasta = dirRecibos()) {
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.12";
+export const VERSAO = "1.7.13";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
