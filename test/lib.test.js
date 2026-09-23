@@ -25,6 +25,7 @@ import {
   _resetDisjuntorParaTeste,
   _setArquivoEstadoParaTeste,
   _limparCacheParaTeste,
+  _limparCacheMemoriaParaTeste,
   _statusPersistencia,
   idDocumento,
   resultadoDe,
@@ -71,6 +72,8 @@ import path from "node:path";
 // Redireciona a persistência do disjuntor pra um arquivo temporário em TODO o
 // arquivo de teste — nunca deve gravar por cima do estado real do usuário.
 _setArquivoEstadoParaTeste(path.join(os.tmpdir(), "_teste_disjuntor_tjro.json"));
+// Cache em disco também vai para pasta temporária, nunca para a do usuário.
+process.env.TJRO_MCP_DIR_CACHE = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-cache-teste-"));
 
 // Estado limpo + cache limpo antes de cada caso que toca a camada de ritmo.
 const limparTudo = () => {
@@ -1532,4 +1535,26 @@ test("cache do inteiro teor: grava, lê, expira e ignora zero resultado", () => 
   assert.equal(lerCacheInteiro("08011046820248220000", ["ACÓRDÃO", "EMENTA"], pasta, t0.getTime() + CACHE_INTEIRO_MS + 1), null);
   assert.equal(lerCacheInteiro("08011046820248220000", ["VOTO"], pasta, t0.getTime()), null);
   assert.equal(gravarCacheInteiro("9", ["EMENTA"], { hits: { hits: [] } }, pasta, t0), false);
+});
+
+test("busca repetida depois de reiniciar volta do disco, sem tocar a rede", async () => {
+  limparTudo();
+  let rede = 0;
+  const fetchContador = async () => {
+    rede += 1;
+    return { ok: true, status: 200, headers: { get: () => "application/json" },
+      json: async () => ({ hits: { total: { value: 1 }, hits: [{ _source: { nr_processo: "1" } }] } }) };
+  };
+  const corpo = { fields: { query: "cache em disco" } };
+  await post(corpo, fetchContador);
+  _limparCacheMemoriaParaTeste(); // simula novo processo (Claude reiniciado)
+  const b = await post(corpo, fetchContador);
+  assert.equal(rede, 1, "a 2ª busca deveria vir do disco");
+  assert.equal(b.hits.hits[0]._source.nr_processo, "1");
+  // Zero resultado não é guardado em disco.
+  const vazio = async () => { rede += 1; return { ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ hits: { hits: [] } }) }; };
+  await post({ fields: { query: "nada" } }, vazio);
+  _limparCacheMemoriaParaTeste();
+  await post({ fields: { query: "nada" } }, vazio);
+  assert.equal(rede, 3, "busca sem resultado deve ir à rede de novo");
 });

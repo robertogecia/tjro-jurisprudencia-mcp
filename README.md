@@ -256,7 +256,9 @@ conversas abertas nesta máquina. Por isso: prefira 2 ou 3 buscas amplas (até 5
 resultados cada) a várias pequenas; escolha pela ementa e pelo trecho que a busca
 já mostra; e abra o inteiro teor só do que vai citar. **Inteiro teor já aberto nos
 últimos 7 dias volta do disco, sem nova consulta** (a resposta avisa "Do cache
-local"), então reabrir o mesmo acórdão não gasta nada.
+local"), então reabrir o mesmo acórdão não gasta nada. **A mesma busca refeita em
+24 horas também volta do disco**, inclusive depois de reiniciar o Claude. E 50
+resultados numa busca custam uma consulta, o mesmo que 10.
 
 O filtro `assunto` (classificação da Tabela Processual Unificada do CNJ) funciona,
 mas é **ruidoso**: o assunto é escolhido na distribuição, cada processo tem vários
