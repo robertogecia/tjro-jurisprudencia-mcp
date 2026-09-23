@@ -410,7 +410,9 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
   é indício de peso do julgado e é **âncora para a próxima busca** — julgados do
   mesmo assunto costumam citar a mesma súmula, mesmo escrevendo o fato com outras
   palavras. Em 83 acórdãos reais (21/09/2026), 24 traziam alguma citação dessas.
-  Resultado de 1º grau ganha o aviso de que **sentença não é precedente**. A leitura
+  Resultado de 1º grau ganha o aviso de que **sentença não é precedente**, e o de
+  Turma Recursal, o de que é dos **Juizados Especiais** (pesa em processo do Juizado;
+  em recurso do rito comum, prefira acórdão de Câmara). A leitura
   é feita no texto que já veio, sem nenhuma requisição a mais, e a extensão **não
   pontua nem reordena** os resultados: nota calculada por máquina vira autoridade
   aparente, e a situação de cada precedente citado (vigente, superado, distinguido)
