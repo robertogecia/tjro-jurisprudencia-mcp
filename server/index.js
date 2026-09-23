@@ -29,6 +29,9 @@ import {
   iniciarChecagemVersao,
   VERSAO,
   orgaoMultiplo,
+  lerCacheInteiro,
+  gravarCacheInteiro,
+  notaCache,
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
@@ -225,8 +228,12 @@ server.registerTool(
       return { content: [{ type: "text", text: "Informe o número do processo (CNJ)." }] };
     try {
       const tipo = normTipos(a.tipo, ["ACÓRDÃO", "EMENTA", "VOTO", "RELATÓRIO"]);
+      const cache = lerCacheInteiro(a.nr_processo, tipo);
+      if (cache)
+        return { content: [{ type: "text", text: await comAvisos(notaCache(cache.obtido_em) + formatInteiro(cache.data, a.nr_processo)) }] };
       const data = await post(buildInteiroBody(a.nr_processo, tipo));
       gravarRecibos(data);
+      gravarCacheInteiro(a.nr_processo, tipo, data);
       return { content: [{ type: "text", text: await comAvisos(formatInteiro(data, a.nr_processo)) }] };
     } catch (e) {
       return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
