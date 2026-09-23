@@ -28,6 +28,7 @@ import {
   gravarRecibos,
   iniciarChecagemVersao,
   VERSAO,
+  orgaoMultiplo,
 } from "./lib.js";
 
 // --------------------------------------------------------------- MCP server -
@@ -84,7 +85,7 @@ server.registerTool(
         .describe('Tipos de documento. Padrão ["EMENTA","ACÓRDÃO"]. Opções: ACÓRDÃO, EMENTA, DECISÃO, "DECISÃO DA PRESIDÊNCIA", SENTENÇA, VOTO, RELATÓRIO. Todos são peças de 2º grau, exceto SENTENÇA (única de 1º grau).'),
       grau: z.number().int().optional().describe("1 (primeiro grau) ou 2 (câmaras). Omitir = ambos. Com grau=1, a busca é ajustada automaticamente para tipo=SENTENÇA."),
       classe_judicial: z.string().optional().describe('Classe EXATA em CAIXA ALTA (aplicada automaticamente). Ex.: "APELAÇÃO CÍVEL", "RECURSO INOMINADO CÍVEL".'),
-      orgao_colegiado: z.string().optional().describe('Câmara EXATA em Formato de Título, sensível a maiúsculas. Ex.: "1ª Câmara Cível", "2ª Câmara Criminal", "1ª Turma Recursal". Filtra pelo CADASTRO do portal, que erra a câmara com frequência (sobretudo "3ª Câmara Cível"): para a posição de uma câmara, confira a câmara declarada no fecho de cada acórdão, e saiba que julgados dela cadastrados em outra ficam de fora.'),
+      orgao_colegiado: z.string().optional().describe('Câmara EXATA em Formato de Título, sensível a maiúsculas. Ex.: "1ª Câmara Cível", "2ª Câmara Criminal", "1ª Turma Recursal". Filtra pelo CADASTRO do portal, que erra a câmara com frequência (sobretudo "3ª Câmara Cível"): para a posição de uma câmara, confira a câmara declarada no fecho de cada acórdão, e saiba que julgados dela cadastrados em outra ficam de fora. UM órgão só: vírgula ou "ou" não somam órgãos (o portal devolve 0). Não filtre por família de câmara por padrão: nas teses medidas, 2 de 8 julgados essenciais vinham de Câmara Especial ou Turma Recursal e 2 tinham órgão vazio no índice.'),
       relator: z
         .string()
         .optional()
@@ -148,6 +149,8 @@ server.registerTool(
       const temGrupos = Array.isArray(a.grupos) && a.grupos.some((g) => Array.isArray(g) && g.some((t) => String(t).trim()));
       if (!String(a.consulta || "").trim() && !temGrupos)
         return { content: [{ type: "text", text: "Informe a consulta ou pelo menos um grupo de termos." }] };
+      const multi = orgaoMultiplo(a.orgao_colegiado);
+      if (multi) return { content: [{ type: "text", text: multi }] };
       const ordenacao = ORDENACOES[a.ordenacao] ? a.ordenacao : "relevantes";
       const filtros = [];
       if (a.classe_judicial) filtros.push(`classe_judicial="${a.classe_judicial}"`);

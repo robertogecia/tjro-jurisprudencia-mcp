@@ -226,6 +226,12 @@ quatro a seis consultas:
    o resultado. No mesmo teste, texto livre e grupos acharam o acórdão certo entre os
    10 primeiros em 4 de 7 teses cada, errando em teses diferentes: se uma tese
    decisiva não apareceu numa forma, tente a outra.
+   **Não filtre por família de câmara por padrão** ("só cíveis", "só criminais"). Nas
+   mesmas 7 teses, 2 dos 8 julgados certos vinham de outra família (Câmara Especial,
+   Turma Recursal) e 2 tinham o órgão em branco no cadastro, e qualquer filtro de órgão
+   os perde. O filtro `orgao_colegiado` aceita **um órgão só**: vírgula ou "ou" não
+   somam órgãos (o portal devolveria zero, e a extensão agora recusa com explicação).
+   Use-o para ver como uma câmara específica decide, conferindo a câmara no fecho.
 2. **Âncora pela citação.** Julgados do mesmo assunto costumam citar a mesma
    súmula, tema repetitivo ou IRDR, mesmo quando descrevem o fato com outras
    palavras. Um grupo como `["Súmula 385"]` acha esses julgados.

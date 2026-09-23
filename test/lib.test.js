@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ehTurmaRecursal,
+  orgaoMultiplo,
   buildBuscaBody,
   buildInteiroBody,
   link,
@@ -1500,4 +1502,18 @@ test("com bloqueio sistemático, nada na mensagem manda aguardar", async () => {
   });
   assert.doesNotMatch(out, /aguarde alguns minutos/i);
   assert.doesNotMatch(decodeURIComponent(out), /outra rede/i);
+});
+
+test("orgaoMultiplo recusa vários órgãos e aceita um só", () => {
+  for (const o of ["1ª Câmara Cível,2ª Câmara Cível", "1ª Câmara Cível; 2ª Câmara Cível", "1ª Câmara Cível | 2ª", "1ª Câmara Cível ou 2ª Câmara Cível"])
+    assert.match(orgaoMultiplo(o), /UM órgão só/);
+  for (const o of ["1ª Câmara Cível", "2ª Câmara Especial", "Câmaras Cíveis Reunidas", "Tribunal Pleno", "1ª Turma Recursal", undefined, ""])
+    assert.equal(orgaoMultiplo(o), null);
+});
+
+test("sinal de Turma Recursal só para órgão de Juizado", () => {
+  assert.ok(ehTurmaRecursal({ ds_orgao_julgador_colegiado: "2ª Turma Recursal" }));
+  assert.ok(!ehTurmaRecursal({ ds_orgao_julgador_colegiado: "2ª Câmara Especial" }));
+  assert.match(linhasDeSinais({ ds_orgao_julgador_colegiado: "1ª Turma Recursal" }, "").join(), /Juizados Especiais/);
+  assert.equal(linhasDeSinais({ ds_orgao_julgador_colegiado: "1ª Câmara Cível" }, "").length, 0);
 });
