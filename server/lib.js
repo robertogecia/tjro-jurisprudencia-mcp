@@ -1347,11 +1347,17 @@ export function ancoras(texto, max = ANCORAS_MAX) {
 export const ehPrimeiroGrau = (s) =>
   String(s.grau_jurisdicao ?? "") === "1" || String(s.tipo || "").toUpperCase() === "SENTENÇA";
 
+export const ehTurmaRecursal = (s) =>
+  /turma\s+recursal/i.test(`${s.ds_orgao_julgador_colegiado || ""} ${s.ds_orgao_julgador || ""}`);
 export function linhasDeSinais(s, textoInteiro) {
   const linhas = [];
   if (ehPrimeiroGrau(s))
     linhas.push(
       "- ⚠️ 1º grau: sentença não é precedente — serve para ver como o juízo decide e que fundamentos cita, não para citar como jurisprudência."
+    );
+  if (ehTurmaRecursal(s))
+    linhas.push(
+      "- ⚠️ Turma Recursal (Juizados Especiais): não é o TJ em 2º grau comum. Pesa em processo do Juizado; em apelação no rito comum é só persuasivo — prefira acórdão de Câmara e diga o órgão na citação."
     );
   const a = ancoras(textoInteiro);
   if (a.length)
@@ -1409,7 +1415,7 @@ export function gravarRecibos(data, pasta = dirRecibos()) {
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.11";
+export const VERSAO = "1.7.12";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
@@ -1584,4 +1590,16 @@ export async function comAjudaNoErro(mensagem, opcoes = {}) {
 export function _resetAvisoParaTeste() {
   checagem = null;
   avisoDado = false;
+}
+
+// O portal filtra UM órgão por vez: "1ª Câmara Cível,2ª Câmara Cível" devolve total 0
+// (medido em 22/09/2026), e zero silencioso vira falso "não localizado".
+const SEP_ORGAO = /[,;|]|\s(?:ou|e|or|and)\s/i;
+export function orgaoMultiplo(orgao) {
+  if (!orgao || !SEP_ORGAO.test(String(orgao))) return null;
+  return (
+    `orgao_colegiado aceita UM órgão só; "${orgao}" parece ter vários, e o portal devolveria 0 resultado (que não é "não localizado"). ` +
+    "Faça uma busca por órgão, ou, melhor, busque sem filtro de órgão e confira a câmara no fecho de cada acórdão: " +
+    "o cadastro erra o número da câmara com frequência, e julgados úteis de outra família (Câmara Especial, Turma Recursal) ficam de fora com o filtro."
+  );
 }
