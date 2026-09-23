@@ -334,10 +334,10 @@ test("reservarRequisicao: barra ao estourar o teto da janela", () => {
   const t0 = 2_000_000;
   // Consome o teto (avançando o relógio p/ não esbarrar só no espaçamento).
   for (let i = 0; i < 10; i++) {
-    const r = reservarRequisicao(t0 + i * 3000);
+    const r = reservarRequisicao(t0 + i * 6000);
     assert.equal(r.erro, undefined, `requisição ${i + 1}/10 deveria passar`);
   }
-  const estourou = reservarRequisicao(t0 + 10 * 3000);
+  const estourou = reservarRequisicao(t0 + 10 * 6000);
   assert.match(estourou.erro, /Muitas consultas/);
   assert.match(estourou.erro, /compartilhado por todos os processos/);
 });
@@ -357,11 +357,11 @@ test("estado do ritmo é COMPARTILHADO via arquivo — outro processo enxerga o 
   limparTudo();
   const t0 = 4_000_000;
   // Simula "processo A" consumindo todo o teto da janela.
-  for (let i = 0; i < 10; i++) reservarRequisicao(t0 + i * 3000);
+  for (let i = 0; i < 10; i++) reservarRequisicao(t0 + i * 6000);
 
   // "Processo B" = mesma lógica lendo o MESMO arquivo (sem reset em memória).
   // Antes desta versão, cada processo tinha contador próprio e B teria 10 vagas.
-  const doProcessoB = reservarRequisicao(t0 + 10 * 3000);
+  const doProcessoB = reservarRequisicao(t0 + 10 * 6000);
   assert.match(doProcessoB.erro, /Muitas consultas/, "processo B deveria ver o orçamento já gasto");
 });
 
@@ -377,8 +377,8 @@ test("escada adaptativa: cada bloqueio real alarga a janela, até o teto de 30mi
   limparTudo();
   let t = 6_000_000;
   const janelaVisivel = () => {
-    for (let i = 0; i < 10; i++) reservarRequisicao(t + i * 3000);
-    const msg = reservarRequisicao(t + 10 * 3000).erro;
+    for (let i = 0; i < 10; i++) reservarRequisicao(t + i * 6000);
+    const msg = reservarRequisicao(t + 10 * 6000).erro;
     t += 40 * 60_000; // avança além de qualquer janela p/ a próxima medição ser limpa
     return msg;
   };
@@ -407,16 +407,16 @@ test("escada adaptativa: sequência longa de sucessos relaxa 1 degrau; nunca aba
   registrarBloqueioDetectado(t + 1000); // -> nível 2 (10min)
   t += 70 * 60_000;
 
-  for (let i = 0; i < 100; i++) registrarSucesso();
-  for (let i = 0; i < 10; i++) reservarRequisicao(t + i * 3000);
-  assert.match(reservarRequisicao(t + 10 * 3000).erro, /5min/, "deveria ter relaxado de 10min p/ 5min");
+  for (let i = 0; i < 20; i++) registrarSucesso();
+  for (let i = 0; i < 10; i++) reservarRequisicao(t + i * 6000);
+  assert.match(reservarRequisicao(t + 10 * 6000).erro, /5min/, "deveria ter relaxado de 10min p/ 5min");
 
   // Muito além do limiar, nunca relaxa abaixo do nível 0 (1min).
   limparTudo();
   const t2 = 8_000_000;
   for (let i = 0; i < 300; i++) registrarSucesso();
-  for (let i = 0; i < 10; i++) reservarRequisicao(t2 + i * 3000);
-  assert.match(reservarRequisicao(t2 + 10 * 3000).erro, /1min/);
+  for (let i = 0; i < 10; i++) reservarRequisicao(t2 + i * 6000);
+  assert.match(reservarRequisicao(t2 + 10 * 6000).erro, /1min/);
 });
 
 test("cache: repetir a MESMA busca não gera segunda requisição ao portal", async () => {
@@ -462,7 +462,7 @@ test("incidente registra o contexto do bloqueio (rajada, nível, intervalo, oper
   limparTudo();
   const t0 = 9_000_000;
   // Simula rajada: 6 consultas no minuto anterior ao bloqueio.
-  for (let i = 0; i < 6; i++) reservarRequisicao(t0 + i * 3000);
+  for (let i = 0; i < 6; i++) reservarRequisicao(t0 + i * 6000);
   registrarBloqueioDetectado(t0 + 20_000, "busca");
 
   const rel = diagnosticoRitmo(t0 + 21_000);
@@ -478,7 +478,7 @@ test("diagnóstico distingue bloqueio por rajada de bloqueio com pouco tráfego"
   // Cenário A: bloqueios sempre após rajada -> orienta a espaçar consultas.
   let t = 10_000_000;
   for (let n = 0; n < 3; n++) {
-    for (let i = 0; i < 8; i++) reservarRequisicao(t + i * 3000);
+    for (let i = 0; i < 8; i++) reservarRequisicao(t + i * 6000);
     registrarBloqueioDetectado(t + 30_000, "busca");
     t += 4 * 60 * 60_000; // bem depois, p/ a janela seguinte começar limpa
   }
@@ -582,7 +582,8 @@ test("se o disco não aceitar escrita, o limite CONTINUA valendo em memória (n�
     for (let i = 0; i < 40; i++) {
       if (!reservarRequisicao(t0 + i).erro) admitidas += 1;
     }
-    assert.equal(admitidas, 10, `esperava o teto de 10, veio ${admitidas} — limitador desligado`);
+    // Com espaçamento de 7 s e fila máxima de 30 s, uma rajada instantânea admite ~5.
+    assert.ok(admitidas >= 1 && admitidas <= 10, `esperava no máx. o teto de 10, veio ${admitidas} — limitador desligado`);
     assert.ok(_statusPersistencia(), "deveria registrar que a persistência falhou");
     assert.match(diagnosticoRitmo(), /AVISO: não foi possível gravar/);
   } finally {
@@ -1379,7 +1380,7 @@ test("bloqueio logo na 1ª consulta isolada arma o disjuntor mas NÃO alarga a j
 test("bloqueio depois de rajada desta máquina continua subindo a escada", async () => {
   limparTudo();
   const agora = Date.now();
-  for (let i = 0; i < 3; i++) reservarRequisicao(agora - 30_000 + i * 2_500);
+  for (let i = 0; i < 3; i++) reservarRequisicao(agora - 60_000 + i * 8_000);
   await assert.rejects(() =>
     post({ fields: { query: "x" } }, async () => respostaFalsa(200, "text/html", HTML_BLOQUEIO_STIC))
   );
