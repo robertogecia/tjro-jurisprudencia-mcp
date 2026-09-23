@@ -368,8 +368,10 @@ de repetir a consulta várias vezes seguidas.
 exato do filtro do TJRO, a extensão aprende com a experiência: cada vez que um
 bloqueio real acontece, ela torna o próprio limite preventivo mais rígido (a
 janela de "10 consultas" alarga — de 1 minuto para 5, depois 10, até um teto de
-30 minutos); depois de uma sequência longa sem novos bloqueios, ela afrouxa de
-novo. Esse aprendizado fica salvo em `~/.tjro-jurisprudencia-mcp-estado.json`
+30 minutos); depois de 20 consultas seguidas sem bloqueio, ela afrouxa um degrau.
+O espaçamento mínimo entre consultas (7 segundos) foi medido em 23/09/2026: 125
+consultas em 16 minutos, a 6 s ou mais uma da outra, passaram sem bloqueio; a 5 s
+o TJRO bloqueou. O que dispara o filtro é o pico curto, não o volume. Esse aprendizado fica salvo em `~/.tjro-jurisprudencia-mcp-estado.json`
 para não ser esquecido a cada reinício do Claude Desktop. O arquivo guarda só
 números de controle (nível atual, horários das últimas consultas e um histórico
 curto dos bloqueios) — **nenhum termo de pesquisa, processo ou dado de cliente**.
@@ -466,7 +468,7 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
   rodam em CI a cada mudança (badge no topo deste README) — inclusive regressões
   específicas dos bugs já encontrados e corrigidos neste projeto.
 - **Limite de ritmo próprio, compartilhado entre sessões.** A extensão se limita
-  a 10 consultas por janela de tempo, espaça as consultas em pelo menos 2
+  a 10 consultas por janela de tempo, espaça as consultas em pelo menos 7
   segundos (para não disparar em rajada) e, se o portal sinalizar bloqueio por
   automação, para de tentar sozinha por um tempo em vez de insistir. Esse
   orçamento é **compartilhado por todos os processos da extensão na mesma

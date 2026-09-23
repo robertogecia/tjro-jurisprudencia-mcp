@@ -483,14 +483,14 @@ const JANELA_MAX_REQS = 10; // sempre no máx. 10 requisições por janela
 // ainda é generoso demais) e RELAXA um degrau após uma sequência longa sem
 // incidente (o WAF pode ter sido ajustado, ou o bloqueio anterior foi pontual).
 const ESCADA_JANELA_MS = [60_000, 5 * 60_000, 10 * 60_000, 20 * 60_000, 30 * 60_000]; // 1,5,10,20,30min
-const SUCESSOS_PARA_RELAXAR = 100; // sucessos seguidos no nível atual antes de afrouxar 1 degrau
+const SUCESSOS_PARA_RELAXAR = 20; // sucessos seguidos no nível atual antes de afrouxar 1 degrau
 const BACKOFF_INICIAL_MS = 10 * 60_000; // 10 min na primeira detecção de bloqueio (disjuntor reativo)
 const BACKOFF_MAXIMO_MS = 60 * 60_000; // nunca ultrapassa 1h de recuo automático
 // Intervalo mínimo entre requisições: sem isso o teto da janela permite 10
 // disparos no MESMO segundo — o padrão "metralhadora" que WAF detecta. Em vez
 // de recusar, a chamada espera sua vez (a vaga é reservada na transação, então
 // chamadas concorrentes recebem instantes distintos, sem acordar todas juntas).
-const ESPACAMENTO_MIN_MS = 2_000;
+const ESPACAMENTO_MIN_MS = 7_000; // 23/09/2026: 6 s passou 50x seguidas, 5 s bloqueou; 7 s dá margem
 const ESPERA_MAXIMA_MS = 30_000; // acima disso, melhor erro claro que travar a conversa
 const TRAVA_TIMEOUT_MS = 2_000;
 // PRECISA ser menor que TRAVA_TIMEOUT_MS: senão quem espera desiste ANTES de ganhar o
@@ -1453,7 +1453,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.13";
+export const VERSAO = "1.7.14";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
