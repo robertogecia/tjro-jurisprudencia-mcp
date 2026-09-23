@@ -7,6 +7,7 @@ import he from "he";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 
 export const SITE = "https://juris.tjro.jus.br";
 export const API = "https://juris-back.tjro.jus.br";
@@ -895,18 +896,37 @@ const CACHE_TTL_MS = 5 * 60_000;
 const CACHE_MAX_ENTRADAS = 32;
 const cacheRespostas = new Map();
 
+// Camada em DISCO (v1.7.15): a mesma busca refeita em outra conversa ou depois de
+// reiniciar o Claude não gasta consulta por 24 h. O WAF bloqueia pico curto
+// (medido em 23/09/2026); cada consulta evitada é margem.
+export const CACHE_DISCO_MS = 24 * 3600 * 1000;
+const arqResposta = (chave) =>
+  path.join(dirCache(), `resp-${crypto.createHash("sha1").update(chave).digest("hex")}.json`);
+
+export function _limparCacheMemoriaParaTeste() {
+  cacheRespostas.clear();
+}
+
 export function _limparCacheParaTeste() {
   cacheRespostas.clear();
+  try {
+    for (const f of fs.readdirSync(dirCache())) if (f.startsWith("resp-")) fs.rmSync(path.join(dirCache(), f), { force: true });
+  } catch {
+    /* sem pasta, nada a limpar */
+  }
 }
 
 function cacheLer(chave, agora) {
   const item = cacheRespostas.get(chave);
-  if (!item) return null;
-  if (agora - item.quando > CACHE_TTL_MS) {
-    cacheRespostas.delete(chave);
-    return null;
+  if (item && agora - item.quando <= CACHE_TTL_MS) return item.dados;
+  if (item) cacheRespostas.delete(chave);
+  try {
+    const d = JSON.parse(fs.readFileSync(arqResposta(chave), "utf8"));
+    if (agora - d.quando <= CACHE_DISCO_MS) return d.dados;
+  } catch {
+    /* sem cache em disco */
   }
-  return item.dados;
+  return null;
 }
 
 function cacheGravar(chave, dados, agora) {
@@ -914,6 +934,16 @@ function cacheGravar(chave, dados, agora) {
     cacheRespostas.delete(cacheRespostas.keys().next().value); // descarta a mais antiga
   }
   cacheRespostas.set(chave, { dados, quando: agora });
+  try {
+    if (!(dados?.hits?.hits || []).length) return; // zero resultado não vai para o disco
+    fs.mkdirSync(dirCache(), { recursive: true });
+    const alvo = arqResposta(chave);
+    const tmp = `${alvo}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ quando: agora, dados }));
+    fs.renameSync(tmp, alvo);
+  } catch {
+    /* cache é economia, nunca condição */
+  }
 }
 
 export async function post(body, fetchImpl = fetch) {
@@ -1453,7 +1483,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.14";
+export const VERSAO = "1.7.15";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
