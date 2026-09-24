@@ -8,6 +8,8 @@ ao Claude a capacidade de pesquisar jurisprudência do TJRO (o portal oficial JU
 dentro da própria conversa, sem precisar abrir o site do tribunal. Sem login e sem
 mexer em código.
 
+Minhas redes sociais: @robertogrecia
+
 ## Antes de começar: você já tem o "Claude Desktop"?
 
 O "Claude Desktop" é o **programa** do Claude que você instala no computador
