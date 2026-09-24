@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  msgErro,
+  RESPOSTA_CORROMPIDA,
   lerCacheInteiro,
   gravarCacheInteiro,
   CACHE_INTEIRO_MS,
@@ -1557,4 +1559,17 @@ test("busca repetida depois de reiniciar volta do disco, sem tocar a rede", asyn
   _limparCacheMemoriaParaTeste();
   await post({ fields: { query: "nada" } }, vazio);
   assert.equal(rede, 3, "busca sem resultado deve ir à rede de novo");
+});
+
+test("resposta corrompida do filtro vira mensagem clara, não erro cru do Node", async () => {
+  const e = new TypeError("fetch failed");
+  e.cause = { message: "Response does not match the HTTP/1.1 protocol (Invalid header value char)" };
+  assert.equal(msgErro(e), RESPOSTA_CORROMPIDA);
+  assert.equal(tipoDoErro(msgErro(e)), "resposta_corrompida");
+  const txt = await comAjudaNoErro(msgErro(e));
+  assert.match(txt, /bloqueou esta pesquisa/);
+  assert.doesNotMatch(txt, /Pode ser passageiro/);
+  const rede = new TypeError("fetch failed");
+  rede.cause = { code: "ECONNRESET" };
+  assert.equal(msgErro(rede), "ECONNRESET");
 });
