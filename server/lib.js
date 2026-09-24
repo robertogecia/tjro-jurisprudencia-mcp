@@ -1521,7 +1521,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.20";
+export const VERSAO = "1.7.21";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
@@ -1568,7 +1568,7 @@ export async function checarVersaoNova({
 }
 
 export const avisoAtualizacao = (novaVersao) =>
-  `_Há uma versão mais nova desta extensão (v${novaVersao}; a instalada é a v${VERSAO})._ Baixe em: ${RELEASES_PAGINA}`;
+  `_Há uma versão mais nova desta extensão (v${novaVersao}; a instalada é a v${VERSAO})._ Se o usuário quiser, pode pedir ao Claude para baixar a versão já conferida, ou baixar em: ${RELEASES_PAGINA}`;
 
 let checagem = null;
 let avisoDado = false;
