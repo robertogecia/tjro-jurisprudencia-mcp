@@ -34,6 +34,7 @@ import {
   gravarCacheInteiro,
   notaCache,
 } from "./lib.js";
+import { consultarProcesso, formatProcesso, ErroProcesso } from "./processo.js";
 
 // --------------------------------------------------------------- MCP server -
 const server = new McpServer({ name: "Jurisprudência TJRO", version: VERSAO });
@@ -241,6 +242,34 @@ server.registerTool(
       return { content: [{ type: "text", text: await comAvisos(formatInteiro(data, a.nr_processo)) }] };
     } catch (e) {
       return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
+    }
+  }
+);
+
+server.registerTool(
+  "consultar_processo_tjro",
+  {
+    title: "Capa e movimentos de um processo do TJRO",
+    description:
+      "Capa (órgão julgador, classe, competência, autuação, indicadores de baixa, gratuidade, liminar, segredo) e movimentos " +
+      "de UM processo do TJRO, 1º e 2º grau, pela API pública de processos do próprio tribunal (Portal da Transparência). " +
+      "Funciona mesmo quando o portal de jurisprudência está bloqueado (divide só a cota de ritmo). NÃO traz partes, advogados, peças nem teor de " +
+      "decisão; boa parte dos movimentos migrados aparece só como \"Movimento Local\", sem descrição. NUNCA use as datas " +
+      "para contar prazo (prazo sai do DJEN). Resposta vazia = número incorreto OU segredo de justiça, nunca \"não existe\". " +
+      "Uma consulta por processo; não serve para varrer processos.",
+    inputSchema: {
+      nr_processo: z.string().describe("Número do processo (CNJ, 20 dígitos), com ou sem máscara."),
+      max_movimentos: z.number().int().min(1).max(100).optional().describe("Quantos movimentos mais recentes mostrar por grau. Padrão 15."),
+    },
+  },
+  async (a) => {
+    try {
+      const res = await consultarProcesso(a.nr_processo);
+      return { content: [{ type: "text", text: await comAvisos(formatProcesso(res, a.nr_processo, a.max_movimentos ?? 15)) }] };
+    } catch (e) {
+      // Erro da API de processos tem mensagem própria: nunca o aviso de bloqueio do JURIS.
+      const texto = e instanceof ErroProcesso ? e.message : `Erro inesperado na consulta de processo: ${e?.message || e}`;
+      return { content: [{ type: "text", text: texto }], isError: true };
     }
   }
 );
