@@ -29,6 +29,7 @@ import {
   iniciarChecagemVersao,
   VERSAO,
   orgaoMultiplo,
+  ehOrgao1oGrau,
   lerCacheInteiro,
   gravarCacheInteiro,
   notaCache,
@@ -88,7 +89,7 @@ server.registerTool(
         .describe('Tipos de documento. Padrão ["EMENTA","ACÓRDÃO"]. Opções: ACÓRDÃO, EMENTA, DECISÃO, "DECISÃO DA PRESIDÊNCIA", SENTENÇA, VOTO, RELATÓRIO. Todos são peças de 2º grau, exceto SENTENÇA (única de 1º grau).'),
       grau: z.number().int().optional().describe("1 (primeiro grau) ou 2 (câmaras). Omitir = ambos. Com grau=1, a busca é ajustada automaticamente para tipo=SENTENÇA."),
       classe_judicial: z.string().optional().describe('Classe EXATA em CAIXA ALTA (aplicada automaticamente). Ex.: "APELAÇÃO CÍVEL", "RECURSO INOMINADO CÍVEL".'),
-      orgao_colegiado: z.string().optional().describe('Câmara EXATA em Formato de Título, sensível a maiúsculas. Ex.: "1ª Câmara Cível", "2ª Câmara Criminal", "1ª Turma Recursal". Filtra pelo CADASTRO do portal, que erra a câmara com frequência (sobretudo "3ª Câmara Cível"): para a posição de uma câmara, confira a câmara declarada no fecho de cada acórdão, e saiba que julgados dela cadastrados em outra ficam de fora. UM órgão só: vírgula ou "ou" não somam órgãos (o portal devolve 0). Não filtre por família de câmara por padrão: nas teses medidas, 2 de 8 julgados essenciais vinham de Câmara Especial ou Turma Recursal e 2 tinham órgão vazio no índice.'),
+      orgao_colegiado: z.string().optional().describe('Órgão EXATO em Formato de Título, sensível a maiúsculas. 2º grau: "1ª Câmara Cível", "2ª Câmara Criminal", "1ª Turma Recursal". 1º grau (vara/juizado, só SENTENÇA): "Comarca - Vara", ex.: "Porto Velho - 4ª Vara Cível" — copie do campo "Órgão" de um resultado; com vara, a busca vai sozinha para tipo=SENTENÇA. Filtra pelo CADASTRO do portal, que erra a câmara com frequência (sobretudo "3ª Câmara Cível"): para a posição de uma câmara, confira a câmara declarada no fecho de cada acórdão, e saiba que julgados dela cadastrados em outra ficam de fora. UM órgão só: vírgula ou "ou" não somam órgãos (o portal devolve 0). Não filtre por família de câmara por padrão: nas teses medidas, 2 de 8 julgados essenciais vinham de Câmara Especial ou Turma Recursal e 2 tinham órgão vazio no índice.'),
       relator: z
         .string()
         .optional()
@@ -132,7 +133,10 @@ server.registerTool(
     try {
       let tipo = normTipos(a.tipo, ["EMENTA", "ACÓRDÃO"]);
       let nota = "";
-      if (a.grau === 1 && !tipo.includes("SENTENÇA")) {
+      if (ehOrgao1oGrau(a.orgao_colegiado) && !tipo.includes("SENTENÇA")) {
+        tipo = ["SENTENÇA"];
+        nota = "Nota: o órgão indicado é de 1º grau, onde o índice só tem SENTENÇA; a busca foi ajustada para tipo=SENTENÇA.\n";
+      } else if (a.grau === 1 && !tipo.includes("SENTENÇA")) {
         // No índice, EMENTA/ACÓRDÃO/VOTO/RELATÓRIO/DECISÃO só existem no 2º grau.
         tipo = ["SENTENÇA"];
         nota = "Nota: EMENTA/ACÓRDÃO são peças de 2º grau; a busca em 1º grau foi ajustada para tipo=SENTENÇA.\n";
