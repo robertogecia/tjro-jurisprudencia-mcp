@@ -476,9 +476,16 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
 - **Aviso de versão nova.** Ao subir, a extensão pergunta ao GitHub qual é a
   release mais recente. Se houver uma mais nova que a instalada, a primeira
   resposta da sessão termina com uma linha avisando, com o endereço da página
-  de releases (fixo no código, nunca tirado da resposta do GitHub). Ela **não
-  baixa nem instala nada** — atualizar continua sendo abrir o `.mcpb` novo e
-  confirmar. O GitHub vê o IP de quem consulta, como em qualquer acesso a
+  de releases (fixo no código, nunca tirado da resposta do GitHub). Esse aviso
+  **não baixa nem instala nada**. Se você quiser, pode pedir ao Claude para
+  **"atualizar a extensão do TJRO"** (ferramenta `atualizar_extensao_tjro`, só a
+  seu pedido): ela baixa o arquivo novo do repositório oficial para a pasta
+  Downloads e confere o SHA-256 publicado pelo GitHub, o tamanho e o formato,
+  sem sobrescrever nada seu. **Quem instala é você**: dois cliques no arquivo e
+  "Instalar". A extensão nunca se instala nem abre o instalador sozinha. A
+  conferência protege contra arquivo corrompido ou desviado no caminho; não
+  protege contra uma conta do GitHub comprometida, porque o SHA vem do próprio
+  GitHub. O GitHub vê o IP de quem consulta, como em qualquer acesso a
   página sua; nenhum dado da pesquisa ou do caso vai junto. Sem internet, o
   aviso simplesmente não aparece (a espera é de no máximo 2 segundos). Para
   desligar, defina a variável de ambiente `TJRO_MCP_SEM_AVISO_ATUALIZACAO=1`.

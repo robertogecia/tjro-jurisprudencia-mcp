@@ -35,6 +35,7 @@ import {
   notaCache,
 } from "./lib.js";
 import { consultarProcesso, formatProcesso, ErroProcesso } from "./processo.js";
+import { baixarAtualizacao, textoAtualizacao, ErroAtualizacao } from "./atualizar.js";
 
 // --------------------------------------------------------------- MCP server -
 const server = new McpServer({ name: "Jurisprudência TJRO", version: VERSAO });
@@ -269,6 +270,28 @@ server.registerTool(
     } catch (e) {
       // Erro da API de processos tem mensagem própria: nunca o aviso de bloqueio do JURIS.
       const texto = e instanceof ErroProcesso ? e.message : `Erro inesperado na consulta de processo: ${e?.message || e}`;
+      return { content: [{ type: "text", text: texto }], isError: true };
+    }
+  }
+);
+
+server.registerTool(
+  "atualizar_extensao_tjro",
+  {
+    title: "Baixar a versão mais nova desta extensão",
+    description:
+      "USE SÓ QUANDO O USUÁRIO PEDIR para atualizar a extensão. Consulta o GitHub oficial do projeto e, se houver versão " +
+      "mais nova, baixa o arquivo para a pasta Downloads, confere o SHA-256 e diz onde ele está. NÃO instala: o usuário " +
+      "instala dando dois cliques no arquivo e confirmando. Nunca use por iniciativa própria e nunca abra ou execute o arquivo. " +
+      "Não consulta o TJRO.",
+    inputSchema: {},
+    annotations: { title: "Baixar atualização da extensão", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  async () => {
+    try {
+      return { content: [{ type: "text", text: textoAtualizacao(await baixarAtualizacao()) }] };
+    } catch (e) {
+      const texto = e instanceof ErroAtualizacao ? e.message : `Não consegui baixar a atualização (${e?.message || e}).`;
       return { content: [{ type: "text", text: texto }], isError: true };
     }
   }
