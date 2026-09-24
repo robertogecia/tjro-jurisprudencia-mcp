@@ -134,6 +134,23 @@ São três ferramentas:
 > em cadastro de inadimplentes" não aparece numa busca por "negativação". Por isso
 > a extensão aceita **grupos de sinônimos** — ver "Como pesquisar bem" abaixo.
 
+## Consultar um processo (capa e movimentos)
+
+A ferramenta `consultar_processo_tjro` traz, pelo número CNJ, a capa (vara ou câmara,
+classe, data de autuação, se está baixado, se tem gratuidade, liminar ou segredo) e
+os movimentos mais recentes de um processo do TJRO, de 1º e 2º grau. Ela usa a
+**API pública de processos do próprio tribunal** (Portal da Transparência, "Acesso
+Automatizado Via API - Judiciário"), que é outro endereço, e por isso **funciona
+mesmo quando a pesquisa de jurisprudência está bloqueada**. Peça, por exemplo:
+_"Como está o processo 0000000-00.0000.8.22.0000 no TJRO?"_
+
+O que ela **não** faz: não mostra partes, advogados, peças nem o texto das decisões
+(isso está no PJe); muitos movimentos antigos aparecem só como "Movimento Local",
+sem dizer o que aconteceu; e **as datas não servem para contar prazo** (prazo sai da
+publicação no Diário). Se a consulta voltar vazia, o número está errado ou o
+processo está em segredo de justiça, e isso não prova que ele não existe. É uma
+consulta por processo, a pedido: a ferramenta não varre processos.
+
 ## Quando usar isto (e quando usar outra coisa)
 
 **Só faz sentido para casos da jurisdição do TJRO** (1º ou 2º grau de Rondônia).

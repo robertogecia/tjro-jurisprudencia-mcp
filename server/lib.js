@@ -705,9 +705,11 @@ const fmtDuracao = (ms) => {
 // transação (separar em checagens independentes abriria janela para duas
 // chamadas passarem juntas). Devolve {esperarMs} com a vaga já reservada, ou
 // {erro} com mensagem pronta para o usuário.
-export function reservarRequisicao(agora = Date.now()) {
+// opts.ignorarBloqueio: a API de processos (outro host) divide a cota e o
+// espaçamento, mas NÃO herda o disjuntor do bloqueio do JURIS.
+export function reservarRequisicao(agora = Date.now(), opts = {}) {
   return transacao((e) => {
-    if (agora < e.bloqueadoAte) {
+    if (!opts.ignorarBloqueio && agora < e.bloqueadoAte) {
       return {
         erro:
           "O TJRO bloqueou uma consulta recente por suspeita de automação; para não " +
@@ -1519,7 +1521,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.19";
+export const VERSAO = "1.7.20";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
