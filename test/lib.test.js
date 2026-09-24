@@ -1586,3 +1586,20 @@ test("vara de 1º grau filtra por ds_orgao_julgador; câmara continua no campo c
   const c = buildBuscaBody({ consulta: "x", tipo: ["ACÓRDÃO"], orgaoColegiado: "1ª Câmara Cível" });
   assert.equal(c.fields["ds_orgao_julgador_colegiado.raw"], "1ª Câmara Cível");
 });
+
+test("resposta corrompida do filtro entra no diário de bloqueios e arma o disjuntor (não fica 'liberado')", async () => {
+  limparTudo();
+  const e = new TypeError("fetch failed");
+  e.cause = { message: "Response does not match the HTTP/1.1 protocol (Invalid header value char)" };
+  await assert.rejects(() => post({ fields: { query: "x" } }, async () => { throw e; }), /fetch failed/);
+  const t = diagnosticoRitmo();
+  assert.match(t, /BLOQUEADO/);
+  assert.match(t, /página de bloqueio com cabeçalho defeituoso/);
+  assert.match(t, /Nível atual: 1 de/); // não alargou a escada
+  // erro de rede comum NÃO vira bloqueio
+  limparTudo();
+  const rede = new TypeError("fetch failed");
+  rede.cause = { code: "ECONNRESET" };
+  await assert.rejects(() => post({ fields: { query: "y" } }, async () => { throw rede; }), /fetch failed/);
+  assert.match(diagnosticoRitmo(), /Situação: liberado/);
+});
