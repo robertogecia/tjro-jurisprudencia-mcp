@@ -434,12 +434,13 @@ export function buildInteiroBody(nrProcesso, tipo) {
 }
 
 // Resposta corrompida do filtro (24/09/2026): para a identificação desta extensão o
-// portal passou a devolver "200 OK" com um cabeçalho inválido logo depois de
-// "Pragma" — o Node recusa ("Response does not match the HTTP/1.1 protocol") e
-// até o curl sai com erro 8. É recusa do filtro, não rede nem ritmo.
+// portal devolve a página "STIC - Página Bloqueada" (a mesma de julho), agora com
+// `Connection: close\0` (byte NUL) nos cabeçalhos — o Node recusa ("Response does not
+// match the HTTP/1.1 protocol") e até o curl sai com erro 8. É recusa do filtro, não
+// rede nem ritmo.
 export const RESPOSTA_CORROMPIDA =
-  "O portal do TJRO devolveu uma resposta corrompida (cabeçalho inválido) em vez dos dados: é o " +
-  "filtro de segurança do tribunal recusando a identificação desta extensão. Isso NÃO é excesso de " +
+  "O portal do TJRO devolveu a página de bloqueio do filtro de segurança, com um cabeçalho defeituoso que o " +
+  "programa não consegue ler: é o filtro do tribunal recusando a identificação desta extensão. Isso NÃO é excesso de " +
   "consultas nem falha da sua internet: esperar não resolve, e a extensão não contorna a proteção do " +
   "tribunal. A pesquisa continua funcionando no navegador (juris.tjro.jus.br). Para acesso pela " +
   'extensão, o caminho é pedir liberação ao tribunal: suporte@tjro.jus.br, assunto "Acesso Bloqueado".';
@@ -841,7 +842,7 @@ export function diagnosticoRitmo(agora = Date.now()) {
       `- ${quando} · ${i.reqsUltimos60s} consultas no minuto anterior, ` +
         `${i.reqsNaJanela} na janela de ${fmtDuracao(i.janelaS * 1000)} · ` +
         `intervalo desde a anterior: ${intervalo} · operação: ${i.operacao}` +
-        (i.tipo === "desafio_navegador" ? " · **verificação de navegador** (não é ritmo)" : "")
+        (i.tipo === "desafio_navegador" ? " · **verificação de navegador** (não é ritmo)" : i.tipo === "resposta_corrompida" ? " · **página de bloqueio com cabeçalho defeituoso** (não é ritmo)" : "")
     );
   }
 
@@ -984,12 +985,29 @@ export async function post(body, fetchImpl = fetch) {
     await new Promise((r) => setTimeout(r, reserva.esperarMs));
   }
 
-  const r = await fetchImpl(ENDPOINT, {
-    method: "POST",
-    headers: HEADERS,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(45000),
-  });
+  let r;
+  try {
+    r = await fetchImpl(ENDPOINT, {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45000),
+    });
+  } catch (e) {
+    // Sonda de 24/09/2026: para a identificação desta extensão o filtro serve a página
+    // "STIC - Página Bloqueada" com um cabeçalho defeituoso (byte NUL); o cliente
+    // recusa a resposta antes de ler o HTML. É bloqueio: entra no diário e arma o
+    // disjuntor (sem alargar a janela: não é problema de ritmo), senão o diagnóstico
+    // diria "liberado" enquanto a ferramenta segue batendo num portal que bloqueia.
+    if (ehRespostaCorrompida(e)) {
+      const campos = body?.fields || {};
+      registrarBloqueioDetectado(Date.now(), campos.nr_processo && !campos.query ? "inteiro_teor" : "busca", {
+        subirEscada: false,
+        tipo: "resposta_corrompida",
+      });
+    }
+    throw e;
+  }
   // O corpo é lido ANTES de decidir pelo status: se o WAF um dia escalar de página
   // 200-com-HTML para 403/429, a detecção de bloqueio precisa rodar do mesmo jeito.
   // Com a ordem antiga (status primeiro), disjuntor, escada e diário de incidentes
@@ -1521,7 +1539,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.21";
+export const VERSAO = "1.7.22";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
@@ -1599,7 +1617,7 @@ export const ISSUES_NOVA = "https://github.com/robertogecia/tjro-jurisprudencia-
 export function tipoDoErro(mensagem) {
   const m = String(mensagem || "");
   if (/verificação de navegador/i.test(m)) return "desafio_navegador";
-  if (/resposta corrompida/i.test(m)) return "resposta_corrompida";
+  if (/cabeçalho defeituoso/i.test(m)) return "resposta_corrompida";
   if (/robotiza|suspeita de automação/i.test(m)) return "bloqueio_robotizacao";
   if (/evitando novas tentativas|Muitas consultas em pouco tempo/i.test(m)) return "limite_de_ritmo";
   if (/tempo esgotado/i.test(m)) return "timeout";
