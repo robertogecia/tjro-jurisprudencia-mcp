@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ehOrgao1oGrau,
   msgErro,
   RESPOSTA_CORROMPIDA,
   lerCacheInteiro,
@@ -1572,4 +1573,16 @@ test("resposta corrompida do filtro vira mensagem clara, não erro cru do Node",
   const rede = new TypeError("fetch failed");
   rede.cause = { code: "ECONNRESET" };
   assert.equal(msgErro(rede), "ECONNRESET");
+});
+
+test("vara de 1º grau filtra por ds_orgao_julgador; câmara continua no campo colegiado", () => {
+  assert.ok(ehOrgao1oGrau("Porto Velho - 4ª Vara Cível"));
+  assert.ok(ehOrgao1oGrau("Porto Velho - 2º Juizado Especial Cível"));
+  for (const o of ["1ª Câmara Cível", "Tribunal Pleno", "1ª Turma Recursal", "Turma Recursal - Porto Velho", "Câmaras Cíveis Reunidas"])
+    assert.ok(!ehOrgao1oGrau(o), o);
+  const v = buildBuscaBody({ consulta: "x", tipo: ["SENTENÇA"], orgaoColegiado: "Porto Velho - 4ª Vara Cível" });
+  assert.equal(v.fields["ds_orgao_julgador.raw"], "Porto Velho - 4ª Vara Cível");
+  assert.equal(v.fields["ds_orgao_julgador_colegiado.raw"], undefined);
+  const c = buildBuscaBody({ consulta: "x", tipo: ["ACÓRDÃO"], orgaoColegiado: "1ª Câmara Cível" });
+  assert.equal(c.fields["ds_orgao_julgador_colegiado.raw"], "1ª Câmara Cível");
 });

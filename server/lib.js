@@ -364,6 +364,12 @@ export const normTipos = (arr, padrao) => {
 };
 
 // ----------------------------------------------------------- request bodies -
+// Vara/Juizado/Núcleo de 1º grau ("Comarca - Vara"), não câmara/turma de 2º grau.
+export function ehOrgao1oGrau(orgao) {
+  if (!orgao || /turma|c[âa]mara|pleno|tribunal|conselho/i.test(orgao)) return false;
+  return /\bvara\b|juizado|n[úu]cleo|ju[íi]zo| - /i.test(orgao);
+}
+
 export function buildBuscaBody(o) {
   // Escapar ANTES de aspear: na ordem inversa as aspas da frase exata viram
   // \" literais e a API trata os termos como busca solta (OR).
@@ -379,7 +385,10 @@ export function buildBuscaBody(o) {
   if (o.grau === 1 || o.grau === 2) fields.grau_jurisdicao = String(o.grau);
   // O índice grava classes em CAIXA ALTA e o filtro .raw é sensível a caixa.
   if (o.classe) fields["ds_classe_judicial.raw"] = o.classe.toUpperCase();
-  if (o.orgaoColegiado) fields["ds_orgao_julgador_colegiado.raw"] = o.orgaoColegiado;
+  // 1º grau (24/09/2026): a vara vive em ds_orgao_julgador ("Porto Velho - 4ª Vara
+  // Cível"); ds_orgao_julgador_colegiado vem VAZIO na sentença.
+  if (o.orgaoColegiado)
+    fields[ehOrgao1oGrau(o.orgaoColegiado) ? "ds_orgao_julgador.raw" : "ds_orgao_julgador_colegiado.raw"] = o.orgaoColegiado;
   // Filtro SERVER-SIDE confirmado por investigação real em 09/09/2026 (4
   // requisições ao portal, espaçadas ≥30s): "dano moral"/ACÓRDÃO sem filtro deu
   // total=203480; com este campo = "Alexandre Miguel" deu total=7202 e os 3
@@ -1510,7 +1519,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.18";
+export const VERSAO = "1.7.19";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
