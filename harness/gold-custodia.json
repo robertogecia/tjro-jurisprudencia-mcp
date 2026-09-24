@@ -1,0 +1,330 @@
+{
+ "_sobre": "Gabarito rotulado à mão em 23/09/2026 sobre 30 janelas sorteadas (semente 7) dos recibos em ~/.tjro-jurisprudencia-recibos. Cada item: id do documento, um trecho literal (sem nome de parte) e o que ele é. 'transcrito' = palavra de outro julgado copiada no voto; 'proprio' = palavra do relator; 'divergente' = voto de vogal que diverge. Itens com v=true são a VALIDAÇÃO: segunda amostra (semente 11, 14 janelas) rotulada DEPOIS do ajuste das âncoras — é o número que não foi usado para calibrar.",
+ "itens": [
+  {
+   "id": "17594930",
+   "r": "transcrito",
+   "t": "A construtora é parte legítima para responder pelos pleitos de restituição de taxas condominiais",
+   "v": false
+  },
+  {
+   "id": "17594930",
+   "r": "proprio",
+   "t": "Como se vê, a responsabilidade com a obrigação pelos pagamentos das taxas condominiais se estabelece com a imissão na posse",
+   "v": false
+  },
+  {
+   "id": "1807028",
+   "r": "transcrito",
+   "t": "cabe deferir o pedido de sustação dos efeitos dos registros e protestos feitos contra os devedores",
+   "v": false
+  },
+  {
+   "id": "1807028",
+   "r": "proprio",
+   "t": "prudente que a agravante proceda à retirada do nome do agravado nos órgãos de proteção ao crédito",
+   "v": false
+  },
+  {
+   "id": "22066595",
+   "r": "transcrito",
+   "t": "A violação ou a inobservância a orientação contida em enunciado sumular não se enquadra",
+   "v": false
+  },
+  {
+   "id": "22066595",
+   "r": "transcrito",
+   "t": "A Reclamação dirigida ao STJ não se presta a proteger o jurisdicionado de decisões judiciais",
+   "v": false
+  },
+  {
+   "id": "22066599",
+   "r": "transcrito",
+   "t": "somente tendo cabimento nas hipóteses restritas dos art. 988 do CPC, não suportando interpretação extensiva",
+   "v": false
+  },
+  {
+   "id": "22066599",
+   "r": "transcrito",
+   "t": "A hipótese de cabimento da reclamação calcada na garantia da autoridade das decisões",
+   "v": false
+  },
+  {
+   "id": "24174424",
+   "r": "transcrito",
+   "t": "Pessoa analfabeta pode perfeitamente firmar com a instituição bancária contrato de empréstimo consignado",
+   "v": false
+  },
+  {
+   "id": "24174424",
+   "r": "transcrito",
+   "t": "FORMA DE CONTRATAÇÃO TEMERÁRIA, CONSIDERANDO TRATAR-SE DE EMPRÉSTIMO DE VALOR RELATIVAMENTE ELEVADO",
+   "v": false
+  },
+  {
+   "id": "24677777",
+   "r": "transcrito",
+   "t": "A simples contratação indevida de aplicação financeira com aporte automática, sem autorização do consumidor",
+   "v": false
+  },
+  {
+   "id": "25020119",
+   "r": "transcrito",
+   "t": "Havendo prova da contratação do cartão de crédito com margem consignável, com assinatura do beneficiário",
+   "v": false
+  },
+  {
+   "id": "25020119",
+   "r": "proprio",
+   "t": "Observa-se que os termos do contrato são claros acerca do seu objeto, não havendo que se falar em erro",
+   "v": false
+  },
+  {
+   "id": "29185908",
+   "r": "transcrito",
+   "t": "Agravantes que não se insurgiram em relação ao indeferimento no momento oportuno, operando-se a preclusão",
+   "v": false
+  },
+  {
+   "id": "31445342",
+   "r": "transcrito",
+   "t": "apresenta-se equivocada a certidão de trânsito em julgado contida nos autos",
+   "v": false
+  },
+  {
+   "id": "31445342",
+   "r": "proprio",
+   "t": "A jurisprudência do Superior Tribunal de Justiça é pacífica no sentido de que a certidão de trânsito em julgado lavrada equivocadamente",
+   "v": false
+  },
+  {
+   "id": "31498105",
+   "r": "transcrito",
+   "t": "A jurisprudência do Superior Tribunal de Justiça sedimentou-se, sob a égide do CPC/1973",
+   "v": false
+  },
+  {
+   "id": "32010797",
+   "r": "transcrito",
+   "t": "Os juros moratórios incidem a partir do evento danoso, conforme a Súmula 54 do STJ, e a correção monetária a partir da data da fixação",
+   "v": false
+  },
+  {
+   "id": "32010797",
+   "r": "proprio",
+   "t": "Assim, sobre os valores a serem restituídos, os juros de mora devem incidir a partir de cada desconto indevido",
+   "v": false
+  },
+  {
+   "id": "32011460",
+   "r": "transcrito",
+   "t": "Tratando-se de responsabilidade extracontratual, os juros moratórios devem ser computados a partir do evento danoso",
+   "v": false
+  },
+  {
+   "id": "32288297",
+   "r": "transcrito",
+   "t": "Quando não comprovada a contratação apta a justificar os descontos realizados",
+   "v": false
+  },
+  {
+   "id": "32288297",
+   "r": "transcrito",
+   "t": "O desconto mensal de valores ínfimos, ainda que ilegítimos, não geram abalo moral",
+   "v": false
+  },
+  {
+   "id": "32288297",
+   "r": "proprio",
+   "t": "Dessa forma, não há que se falar em engano justificável, sendo correta a restituição em dobro do valor",
+   "v": false
+  },
+  {
+   "id": "36214060",
+   "r": "transcrito",
+   "t": "A jurisprudência desta Suprema Corte é pacífica no sentido de que a reclamação constitucional não é o instrumento adequado",
+   "v": false
+  },
+  {
+   "id": "36491881",
+   "r": "transcrito",
+   "t": "O ônus de provar a validade e regularidade da contratação incumbe à instituição financeira",
+   "v": false
+  },
+  {
+   "id": "36540345",
+   "r": "transcrito",
+   "t": "Caracteriza dano moral indenizável o desconto indevido de valores relativos a empréstimo consignado não contratado",
+   "v": false
+  },
+  {
+   "id": "36571042",
+   "r": "transcrito",
+   "t": "competia ao requerido, responsável pela produção do documento, o ônus de comprovar a autenticidade da contratação",
+   "v": false
+  },
+  {
+   "id": "36609091",
+   "r": "transcrito",
+   "t": "O desconto indevido em benefício previdenciário configura dano moral in re ipsa",
+   "v": false
+  },
+  {
+   "id": "36615462",
+   "r": "proprio",
+   "t": "A caução deve, portanto, assegurar exclusivamente o crédito relacionado às benfeitorias necessárias e úteis",
+   "v": false
+  },
+  {
+   "id": "8263666",
+   "r": "transcrito",
+   "t": "Inservível, portanto, essa espécie recursal para, sob falso argumento, provocar o rejulgamento",
+   "v": false
+  },
+  {
+   "id": "8263666",
+   "r": "proprio",
+   "t": "Como se sabe, a rediscussão da matéria extrapola a via limitada dos embargos",
+   "v": false
+  },
+  {
+   "id": "8881368",
+   "r": "transcrito",
+   "t": "Não se desconhece o entendimento firmado do âmbito deste Superior Tribunal de Justiça",
+   "v": false
+  },
+  {
+   "id": "8881368",
+   "r": "proprio",
+   "t": "a juntada de nova procuração, sem ressalvas, tacitamente revoga as anteriores",
+   "v": false
+  },
+  {
+   "id": "29880011",
+   "r": "proprio",
+   "t": "Ante o exposto, divirjo do relator para negar provimento ao recurso de apelação",
+   "v": false,
+   "nota": "é o voto que PREVALECEU (fecho: vencido o relator) — rotulado errado na 1ª passada"
+  },
+  {
+   "id": "1282922",
+   "r": "proprio",
+   "t": "divirjo da eminente relatora, para afastar a decadência",
+   "v": false,
+   "nota": "é o voto que PREVALECEU (fecho: vencido o relator) — rotulado errado na 1ª passada"
+  },
+  {
+   "id": "27805582",
+   "r": "proprio",
+   "t": "divirjo do eminente Relator para conceder provimento ao recurso e revogar a liminar",
+   "v": false,
+   "nota": "é o voto que PREVALECEU (fecho: vencido o relator) — rotulado errado na 1ª passada"
+  },
+  {
+   "id": "29275572",
+   "r": "divergente",
+   "t": "divirjo do posicionamento do relator pelo conhecimento e análise da prescrição",
+   "v": false
+  },
+  {
+   "id": "29275572",
+   "r": "transcrito",
+   "t": "O ônus da prova da autenticidade de assinatura aposta em documento particular, quando contestada, recai sobre aquele que o apresentou",
+   "v": true
+  },
+  {
+   "id": "29275574",
+   "r": "transcrito",
+   "t": "Constatados descontos indevidos de benefício previdenciário, com base em contrato não aderido",
+   "v": true
+  },
+  {
+   "id": "29880011",
+   "r": "transcrito",
+   "t": "Descontos em benefício previdenciário, sem a prova da contratação válida, caracteriza a responsabilidade da associação",
+   "v": true
+  },
+  {
+   "id": "29880013",
+   "r": "transcrito",
+   "t": "A contratação eletrônica de produto financeiro sem elementos que assegurem a identificação inequívoca do contratante",
+   "v": true
+  },
+  {
+   "id": "32011460",
+   "r": "transcrito",
+   "t": "A prática reiterada de descontos indevidos em benefício previdenciário, sem a devida autorização da parte consumidora",
+   "v": true
+  },
+  {
+   "id": "32158441",
+   "r": "transcrito",
+   "t": "A ausência de prova da contratação autoriza o reconhecimento da inexistência de vínculo contratual",
+   "v": true
+  },
+  {
+   "id": "33309981",
+   "r": "transcrito",
+   "t": "a instituição financeira comprovou que a avença foi firmada, de forma digital, mediante biometria facial",
+   "v": true
+  },
+  {
+   "id": "36491883",
+   "r": "transcrito",
+   "t": "a compensação de valores mitigaria indevidamente a responsabilidade objetiva, transferindo o risco da atividade bancária à vítima",
+   "v": true
+  },
+  {
+   "id": "36540365",
+   "r": "transcrito",
+   "t": "A inércia da mutuária em questionar os descontos por um longo lapso temporal após a consumação dos contratos",
+   "v": true
+  },
+  {
+   "id": "36569850",
+   "r": "transcrito",
+   "t": "buscando-se evitar enriquecimento indevido, acolho a pretensão de compensação",
+   "v": true
+  },
+  {
+   "id": "36569850",
+   "r": "proprio",
+   "t": "Assim, a sentença observou adequadamente tais parâmetros, inexistindo razões para modificação",
+   "v": true
+  },
+  {
+   "id": "32288533",
+   "r": "proprio",
+   "t": "O saque indevido de verba alimentar de pessoa idosa gera dano moral indenizável",
+   "v": true
+  },
+  {
+   "id": "22066599",
+   "r": "divergente",
+   "t": "Vale destacar que, em sua redação original, o artigo 988, IV, do CPC/2015 previa o cabimento",
+   "v": true,
+   "nota": "está na DECLARAÇÃO DE VOTO de um vogal, não no voto do relator — rotulado errado na 1ª passada"
+  },
+  {
+   "id": "27805582",
+   "r": "divergente",
+   "t": "verifico que o agravado efetuou a notificação extrajudicial do agravante",
+   "v": false,
+   "nota": "voto do relator VENCIDO"
+  },
+  {
+   "id": "29880011",
+   "r": "divergente",
+   "t": "A controvérsia dos autos orbita na alegação da autora de que sofre descontos indevidos em",
+   "v": false,
+   "nota": "voto do relator VENCIDO"
+  },
+  {
+   "id": "1282922",
+   "r": "divergente",
+   "t": "cinge-se a verificar se o cômputo",
+   "v": false,
+   "nota": "voto da relatora VENCIDA"
+  }
+ ]
+}

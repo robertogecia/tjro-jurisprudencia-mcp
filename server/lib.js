@@ -8,6 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { camposAlheios } from "./custodia.js";
 
 export const SITE = "https://juris.tjro.jus.br";
 export const API = "https://juris-back.tjro.jus.br";
@@ -1417,7 +1418,18 @@ export function recibo(s, agora = new Date()) {
     data_julgamento: s.dtjulgamento_str || dataBr(s.dtjulgamento || "") || null,
     obtido_em: agora.toISOString(),
     texto,
+    ...alheios(texto, s.tipo),
   };
+}
+
+// v1.7.16: o que no `texto` NÃO é palavra do TJRO (ementa de outro julgado transcrita no voto, voto
+// vencido), para o lint de citações avisar em vez de aprovar. Lógica e medição em server/custodia.js.
+function alheios(texto, tipo) {
+  try {
+    return { ...camposAlheios(texto, tipo), normalizacao: "trechos em bruto, recortados de `texto` — normalize com a sua própria função" };
+  } catch {
+    return {};   /* recibo é conferência extra: falha aqui não pode custar o texto */
+  }
 }
 
 export function gravarRecibos(data, pasta = dirRecibos()) {
@@ -1483,7 +1495,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.15";
+export const VERSAO = "1.7.16";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

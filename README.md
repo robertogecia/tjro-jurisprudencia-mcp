@@ -447,6 +447,12 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
   documento do tribunal, e não só no que a IA diz ter lido. É texto público de
   acórdão e fica só na sua máquina; pode apagar a pasta quando quiser. Outra
   pasta: variável de ambiente `TJRO_MCP_DIR_RECIBOS`.
+  Desde a v1.7.16, o recibo também registra o que **não** é palavra do TJRO:
+  `trechos_transcritos` (ementas de outros julgados que o voto copia),
+  `trecho_divergente` (o voto que pode ter sido vencido) e, no ACÓRDÃO,
+  `texto_voz_propria` (ementa da casa e fecho). Assim, quem confere a peça é
+  avisado quando o trecho citado está no documento, mas foi escrito por outro
+  tribunal ou pelo voto vencido. Medição e limites estão no `CHANGELOG.md`.
 - **Aviso de versão nova.** Ao subir, a extensão pergunta ao GitHub qual é a
   release mais recente. Se houver uma mais nova que a instalada, a primeira
   resposta da sessão termina com uma linha avisando, com o endereço da página
