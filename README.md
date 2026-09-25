@@ -269,6 +269,13 @@ ritmo desta máquina, e rajada é o que dispara o bloqueio do portal; e peça ao
 agente que abra o inteiro teor antes de afirmar o que um acórdão decide. Na
 conversa comum do Claude Desktop não há subagentes, e nada disso é necessário.
 
+**Pesquisa longa e a espera.** Quando a ferramenta manda esperar (limite de ritmo ou
+bloqueio do tribunal), a resposta traz o tempo em segundos e o tipo, no formato
+`[espera_segundos=N tipo=...]`. Quem conduz uma pesquisa longa com agentes (Claude
+Code ou Cowork) pode esperar esse tempo em segundo plano e retomar de onde parou,
+em vez de desistir. Insistir antes da hora não ajuda: cada bloqueio dobra o tempo de
+recuo, de 10 minutos até 1 hora.
+
 **Economize consultas: o limite do TJRO é de volume.** Num teste de 23/09/2026,
 18 consultas espaçadas de 5 a 8 segundos foram bloqueadas em cerca de 3 minutos:
 espaçar não basta, o que conta é quantas saem em poucos minutos, somando todas as

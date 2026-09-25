@@ -716,7 +716,8 @@ export function reservarRequisicao(agora = Date.now(), opts = {}) {
           "O TJRO bloqueou uma consulta recente por suspeita de automação; para não " +
           "prolongar o bloqueio, esta ferramenta está evitando novas tentativas por " +
           `mais ${fmtDuracao(e.bloqueadoAte - agora)}. Tente novamente depois disso. ` +
-          "Enquanto isso, o portal juris.tjro.jus.br segue acessível no navegador.",
+          "Enquanto isso, o portal juris.tjro.jus.br segue acessível no navegador. " +
+          `[espera_segundos=${Math.ceil((e.bloqueadoAte - agora) / 1000)} tipo=bloqueio_do_tribunal]`,
       };
     }
     const janelaMs = ESCADA_JANELA_MS[e.indiceJanela];
@@ -728,7 +729,7 @@ export function reservarRequisicao(agora = Date.now(), opts = {}) {
           `Muitas consultas em pouco tempo (limite atual: ${JANELA_MAX_REQS} a cada ` +
           `${fmtDuracao(janelaMs)}, compartilhado por todos os processos desta extensão nesta máquina ` +
           "e ajustado conforme bloqueios anteriores do TJRO). " +
-          `Aguarde ${fmtDuracao(espera)} e tente de novo.`,
+          `Aguarde ${fmtDuracao(espera)} e tente de novo. [espera_segundos=${Math.ceil(espera / 1000)} tipo=limite_de_ritmo]`,
       };
     }
     const vaga = Math.max(agora, e.proximoLivreEm);
@@ -1539,7 +1540,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.22";
+export const VERSAO = "1.7.23";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

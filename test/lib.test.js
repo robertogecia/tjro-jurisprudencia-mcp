@@ -1603,3 +1603,16 @@ test("resposta corrompida do filtro entra no diário de bloqueios e arma o disju
   await assert.rejects(() => post({ fields: { query: "y" } }, async () => { throw rede; }), /fetch failed/);
   assert.match(diagnosticoRitmo(), /Situação: liberado/);
 });
+
+test("mensagens de espera trazem o tempo em segundos e o tipo, para o agente retomar sozinho", () => {
+  limparTudo();
+  const t0 = 7_000_000;
+  for (let i = 0; i < 10; i++) reservarRequisicao(t0 + i * 6000);
+  const janela = reservarRequisicao(t0 + 10 * 6000);
+  assert.match(janela.erro, /\[espera_segundos=\d+ tipo=limite_de_ritmo\]/);
+  limparTudo();
+  registrarBloqueioDetectado(t0);
+  const bloq = reservarRequisicao(t0 + 1000);
+  const m = /\[espera_segundos=(\d+) tipo=bloqueio_do_tribunal\]/.exec(bloq.erro);
+  assert.ok(m && Number(m[1]) > 500 && Number(m[1]) <= 600, bloq.erro);
+});
