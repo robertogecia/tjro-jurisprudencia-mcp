@@ -37,6 +37,7 @@ import {
   notaCache,
 } from "./lib.js";
 import { consultarProcesso, formatProcesso, ErroProcesso } from "./processo.js";
+import { ordenarPorSimilaridade, notaSimilares } from "./similares.js";
 import { baixarAtualizacao, textoAtualizacao, ErroAtualizacao } from "./atualizar.js";
 import {
   buscarNormas,
@@ -156,6 +157,7 @@ server.registerTool(
       pagina: z.number().int().optional().describe("Página dos resultados (1+). O portal expõe no máximo os 10.000 primeiros."),
       por_pagina: z.number().int().optional().describe("Resultados por página (1–250; padrão 10). Acima de ~30, use modo=\"compacto\" para a resposta caber: 250 numa consulta custam o mesmo que 10 no ritmo do portal."),
       modo: z.enum(["completo", "compacto"]).optional().describe('"compacto" = uma linha por documento (órgão, data, relator, resultado declarado, assunto, processo, id), sem trecho — para varrer 100–250 resultados e escolher o que abrir. Padrão "completo" (com trecho).'),
+      similares_a: z.string().optional().describe("Id de um documento DESTA página (id_processo_documento, vem em cada resultado): reordena a página, no cliente e sem consulta extra, pela semelhança de texto com ele (cosseno TF-IDF), com a semelhança em % no cabeçalho. Use com por_pagina alto e a mesma consulta que trouxe o documento. Semelhança de palavras, não de tese."),
       resultado: z.enum(["provido", "parcial", "desprovido", "acolhido", "rejeitado", "sem"]).optional().describe("Filtra, NO CLIENTE e só dentro da página trazida, os documentos cujo julgamento declara esse resultado no dispositivo (provido / parcialmente provido / desprovido / acolhido / rejeitado; \"sem\" = sem resultado identificável). Use com por_pagina alto. O total do cabeçalho continua sendo o do índice."),
     },
   },
@@ -228,6 +230,12 @@ server.registerTool(
         data.hits = { ...(data.hits || {}), hits };
         nota += `Filtro resultado="${a.resultado}" aplicado no cliente: dos ${antes} documentos trazidos nesta página, ${hits.length} ficaram (${removidos} removidos). O total do cabeçalho é o do índice, sem esse filtro.\n`;
         filtros.push(`resultado="${a.resultado}" (no cliente, só nesta página)`);
+      }
+      if (a.similares_a) {
+        const sim = ordenarPorSimilaridade((data.hits || {}).hits || [], a.similares_a);
+        if (!sim.alvoNaoEncontrado) data.hits = { ...(data.hits || {}), hits: sim.hits };
+        nota += notaSimilares(sim, a.similares_a, (pagina - 1) * porPagina);
+        if (!sim.alvoNaoEncontrado) filtros.push(`similares_a="${a.similares_a}" (reordenação no cliente, só nesta página)`);
       }
       return {
         content: [{

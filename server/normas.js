@@ -12,6 +12,7 @@
 // extensão (medido com o mesmo User-Agent). Divide a cota de ritmo do JURIS.
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import he from "he";
 import { HEADERS, reservarRequisicao, dirCache } from "./lib.js";
 
@@ -270,7 +271,8 @@ async function baixarAtos(url, fetchImpl = fetch) {
 
 export async function buscarNormas(o, fetchImpl = fetch) {
   const url = buildNormasUrl(o);
-  const chave = Buffer.from(url).toString("base64url").slice(-80);
+  // Mesma chave que o servidor Python (sha256 da URL): os dois compartilham a pasta de cache.
+  const chave = crypto.createHash("sha256").update(url).digest("hex").slice(0, 40);
   const c = lerCache(arqLista(chave), CACHE_LISTA_MS);
   if (c) return { ...c.dados, url, doCache: c.quando };
   const html = await baixarAtos(url, fetchImpl);
