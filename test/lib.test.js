@@ -1616,3 +1616,14 @@ test("mensagens de espera trazem o tempo em segundos e o tipo, para o agente ret
   const m = /\[espera_segundos=(\d+) tipo=bloqueio_do_tribunal\]/.exec(bloq.erro);
   assert.ok(m && Number(m[1]) > 500 && Number(m[1]) <= 600, bloq.erro);
 });
+
+test("proximidade em termo de grupo: \"a b\"~N só com 2+ palavras e N de 1 a 20", () => {
+  assert.equal(termoParaQuery("repetição dobro ~3"), '"repetição dobro"~3');
+  assert.equal(termoParaQuery("repetição dobro~3"), '"repetição dobro"~3');
+  assert.equal(termoParaQuery("hora certa ocultação ~8"), '"hora certa ocultação"~8');
+  assert.equal(termoParaQuery("dobro~3"), "dobro\\~3");                      // palavra única: escapa
+  assert.equal(termoParaQuery("repetição dobro ~0"), '"repetição dobro \\~0"'); // N fora da faixa: frase literal
+  assert.equal(termoParaQuery("repetição dobro ~21"), '"repetição dobro \\~21"');
+  assert.equal(termoParaQuery("dano moral"), '"dano moral"');                  // frase comum intacta
+  assert.match(montarGrupos([["repetição dobro ~3", "devolução em dobro"], ["estorno"]]), /^\("repetição dobro"~3 OR "devolução em dobro"\) AND \(estorno\)$/);
+});

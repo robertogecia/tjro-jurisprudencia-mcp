@@ -106,7 +106,7 @@ server.registerTool(
         .array(z.array(z.string()))
         .optional()
         .describe(
-          "Grupos de sinônimos: cada grupo é uma lista de palavras ou expressões equivalentes, combinadas por OR; " +
+          "Proximidade: termo `a b ~N` (2+ palavras, N 1-20) vira \"a b\"~N, palavras a até N posições em qualquer ordem — use quando a frase exata der pouco. Grupos de sinônimos: cada grupo é uma lista de palavras ou expressões equivalentes, combinadas por OR; " +
             "os grupos se somam por AND (e somam por AND à consulta, se houver). Expressão com espaço vira frase " +
             'exata. Curinga só no FIM de palavra única ("consign*"). A ferramenta monta os parênteses e escapa cada ' +
             `termo — não escreva sintaxe. Até ${GRUPOS_MAX} grupos e ${TERMOS_POR_GRUPO_MAX} termos por grupo. ` +

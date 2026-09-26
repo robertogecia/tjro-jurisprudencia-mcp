@@ -252,9 +252,22 @@ quatro a seis consultas:
    os perde. O filtro `orgao_colegiado` aceita **um órgão só**: vírgula ou "ou" não
    somam órgãos (o portal devolveria zero, e a extensão agora recusa com explicação).
    Use-o para ver como uma câmara específica decide, conferindo a câmara no fecho.
+   **Grupos estreitos vencem listas longas de sinônimos** (medido em 25/09/2026, 7
+   teses): grupos com 2 a 4 termos do fato acharam o julgado certo no top-10 em 4
+   de 7 teses; a mesma busca com 8 a 15 sinônimos por grupo caiu para 3 de 7 e
+   alargou o resultado (de 2 para 14.031 documentos numa tese). Expanda só quando
+   a busca zerar ou vier com poucos resultados sem o julgado esperado. Acento não
+   faz diferença ("repeticao" acha "repetição").
+   **Proximidade** (desde a v1.7.24): num termo de grupo, `repetição dobro ~3` acha
+   as duas palavras a até 3 posições uma da outra, em qualquer ordem ("repetição em
+   dobro", "repetição do indébito em dobro"): 3.208 documentos, contra 16 da frase
+   exata. Use quando a frase exata der pouco e o conceito for um par de palavras;
+   medido em 7 teses, empata com os grupos estreitos, acertando teses diferentes.
 2. **Âncora pela citação.** Julgados do mesmo assunto costumam citar a mesma
    súmula, tema repetitivo ou IRDR, mesmo quando descrevem o fato com outras
-   palavras. Um grupo como `["Súmula 385"]` acha esses julgados.
+   palavras. Um grupo como `["Súmula 385"]` acha esses julgados. A âncora tem
+   de ser específica (número de lei, súmula ou tema): um artigo de uso geral, como
+   `["art. 42"]`, traz milhares de documentos e afunda o julgado certo.
 3. **Colher o vocabulário do melhor resultado.** Abra o inteiro teor do julgado
    mais certeiro, veja que palavras e que citações ele usa, e busque de novo com
    elas. É o que acha o vocabulário da própria câmara, que nenhuma lista prevê.
