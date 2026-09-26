@@ -224,6 +224,7 @@ server.registerTool(
       "Retorna o texto integral dos documentos de UM processo do TJRO (acórdão, ementa, voto, relatório), " +
       "com citação pronta para peça e link do portal. " +
       "Use o nr_processo devolvido por buscar_jurisprudencia_tjro quando precisar do teor completo, não só da ementa. " +
+      "Parâmetro obrigatório: nr_processo (número CNJ). O id do documento NÃO é parâmetro e não substitui o número: a ferramenta busca pelo processo e devolve todos os julgamentos dele, cada um com o seu id; para citar um deles, use o id que aparece na resposta. " +
       "Se o processo tiver julgamentos distintos (original, embargos, segundos embargos), a resposta lista todos com data, relator e id " +
       "do documento — a Citação do cabeçalho é só da decisão mais recente. Cada peça avisa quando a câmara ou o relator do índice " +
       "divergem do que o texto do acórdão declara (prevalece o texto; o cadastro do portal erra a câmara com frequência). " +
