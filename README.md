@@ -151,6 +151,35 @@ publicação no Diário). Se a consulta voltar vazia, o número está errado ou 
 processo está em segredo de justiça, e isso não prova que ele não existe. É uma
 consulta por processo, a pedido: a ferramenta não varre processos.
 
+## Normas do próprio TJRO (resoluções, provimentos, instruções) — desde a 1.8.0
+
+Muita tese em Rondônia depende de um ato do próprio tribunal, não de lei: a instrução
+da Presidência sobre licença-prêmio, o provimento da Corregedoria sobre custas ou
+registro de imóveis, as Diretrizes Gerais Judiciais, o Regimento Interno. Esses atos
+vivem no portal oficial `atos.tjro.jus.br`, e duas ferramentas o consultam:
+
+- `buscar_norma_tjro` pesquisa por **argumento** (uma expressão curta, procurada no
+  texto integral do ato, não só na ementa), por **número e ano** (para um ato que você
+  já conhece), por **tipo** (Resolução, Provimento, Instrução, Regimento Interno…),
+  **origem** (Presidência, Corregedoria Geral da Justiça…), **situação** e **tema** do
+  cadastro. Vêm 10 por página, com a situação do portal (Vigente, Alterado, Revogado…),
+  **os vigentes primeiro**, e o id de cada ato. Peça, por exemplo:
+  _"Que norma do TJRO trata da conversão de licença-prêmio em pecúnia?"_ ou
+  _"Abra a Instrução 11/2016 da Presidência do TJRO."_
+- `obter_norma_tjro` abre um ato pelo id e traz a situação, a ementa, **quem o alterou
+  ou revogou** (com o id do ato novo, para seguir a cadeia até a norma que vale hoje), a
+  **legislação correlata** que o portal cadastra, os PDFs e o **texto compilado**, com
+  as alterações marcadas no próprio texto. Dá para pedir só um artigo (`artigo="4"`) e
+  ler textos longos em fatias.
+
+O que vale saber: a situação é a do cadastro do portal (o próprio TJRO avisa quando um
+ato está "em fila de revisão"); ato **Alterado** se cita pela redação compilada e pela
+norma que a deu; ato **Revogado** não se cita como em vigor. Alguns atos antigos só
+existem em PDF, e aí a ferramenta dá o link e diz que não há texto para citar. Zero
+resultado nunca é "a norma não existe": o portal procura o termo exato, então varie a
+grafia ("licença especial", "licença-prêmio", "assiduidade") ou tire os filtros. Essas
+consultas dividem a cota de ritmo da extensão, como as demais.
+
 ## Quando usar isto (e quando usar outra coisa)
 
 **Só faz sentido para casos da jurisdição do TJRO** (1º ou 2º grau de Rondônia).

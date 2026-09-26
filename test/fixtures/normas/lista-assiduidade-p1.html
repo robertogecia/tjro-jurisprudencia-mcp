@@ -1,0 +1,588 @@
+<link href="/css/style.css" rel="stylesheet">
+<link href="https://atos.tjro.jus.br/css/app.css" rel="stylesheet">
+<link href="https://atos.tjro.jus.br/css/atos.css" rel="stylesheet">
+
+<link rel="stylesheet" href="https://atos.tjro.jus.br/font-awesome/css/font-awesome.min.css">
+
+<script src="https://atos.tjro.jus.br/js/jquery-3.3.1.js"></script>
+<script type="text/javascript" src="https://atos.tjro.jus.br/DataTables/datatables.min.js"></script>
+<script type="text/javascript" src="https://atos.tjro.jus.br/DataTables/dataTables.bootstrap4.min.js"></script>
+
+<form action="/" type="POST" id="formPesquisa">
+
+    <input type="hidden" name="_token" value="FjfZTxKpMMbIXDyNbRaeMMf9kAWa14ukF5rfOL0k" autocomplete="off">
+
+    <div id="formPesquisaAtos">
+
+        <div id="formPesquisaAtosTitulo">Pesquisa</div>
+
+        <div class="container">
+
+            <div class="row">
+
+                
+                                             <div class="col">                             <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto1" name="tipoAto[]" value='1'
+                                       >
+                                <label class="form-check-label" for="tipoAto1">Assento Regimental</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto2" name="tipoAto[]" value='2'
+                                       >
+                                <label class="form-check-label" for="tipoAto2">Ato</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto3" name="tipoAto[]" value='3'
+                                       >
+                                <label class="form-check-label" for="tipoAto3">Ato Conjunto</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto25" name="tipoAto[]" value='25'
+                                       >
+                                <label class="form-check-label" for="tipoAto25">Diretrizes Gerais Extrajudiciais</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto24" name="tipoAto[]" value='24'
+                                       >
+                                <label class="form-check-label" for="tipoAto24">Diretrizes Gerais Judiciais</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto5" name="tipoAto[]" value='5'
+                                       >
+                                <label class="form-check-label" for="tipoAto5">Edital</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto29" name="tipoAto[]" value='29'
+                                       >
+                                <label class="form-check-label" for="tipoAto29">Enunciado</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto7" name="tipoAto[]" value='7'
+                                       >
+                                <label class="form-check-label" for="tipoAto7">Instrução</label>
+                            </div>
+
+                            </div>                                              <div class="col">                             <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto8" name="tipoAto[]" value='8'
+                                       >
+                                <label class="form-check-label" for="tipoAto8">Instrução Conjunta</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto9" name="tipoAto[]" value='9'
+                                       >
+                                <label class="form-check-label" for="tipoAto9">Lei</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto22" name="tipoAto[]" value='22'
+                                       >
+                                <label class="form-check-label" for="tipoAto22">Lei Complementar</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto11" name="tipoAto[]" value='11'
+                                       >
+                                <label class="form-check-label" for="tipoAto11">Nota Técnica</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto12" name="tipoAto[]" value='12'
+                                       >
+                                <label class="form-check-label" for="tipoAto12">Ordem de Serviço</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto26" name="tipoAto[]" value='26'
+                                       >
+                                <label class="form-check-label" for="tipoAto26">Orientação</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto13" name="tipoAto[]" value='13'
+                                       >
+                                <label class="form-check-label" for="tipoAto13">Portaria</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto14" name="tipoAto[]" value='14'
+                                       >
+                                <label class="form-check-label" for="tipoAto14">Portaria Conjunta</label>
+                            </div>
+
+                            </div>                                              <div class="col">                             <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto28" name="tipoAto[]" value='28'
+                                       >
+                                <label class="form-check-label" for="tipoAto28">Portarias CGJ</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto16" name="tipoAto[]" value='16'
+                                       >
+                                <label class="form-check-label" for="tipoAto16">Provimento</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto17" name="tipoAto[]" value='17'
+                                       >
+                                <label class="form-check-label" for="tipoAto17">Provimento Conjunto</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto18" name="tipoAto[]" value='18'
+                                       >
+                                <label class="form-check-label" for="tipoAto18">Recomendação</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto19" name="tipoAto[]" value='19'
+                                       >
+                                <label class="form-check-label" for="tipoAto19">Regimento Interno</label>
+                            </div>
+
+                                                                                                    <div class="form-group form-check atos-form-group-chk">
+                                <input type="checkbox" class="form-check-input" id="tipoAto21" name="tipoAto[]" value='21'
+                                       >
+                                <label class="form-check-label" for="tipoAto21">Resolução</label>
+                            </div>
+
+                            </div>                     
+            </div>
+
+            <div class="form-row" style="margin-top:10px;margin-bottom:10px;">
+                <div class="form-group col-md-1">
+                    <input type="text" class="form-control" id="inputCity" placeholder="Número" name="numero"
+                           >
+                </div>
+                <div class="form-group col-md-1">
+                    <input type="text" maxlength="4" class="form-control" id="inputZip" placeholder="Ano" name="ano"
+                           >
+                </div>
+                <div class="form-group col-md-5">
+                    <input type="text" class="form-control" id="inputZip" placeholder="Argumento" name="argumento"
+                            value="assiduidade " >
+                </div>
+
+                <div class="form-group col-md-2">
+
+                    <select id="inputStateOrigem" class="form-control" name="origem">
+                        <option value=''>Origem</option>
+                                                    <option  value='23'>
+                                Adesão do Poder Judiciario do Estado e Rondônia ao Juizo 100% digital</option>
+                                                    <option  value='18'>
+                                Assessoria Técnica para os Órgãos Colegiados Administrativos/Astec</option>
+                                                    <option  value='12'>
+                                Auditoria Interna</option>
+                                                    <option  value='25'>
+                                Comitê Gestor do Processo Judicial Eletrõnico - PJe</option>
+                                                    <option  value='13'>
+                                Coordenadoria de Comunicação Institucional</option>
+                                                    <option  value='10'>
+                                Corregedoria Geral da Justiça</option>
+                                                    <option  value='9'>
+                                Escola da Magistratura do Estado de Rondônia</option>
+                                                    <option  value='14'>
+                                Gabinete de Governança</option>
+                                                    <option  value='15'>
+                                Gabinete de Segurança Institucional</option>
+                                                    <option  value='20'>
+                                Governo do Estado de Rondônia</option>
+                                                    <option  value='17'>
+                                Grupo de Monitoramento e Fiscalização do Sistema Carcerário e de Medidas Socioeducativas</option>
+                                                    <option  value='11'>
+                                Juiz Secretário Geral</option>
+                                                    <option  value='1'>
+                                Presidência</option>
+                                                    <option  value='27'>
+                                Presidência - Corregedoria - Coordenadoria da Infância e Juventude</option>
+                                                    <option  value='26'>
+                                Presidência do Fojur</option>
+                                                    <option  value='31'>
+                                Presidência e Comitê de Governança em Inteligência Artificial</option>
+                                                    <option  value='22'>
+                                Presidência e Corregedoria</option>
+                                                    <option  value='29'>
+                                Presidência e Escola da Magistratura</option>
+                                                    <option  value='30'>
+                                Presidência e Vice-Presidência</option>
+                                                    <option  value='5'>
+                                Secretaria Administrativa</option>
+                                                    <option  value='4'>
+                                Secretaria da Corregedoria Geral da Justiça</option>
+                                                    <option  value='7'>
+                                Secretaria de Gestão de Pessoas</option>
+                                                    <option  value='6'>
+                                Secretaria de Orçamento e Finanças</option>
+                                                    <option  value='8'>
+                                Secretaria de Tecnologia da Informação e Comunicação</option>
+                                                    <option  value='19'>
+                                Secretaria de Tecnologia da Informação e Comunicação</option>
+                                                    <option  value='3'>
+                                Secretaria Geral/Emeron</option>
+                                                    <option  value='16'>
+                                Secretaria Judiciária do 1º Grau</option>
+                                                    <option  value='2'>
+                                Secretaria Judiciária do 2º Grau</option>
+                                                    <option  value='32'>
+                                TJRO e Governo do Estado Rondônia</option>
+                                                    <option  value='24'>
+                                TJRO e MPRO</option>
+                                                    <option  value='28'>
+                                TJRO-CGJ</option>
+                                            </select>
+
+                </div>
+
+                <div class="form-group col-md-2">
+
+                    <select id="inputStateSituacao" class="form-control" name="situacao">
+                        <option value=''>Situação</option>
+                                                    <option  value='3'>
+                                Alterado</option>
+                                                    <option  value='9'>
+                                Exaurido</option>
+                                                    <option  value='5'>
+                                Revogado</option>
+                                                    <option  value='8'>
+                                Revogado parcialmente</option>
+                                                    <option  value='7'>
+                                Sem efeito</option>
+                                                    <option  value='6'>
+                                Suspenso</option>
+                                                    <option  value='4'>
+                                Vigente</option>
+                                            </select>
+
+                </div>
+
+            </div>
+
+            <div class="form-row">
+                <div class="form-group col-md-8">
+                    <select id="inputState" class="form-control" name="tema">
+                        <option value=''>Temas</option>
+                                                    <option  value='1'>Acessibilidade, Diversidade, Inclusão e Sustentabilidade</option>
+                                                    <option  value='2'>Acesso à Justiça e Cidadania</option>
+                                                    <option  value='17'>Assédio Moral, Sexual e à Discriminação</option>
+                                                    <option  value='28'>Astec - Comissões, Comitês, Núcleos - órgãos colegiados</option>
+                                                    <option  value='385'>Boas práticas</option>
+                                                    <option  value='30'>Calendário de feriados e pontos facultativos</option>
+                                                    <option  value='389'>Comissão e Grupo de Trabalho</option>
+                                                    <option  value='4'>Concurso, Promoção e Disciplina</option>
+                                                    <option  value='5'>Controle Administrativo e Financeiro</option>
+                                                    <option  value='382'>Defensoria Pública</option>
+                                                    <option  value='33'>Designação de juízes (as)</option>
+                                                    <option  value='6'>Direitos e Deveres dos Magistrados</option>
+                                                    <option  value='7'>Direitos Servidores - Auxílios, Gratificação e outros</option>
+                                                    <option  value='29'>Diretrizes Gerais Judiciais</option>
+                                                    <option  value='386'>Eficiência gerencial dos gabinetes</option>
+                                                    <option  value='34'>Escola da Magistratura - Emeron</option>
+                                                    <option  value='35'>Estrutura Organizacional</option>
+                                                    <option  value='8'>Execução Penal e Sistema Carcerário</option>
+                                                    <option  value='31'>Extrajudicial - Corregedoria</option>
+                                                    <option  value='9'>Funcionamento do TJRO</option>
+                                                    <option  value='10'>Funcionamento dos Órgãos Judiciais</option>
+                                                    <option  value='11'>Gestão Administrativa</option>
+                                                    <option  value='12'>Gestão da Informação e de Demandas Judiciais</option>
+                                                    <option  value='13'>Gestão de Pessoas</option>
+                                                    <option  value='14'>Gestão Documental</option>
+                                                    <option  value='15'>Gestão e Organização Judiciária</option>
+                                                    <option  value='16'>Gestão Estratégica</option>
+                                                    <option  value='18'>Infância/Juventude</option>
+                                                    <option  value='388'>Inteligência Artificial</option>
+                                                    <option  value='3'>Justiça 4.0</option>
+                                                    <option  value='19'>Nepotismo/ Cargos e Funções</option>
+                                                    <option  value='20'>Normas de Auditoria</option>
+                                                    <option  value='32'>Peritos, Auxiliares da Justiça, CPCAJ, edital, leiloeiro, corretores</option>
+                                                    <option  value='381'>Prazo</option>
+                                                    <option  value='21'>Precatórios</option>
+                                                    <option  value='22'>Priorização do Primeiro Grau</option>
+                                                    <option  value='23'>Responsabilidade Social</option>
+                                                    <option  value='24'>Segurança do Judiciário</option>
+                                                    <option  value='383'>Sistema AtermaJus</option>
+                                                    <option  value='387'>Sistema Nacional de Gestão de Bens (SNGB)</option>
+                                                    <option  value='26'>Subsídio de magistrados (as)</option>
+                                                    <option  value='25'>Tecnologia da Informação e Comunicação - STIC</option>
+                                                    <option  value='384'>Transformação Digital</option>
+                                                    <option  value='27'>Transparência</option>
+                                            </select>
+                </div>
+
+
+
+
+
+
+
+
+
+
+                <div class="form-group col-md-3">
+                    <input type="submit" value="Pesquisar" class="btnPesquisarAtos" style="width:100%;"/>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <br />
+    <table class="table text-sm">
+        <thead>
+        <tr>
+            <th scope="col">Tipo</th>
+            <th scope="col">Número</th>
+            <th scope="col" class="text-center">Data</th>
+            <th scope="col">Origem</th>
+            <th scope="col">Situação</th>
+            <th scope="col">Ementa</th>
+        </tr>
+        </thead>
+        <tbody>
+        
+            <tr>
+                <td scope="row"><a href="detalhar/3341" target="_blank">Lei Complementar</a></td>
+                <td scope="row"><a href="detalhar/3341" target="_blank">1303</a></td>
+
+
+                <td scope="row" class="text-center">
+                    <a href="detalhar/3341" target="_blank">
+                                                    06/10/2025
+                                            </a>
+                </td>
+
+                <td scope="row"><a href="detalhar/3341" target="_blank">Governo do Estado de Rondônia</a></td>
+                <td scope="row"><a href="detalhar/3341" target="_blank">Vigente</a></td>
+                <td scope="row"><a href="detalhar/3341" target="_blank" >Dispõe sobre o cômputo, para fins de direitos e vantagens funcionais do tempo de serviço prestado por magistrados(as) e servidores(as) do Tribunal de Justiça do Estado de Rondônia, durante o estado de calamidade pública decorrente da pandemia da Covid-19.</a></td>
+            </tr>
+        
+            <tr>
+                <td scope="row"><a href="detalhar/6036" target="_blank">Resolução</a></td>
+                <td scope="row"><a href="detalhar/6036" target="_blank">372</a></td>
+
+
+                <td scope="row" class="text-center">
+                    <a href="detalhar/6036" target="_blank">
+                                                    12/11/2025
+                                            </a>
+                </td>
+
+                <td scope="row"><a href="detalhar/6036" target="_blank">Presidência</a></td>
+                <td scope="row"><a href="detalhar/6036" target="_blank">Vigente</a></td>
+                <td scope="row"><a href="detalhar/6036" target="_blank" >Dispõe sobre o estágio de estudantes regularmente matriculados(as) em cursos de nível médio ou superior no âmbito do Poder Judiciário do Estado de Rondônia.</a></td>
+            </tr>
+        
+            <tr>
+                <td scope="row"><a href="detalhar/3274" target="_blank">Resolução</a></td>
+                <td scope="row"><a href="detalhar/3274" target="_blank">364</a></td>
+
+
+                <td scope="row" class="text-center">
+                    <a href="detalhar/3274" target="_blank">
+                                                    15/09/2025
+                                            </a>
+                </td>
+
+                <td scope="row"><a href="detalhar/3274" target="_blank">Presidência</a></td>
+                <td scope="row"><a href="detalhar/3274" target="_blank">Vigente</a></td>
+                <td scope="row"><a href="detalhar/3274" target="_blank" >Aprova o projeto de lei complementar que dispõe sobre o cômputo, para fins de direitos e vantagens funcionais, do tempo de serviço prestado por magistrados(as) e servidores(as) do Tribunal de Justiça do Estado de Rondônia durante o estado de calamidade pública decorrente da pandemia da Covid-19.
+&nbsp;</a></td>
+            </tr>
+        
+            <tr>
+                <td scope="row"><a href="detalhar/6845" target="_blank">Ato</a></td>
+                <td scope="row"><a href="detalhar/6845" target="_blank">31</a></td>
+
+
+                <td scope="row" class="text-center">
+                    <a href="detalhar/6845" target="_blank">
+                                                    17/12/2025
+                                            </a>
+                </td>
+
+                <td scope="row"><a href="detalhar/6845" target="_blank">Escola da Magistratura do Estado de Rondônia</a></td>
+                <td scope="row"><a href="detalhar/6845" target="_blank">Vigente</a></td>
+                <td scope="row"><a href="detalhar/6845" target="_blank" >REGIMENTO DO PROGRAMA DE RESIDÊNCIA JUDICIAL DA ESCOLA DA MAGISTRATURA DO ESTADO DE RONDÔNIA - EMERON.</a></td>
+            </tr>
+        
+            <tr>
+                <td scope="row"><a href="detalhar/732" target="_blank">Instrução</a></td>
+                <td scope="row"><a href="detalhar/732" target="_blank">140</a></td>
+
+
+                <td scope="row" class="text-center">
+                    <a href="detalhar/732" target="_blank">
+                                                    18/07/2024
+                                            </a>
+                </td>
+
+                <td scope="row"><a href="detalhar/732" target="_blank">Presidência</a></td>
+                <td scope="row"><a href="detalhar/732" target="_blank">Vigente</a></td>
+                <td scope="row"><a href="detalhar/732" target="_blank" >Disciplina critérios e procedimentos para a concessão de elogio funcional a servidores(as) efetivos(as), comissionados(as), temporários(as), cedidos(as), militares, residentes judiciais e estagiários(as) no âmbito do Poder Judiciário do Estado de Rondônia.</a></td>
+            </tr>
+        
+            <tr>
+                <td scope="row"><a href="detalhar/432" target="_blank">Resolução</a></td>
+                <td scope="row"><a href="detalhar/432" target="_blank">228</a></td>
+
+
+                <td scope="row" class="text-center">
+                    <a href="detalhar/432" target="_blank">
+                                                    15/02/2022
+                                            </a>
+                </td>
+
+                <td scope="row"><a href="detalhar/432" target="_blank">Presidência</a></td>
+                <td scope="row"><a href="detalhar/432" target="_blank">Vigente</a></td>
+                <td scope="row"><a href="detalhar/432" target="_blank" >Dispõe sobre o estágio probatório dos(as) servidores(as)&nbsp;efetivos(as) do Poder Judiciário do Estado de Rondônia.</a></td>
+            </tr>
+        
+            <tr>
+                <td scope="row"><a href="detalhar/982" target="_blank">Ato</a></td>
+                <td scope="row"><a href="detalhar/982" target="_blank">210</a></td>
+
+
+                <td scope="row" class="text-center">
+                    <a href="detalhar/982" target="_blank">
+                                                    21/02/2022
+                                            </a>
+                </td>
+
+                <td scope="row"><a href="detalhar/982" target="_blank">Presidência</a></td>
+                <td scope="row"><a href="detalhar/982" target="_blank">Revogado</a></td>
+                <td scope="row"><a href="detalhar/982" target="_blank" >Estabelece condição a magistrados(as) e servidores(as) para a conversão em pecúnia da licença especial / licença-prêmio.
+
+&nbsp;</a></td>
+            </tr>
+        
+            <tr>
+                <td scope="row"><a href="detalhar/1957" target="_blank">Resolução</a></td>
+                <td scope="row"><a href="detalhar/1957" target="_blank">182</a></td>
+
+
+                <td scope="row" class="text-center">
+                    <a href="detalhar/1957" target="_blank">
+                                                    09/02/2021
+                                            </a>
+                </td>
+
+                <td scope="row"><a href="detalhar/1957" target="_blank">Presidência</a></td>
+                <td scope="row"><a href="detalhar/1957" target="_blank">Alterado</a></td>
+                <td scope="row"><a href="detalhar/1957" target="_blank" >Institui e disciplina o Programa de Serviço Voluntário no Poder Judiciário do Estado de Rondônia.</a></td>
+            </tr>
+        
+            <tr>
+                <td scope="row"><a href="detalhar/6057" target="_blank">Instrução</a></td>
+                <td scope="row"><a href="detalhar/6057" target="_blank">69</a></td>
+
+
+                <td scope="row" class="text-center">
+                    <a href="detalhar/6057" target="_blank">
+                                                    02/06/2021
+                                            </a>
+                </td>
+
+                <td scope="row"><a href="detalhar/6057" target="_blank">Presidência</a></td>
+                <td scope="row"><a href="detalhar/6057" target="_blank">Vigente</a></td>
+                <td scope="row"><a href="detalhar/6057" target="_blank" >Regulamenta a contratação temporária prevista na Lei Estadual n. 4.910/2020, implementa a avaliação de desempenho dos servidores temporários e servidoras temporárias e dá outras providências.</a></td>
+            </tr>
+        
+            <tr>
+                <td scope="row"><a href="detalhar/6053" target="_blank">Instrução</a></td>
+                <td scope="row"><a href="detalhar/6053" target="_blank">65</a></td>
+
+
+                <td scope="row" class="text-center">
+                    <a href="detalhar/6053" target="_blank">
+                                                    08/04/2021
+                                            </a>
+                </td>
+
+                <td scope="row"><a href="detalhar/6053" target="_blank">Presidência</a></td>
+                <td scope="row"><a href="detalhar/6053" target="_blank">Vigente</a></td>
+                <td scope="row"><a href="detalhar/6053" target="_blank" >Altera a Instrução n. 011/2016-PR que dispõe sobre a concessão de gozo ou conversão em pecúnia de licença-prêmio por assiduidade aos servidores(as) do Poder Judiciário do Estado de Rondônia.</a></td>
+            </tr>
+                </tbody>
+    </table>
+
+    <div class="row justify-content-sm-center" style="margin: inherit !important;">
+        <div class="col-sm-3">&nbsp</div>
+        
+        <div class="col-md-auto"><nav role="navigation" aria-label="Pagination Navigation" class="flex items-center justify-between">
+        <div class="flex justify-between flex-1 sm:hidden">
+                            <span class="relative inline-flex items-center px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 cursor-default leading-5 rounded-md dark:text-gray-600 dark:bg-gray-800 dark:border-gray-600">
+                    &laquo; Anterior
+                </span>
+            
+                            <a href="https://atos.tjro.jus.br?_token=FjfZTxKpMMbIXDyNbRaeMMf9kAWa14ukF5rfOL0k&amp;argumento=assiduidade&amp;page=2" class="relative inline-flex items-center px-4 py-2 ml-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 leading-5 rounded-md hover:text-gray-500 focus:outline-none focus:ring ring-gray-300 focus:border-blue-300 active:bg-gray-100 active:text-gray-700 transition ease-in-out duration-150 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:focus:border-blue-700 dark:active:bg-gray-700 dark:active:text-gray-300">
+                    Próximo &raquo;
+                </a>
+                    </div>
+
+        <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+            <div>
+                <p class="text-sm text-gray-700 leading-5 dark:text-gray-400">
+                    Mostrando
+                                            <span class="font-medium">1</span>
+                        até
+                        <span class="font-medium">10</span>
+                                        de
+                    <span class="font-medium">38</span>
+                    resultados
+                </p>
+            </div>
+
+            <div>
+                <span class="relative z-0 inline-flex rtl:flex-row-reverse shadow-sm rounded-md">
+                    
+                                            <span aria-disabled="true" aria-label="&amp;laquo; Anterior">
+                            <span class="relative inline-flex items-center px-2 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 cursor-default rounded-l-md leading-5 dark:bg-gray-800 dark:border-gray-600" aria-hidden="true">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                                </svg>
+                            </span>
+                        </span>
+                    
+                    
+                                            
+                        
+                        
+                                                                                                                        <span aria-current="page">
+                                        <span class="relative inline-flex items-center px-4 py-2 -ml-px text-sm font-medium text-gray-500 bg-white border border-gray-300 cursor-default leading-5 dark:bg-gray-800 dark:border-gray-600">1</span>
+                                    </span>
+                                                                                                                                <a href="https://atos.tjro.jus.br?_token=FjfZTxKpMMbIXDyNbRaeMMf9kAWa14ukF5rfOL0k&amp;argumento=assiduidade&amp;page=2" class="relative inline-flex items-center px-4 py-2 -ml-px text-sm font-medium text-gray-700 bg-white border border-gray-300 leading-5 hover:text-gray-500 focus:z-10 focus:outline-none focus:ring ring-gray-300 focus:border-blue-300 active:bg-gray-100 active:text-gray-700 transition ease-in-out duration-150 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400 dark:hover:text-gray-300 dark:active:bg-gray-700 dark:focus:border-blue-800" aria-label="Go to page 2">
+                                        2
+                                    </a>
+                                                                                                                                <a href="https://atos.tjro.jus.br?_token=FjfZTxKpMMbIXDyNbRaeMMf9kAWa14ukF5rfOL0k&amp;argumento=assiduidade&amp;page=3" class="relative inline-flex items-center px-4 py-2 -ml-px text-sm font-medium text-gray-700 bg-white border border-gray-300 leading-5 hover:text-gray-500 focus:z-10 focus:outline-none focus:ring ring-gray-300 focus:border-blue-300 active:bg-gray-100 active:text-gray-700 transition ease-in-out duration-150 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400 dark:hover:text-gray-300 dark:active:bg-gray-700 dark:focus:border-blue-800" aria-label="Go to page 3">
+                                        3
+                                    </a>
+                                                                                                                                <a href="https://atos.tjro.jus.br?_token=FjfZTxKpMMbIXDyNbRaeMMf9kAWa14ukF5rfOL0k&amp;argumento=assiduidade&amp;page=4" class="relative inline-flex items-center px-4 py-2 -ml-px text-sm font-medium text-gray-700 bg-white border border-gray-300 leading-5 hover:text-gray-500 focus:z-10 focus:outline-none focus:ring ring-gray-300 focus:border-blue-300 active:bg-gray-100 active:text-gray-700 transition ease-in-out duration-150 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400 dark:hover:text-gray-300 dark:active:bg-gray-700 dark:focus:border-blue-800" aria-label="Go to page 4">
+                                        4
+                                    </a>
+                                                                                                        
+                    
+                                            <a href="https://atos.tjro.jus.br?_token=FjfZTxKpMMbIXDyNbRaeMMf9kAWa14ukF5rfOL0k&amp;argumento=assiduidade&amp;page=2" rel="next" class="relative inline-flex items-center px-2 py-2 -ml-px text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-r-md leading-5 hover:text-gray-400 focus:z-10 focus:outline-none focus:ring ring-gray-300 focus:border-blue-300 active:bg-gray-100 active:text-gray-500 transition ease-in-out duration-150 dark:bg-gray-800 dark:border-gray-600 dark:active:bg-gray-700 dark:focus:border-blue-800" aria-label="Próximo &amp;raquo;">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                            </svg>
+                        </a>
+                                    </span>
+            </div>
+        </div>
+    </nav>
+</div>
+        <div class="col-sm-3">&nbsp</div>
+    </div>
+
+    <div class="ml-4 text-center text-xs text-gray-700 dark:text-gray-400 sm:text-right sm:ml-0">
+        <span class="font-bold">Atos Normativos TJRO</span> - versão 2.00.02
+        <br>
+        <span class="lg:text-blue-400"> © 2026 TJRO | Stic. Todos os direitos reservados.</span>
+    </div>
+
+</form>
