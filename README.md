@@ -204,8 +204,8 @@ EMENTA costumam trazer esse campo vazio — inclua `ACÓRDÃO` em `tipo` para o
 filtro valer.
 
 **Resumo de resultados da página** — quando a busca traz 3 ou mais resultados,
-o rodapé soma quantos declaram cada resultado (provido/desprovido/acolhido/
-rejeitado), por exemplo `Nesta página: 7 desprovidos, 3 providos, 2 sem
+o rodapé soma quantos declaram cada resultado (provido / parcialmente provido /
+desprovido / acolhido / rejeitado), por exemplo `Nesta página: 7 desprovidos, 3 providos, 2 sem
 resultado identificável`. É **100% offline** (lê só o texto já trazido pela
 página, nenhuma requisição a mais) e existe para tornar a amostragem dirigida
 barata — ver como um relator específico costuma decidir, sem ler acórdão por
@@ -215,13 +215,46 @@ acórdão. Três ressalvas que valem sempre:
   que nada tem a ver com a tese que você está pesquisando.
 - **É a amostra desta página, na ordenação pedida.** `relevantes` tende a
   enviesar (a resposta avisa quando isso ocorre); para amostragem, prefira
-  `recentes` ou `antigos`, e aumente `por_pagina` (até 50) em vez de paginar.
+  `recentes` ou `antigos`, e aumente `por_pagina` (até 250, com `modo="compacto"`) em vez de paginar.
 - **É indício para escolher o que ler, nunca conclusão.** Documento que declara
   os dois lados de um resultado (ex.: ementa que registra o voto vencido) entra
   em "sem resultado identificável", nunca é forçado para um lado.
 
 A contagem é por **julgamento** (nº do processo + data), não por documento: a
 ementa e o acórdão do mesmo julgado contam uma vez só.
+
+### Panorama, lista compacta e filtro por resultado (v1.7.27)
+
+Três recursos que custam **zero consulta a mais** ao portal:
+
+- **Panorama do resultado inteiro.** Toda busca com 3 ou mais documentos abre
+  com a distribuição de TODOS os documentos que casaram (não só da página) por
+  câmara/vara, gabinete, classe e ano de julgamento. O portal já devolve essas
+  agregações em cada resposta; a extensão só passou a mostrá-las. Serve para
+  ver onde e quando o tema é julgado e escolher os filtros (`orgao_colegiado`,
+  `relator`, `classe_judicial`, datas) antes de gastar a próxima consulta.
+  Câmara e gabinete ali são os do **cadastro** do portal, que erra a câmara.
+- **`modo="compacto"` e `por_pagina` até 250.** O portal entrega até 250
+  julgados numa única consulta (medido em 26/09/2026), pelo mesmo custo de 10
+  no ritmo. No modo compacto cada documento vira uma linha (órgão, data,
+  relator, resultado declarado, assunto, processo, id), sem trecho — é o modo
+  para **varrer** um tema; depois abra em modo completo só os que interessam.
+  Com 10 ou mais julgamentos na página, o rodapé traz a **quebra por relator,
+  por órgão e por ano** (só chaves com 3+ julgamentos).
+- **`resultado="provido" | "parcial" | "desprovido" | "acolhido" | "rejeitado" | "sem"`.**
+  Filtra **no cliente**, só dentro da página trazida, os documentos cujo
+  julgamento declara aquele resultado no dispositivo. Use com `por_pagina`
+  alto; o total do cabeçalho continua sendo o do índice.
+
+**O que isso é e o que não é.** Resultado declarado é o dispositivo extraído do
+fim do texto, e "parcialmente provido" é um qualificador do provido. A taxa de
+provimento de um relator diz quem costuma reformar ou manter, não por quê; a
+mudança de proporção entre anos é sinal para ler os julgados dos dois períodos,
+nunca conclusão de "mudança de entendimento". Nada disso é posição sobre a
+tese, e nada disso entra em peça como número sem a leitura dos acórdãos.
+Medição de 26/09/2026 sobre 4.840 acórdãos em cache: 73 % trazem marcador de
+resultado legível; o resto sai como "sem resultado identificável", nunca é
+chutado.
 
 ## Como pesquisar bem
 
@@ -297,7 +330,7 @@ recuo, de 10 minutos até 1 hora.
 **Economize consultas: o limite do TJRO é de volume.** Num teste de 23/09/2026,
 18 consultas espaçadas de 5 a 8 segundos foram bloqueadas em cerca de 3 minutos:
 espaçar não basta, o que conta é quantas saem em poucos minutos, somando todas as
-conversas abertas nesta máquina. Por isso: prefira 2 ou 3 buscas amplas (até 50
+conversas abertas nesta máquina. Por isso: prefira 2 ou 3 buscas amplas (até 250 em modo compacto
 resultados cada) a várias pequenas; escolha pela ementa e pelo trecho que a busca
 já mostra; e abra o inteiro teor só do que vai citar. **Inteiro teor já aberto nos
 últimos 7 dias volta do disco, sem nova consulta** (a resposta avisa "Do cache

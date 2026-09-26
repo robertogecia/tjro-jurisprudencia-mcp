@@ -13,6 +13,8 @@ import { z } from "zod";
 import {
   ORDENACOES,
   JANELA_MAXIMA,
+  POR_PAGINA_MAX,
+  filtrarPorResultado,
   normTipos,
   buildBuscaBody,
   buildInteiroBody,
@@ -59,9 +61,12 @@ server.registerTool(
       "guarda relatores em Title Case e outros em CAIXA ALTA; se vier zero, rode sem o filtro, copie o texto exato " +
       "do campo \"Relator(a)\" de um resultado e repita). Só funciona com tipo incluindo ACÓRDÃO — em EMENTA esse " +
       "campo costuma vir vazio no índice. Quando a página trouxer 3 ou mais resultados, o rodapé soma quantos " +
-      "declaram cada resultado (provido/desprovido/acolhido/rejeitado) NESTA página, uma vez por julgamento " +
-      "(nº do processo + data — ementa e acórdão do mesmo julgado não contam em dobro): é indício para escolher o " +
-      "que ler, nunca conclusão sobre a tese (recurso provido por outro fundamento também conta como provido). " +
+      "declaram cada resultado (provido / parcialmente provido / desprovido / acolhido / rejeitado) NESTA página, uma vez por julgamento " +
+      "(nº do processo + data — ementa e acórdão do mesmo julgado não contam em dobro) e, com 10+ julgamentos, a quebra por relator, " +
+      "órgão e ano: é indício para escolher o que ler, nunca conclusão sobre a tese (recurso provido por outro fundamento também conta como provido). " +
+      "Toda busca com 3+ documentos abre com um PANORAMA do resultado inteiro (câmara/vara, gabinete, classe e ano — agregações que o " +
+      "próprio portal devolve, sem consulta extra; câmara e gabinete são os do cadastro) para escolher filtros antes da próxima consulta. " +
+      "Para varrer um tema: UMA busca com por_pagina 100–250 e modo=\"compacto\", depois abra em modo completo só o que interessa. " +
       "Termos soltos combinam por OR (use \"a AND b\" ou termo_exato). O trecho exibido é um FRAGMENTO " +
       "(até 800 caracteres) do local do match, não a peça inteira, e só corresponde à ementa oficial quando o " +
       "tipo é EMENTA: ementa numerada costuma ENUNCIAR a tese nos primeiros itens e APLICÁ-LA nos últimos, às " +
@@ -136,7 +141,9 @@ server.registerTool(
       termo_exato: z.boolean().optional().describe("true para buscar a expressão exata (entre aspas)."),
       ordenacao: z.enum(["relevantes", "recentes", "antigos"]).optional().describe('Padrão "relevantes".'),
       pagina: z.number().int().optional().describe("Página dos resultados (1+). O portal expõe no máximo os 10.000 primeiros."),
-      por_pagina: z.number().int().optional().describe("Resultados por página (1–50; padrão 10)."),
+      por_pagina: z.number().int().optional().describe("Resultados por página (1–250; padrão 10). Acima de ~30, use modo=\"compacto\" para a resposta caber: 250 numa consulta custam o mesmo que 10 no ritmo do portal."),
+      modo: z.enum(["completo", "compacto"]).optional().describe('"compacto" = uma linha por documento (órgão, data, relator, resultado declarado, assunto, processo, id), sem trecho — para varrer 100–250 resultados e escolher o que abrir. Padrão "completo" (com trecho).'),
+      resultado: z.enum(["provido", "parcial", "desprovido", "acolhido", "rejeitado", "sem"]).optional().describe("Filtra, NO CLIENTE e só dentro da página trazida, os documentos cujo julgamento declara esse resultado no dispositivo (provido / parcialmente provido / desprovido / acolhido / rejeitado; \"sem\" = sem resultado identificável). Use com por_pagina alto. O total do cabeçalho continua sendo o do índice."),
     },
   },
   async (a) => {
@@ -151,7 +158,7 @@ server.registerTool(
         tipo = ["SENTENÇA"];
         nota = "Nota: EMENTA/ACÓRDÃO são peças de 2º grau; a busca em 1º grau foi ajustada para tipo=SENTENÇA.\n";
       }
-      const porPagina = Math.max(1, Math.min(a.por_pagina ?? 10, 50));
+      const porPagina = Math.max(1, Math.min(a.por_pagina ?? 10, POR_PAGINA_MAX));
       const pagina = Math.max(1, a.pagina ?? 1);
       if (pagina * porPagina > JANELA_MAXIMA)
         return {
@@ -202,11 +209,18 @@ server.registerTool(
           porPagina,
         });
       const data = await post(corpo);
+      if (a.resultado) {
+        const antes = ((data.hits || {}).hits || []).length;
+        const { hits, removidos } = filtrarPorResultado((data.hits || {}).hits || [], a.resultado);
+        data.hits = { ...(data.hits || {}), hits };
+        nota += `Filtro resultado="${a.resultado}" aplicado no cliente: dos ${antes} documentos trazidos nesta página, ${hits.length} ficaram (${removidos} removidos). O total do cabeçalho é o do índice, sem esse filtro.\n`;
+        filtros.push(`resultado="${a.resultado}" (no cliente, só nesta página)`);
+      }
       return {
         content: [{
           type: "text",
           text: await comAvisos(
-            formatBusca(data, a.consulta, tipo, ordenacao, pagina, porPagina, filtros, nota, !!a.termo_exato, temGrupos || (Array.isArray(a.excluir) && a.excluir.length) ? corpo.fields.query : "")
+            formatBusca(data, a.consulta, tipo, ordenacao, pagina, porPagina, filtros, nota, !!a.termo_exato, temGrupos || (Array.isArray(a.excluir) && a.excluir.length) ? corpo.fields.query : "", { modo: a.modo })
           ),
         }],
       };
