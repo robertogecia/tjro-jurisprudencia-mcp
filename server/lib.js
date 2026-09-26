@@ -86,6 +86,13 @@ const RESERVADAS = /^(AND|OR|NOT)$/;
 export const termoParaQuery = (bruto) => {
   const t = String(bruto ?? "").replace(/\s+/g, " ").trim().slice(0, TERMO_MAX_CHARS).trim();
   if (!t) return "";
+  // Proximidade (medido em 25/09/2026): `repetição dobro ~3` vira "repetição dobro"~3 —
+  // as duas palavras a até 3 posições, em qualquer ordem. "repetição dobro" adjacente
+  // = 16 docs; com ~3 = 3.208 (acha "repetição em dobro", "repetição do indébito em
+  // dobro"). Só para frase de 2+ palavras, N de 1 a 20; fora disso é frase comum.
+  const prox = /^(.+\S)\s*~(\d{1,2})$/.exec(t);
+  if (prox && /\s/.test(prox[1].trim()) && +prox[2] >= 1 && +prox[2] <= 20)
+    return `"${prox[1].trim().replace(LUCENE, "\\$1")}"~${+prox[2]}`;
   // Frase: o Lucene não expande curinga dentro de aspas, então tudo é literal,
   // inclusive o "*" (escapado junto com o resto).
   if (/\s/.test(t)) return `"${t.replace(LUCENE, "\\$1")}"`;
@@ -1540,7 +1547,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.23";
+export const VERSAO = "1.7.24";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
