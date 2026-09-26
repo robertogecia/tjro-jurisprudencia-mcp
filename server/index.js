@@ -38,6 +38,19 @@ import {
 } from "./lib.js";
 import { consultarProcesso, formatProcesso, ErroProcesso } from "./processo.js";
 import { baixarAtualizacao, textoAtualizacao, ErroAtualizacao } from "./atualizar.js";
+import {
+  buscarNormas,
+  obterNorma,
+  formatListaNormas,
+  formatNormaDetalhe,
+  resolverOpcao,
+  TIPOS_ATO,
+  SITUACOES_ATO,
+  ORIGENS_ATO,
+  TEMAS_ATO,
+  NORMA_TEXTO_MAX,
+  ErroNorma,
+} from "./normas.js";
 
 // --------------------------------------------------------------- MCP server -
 const server = new McpServer({ name: "Jurisprudência TJRO", version: VERSAO });
@@ -296,6 +309,82 @@ server.registerTool(
     } catch (e) {
       // Erro da API de processos tem mensagem própria: nunca o aviso de bloqueio do JURIS.
       const texto = e instanceof ErroProcesso ? e.message : `Erro inesperado na consulta de processo: ${e?.message || e}`;
+      return { content: [{ type: "text", text: texto }], isError: true };
+    }
+  }
+);
+
+server.registerTool(
+  "buscar_norma_tjro",
+  {
+    title: "Buscar atos normativos do TJRO (resoluções, provimentos, instruções, Regimento)",
+    description:
+      "Pesquisa o portal oficial de atos normativos do TJRO (atos.tjro.jus.br): resoluções e atos da Presidência, provimentos e " +
+      "portarias da Corregedoria (CGJ), instruções, Regimento Interno, Diretrizes Gerais, enunciados, leis estaduais que o tribunal cataloga. " +
+      "`argumento` procura no TEXTO INTEGRAL (não só na ementa), sem operadores: use uma expressão curta (\"licença-prêmio\", \"custas\", \"cedência\"); " +
+      "número + ano localizam um ato conhecido (Instrução 11/2016 → numero=\"11\", ano=\"2016\", tipo=\"Instrução\"). " +
+      "Devolve 10 por página com situação do cadastro (Vigente, Alterado, Revogado…), os vigentes primeiro; para ler o texto compilado, " +
+      "quem alterou/revogou e a legislação correlata, use obter_norma_tjro(id). NÃO é jurisprudência (para acórdãos use buscar_jurisprudencia_tjro) " +
+      "e não cobre legislação federal. Zero resultado nunca é \"não existe\": varie o termo ou tire filtros. Divide a cota de ritmo com o JURIS.",
+    inputSchema: {
+      argumento: z.string().optional().describe("Palavra ou expressão curta procurada no texto integral do ato."),
+      numero: z.string().optional().describe("Número do ato, sem zeros à esquerda (\"11\", \"1300\")."),
+      ano: z.string().optional().describe("Ano do ato (4 dígitos)."),
+      tipo: z.enum(Object.keys(TIPOS_ATO)).optional().describe("Tipo do ato (um só). Sem tipo, todos."),
+      situacao: z.enum(Object.keys(SITUACOES_ATO)).optional().describe("Filtra pela situação do cadastro. Sem filtro, todos (os vigentes vêm primeiro de qualquer jeito)."),
+      origem: z.string().optional().describe("Órgão de origem, por nome ou parte dele: \"Presidência\", \"Corregedoria Geral da Justiça\", \"Governo do Estado\"…"),
+      tema: z.string().optional().describe("Tema do cadastro, por nome ou parte: \"Prazo\", \"Precatórios\", \"Gestão de Pessoas\", \"Extrajudicial\"…"),
+      pagina: z.number().int().min(1).max(200).optional().describe("Página (10 por página). Padrão 1."),
+    },
+  },
+  async (a) => {
+    try {
+      const tipo = a.tipo ? { codigo: TIPOS_ATO[a.tipo], rotulo: a.tipo } : null;
+      const situacao = a.situacao ? { codigo: SITUACOES_ATO[a.situacao], rotulo: a.situacao } : null;
+      const origem = resolverOpcao(ORIGENS_ATO, a.origem, "origem");
+      const tema = resolverOpcao(TEMAS_ATO, a.tema, "tema");
+      if (!a.argumento?.trim() && !a.numero?.trim() && !a.ano?.trim() && !tipo && !situacao && !origem && !tema)
+        return { content: [{ type: "text", text: "Informe ao menos um critério: argumento, numero/ano, tipo, situacao, origem ou tema." }], isError: true };
+      const pagina = a.pagina ?? 1;
+      const res = await buscarNormas({
+        argumento: a.argumento, numero: a.numero, ano: a.ano, tipos: tipo ? [tipo.codigo] : [],
+        situacao: situacao?.codigo, origem: origem?.codigo, tema: tema?.codigo, pagina,
+      });
+      const filtros = [
+        a.argumento?.trim() && `argumento="${a.argumento.trim()}"`, a.numero?.trim() && `número ${a.numero.trim()}`, a.ano?.trim() && `ano ${a.ano.trim()}`,
+        tipo && `tipo ${tipo.rotulo}`, situacao && `situação ${situacao.rotulo}`, origem && `origem "${origem.rotulo}"`, tema && `tema "${tema.rotulo}"`,
+      ].filter(Boolean);
+      return { content: [{ type: "text", text: formatListaNormas(res, filtros, pagina) }] };
+    } catch (e) {
+      const texto = e instanceof ErroNorma ? e.message : `Erro inesperado na pesquisa de atos normativos: ${e?.message || e}`;
+      return { content: [{ type: "text", text: texto }], isError: true };
+    }
+  }
+);
+
+server.registerTool(
+  "obter_norma_tjro",
+  {
+    title: "Ler um ato normativo do TJRO (texto compilado, situação, alterações, correlatas)",
+    description:
+      "Abre um ato do portal atos.tjro.jus.br pelo id (o número em detalhar/ID, devolvido por buscar_norma_tjro): identificação, situação " +
+      "(Vigente/Alterado/Revogado…), ementa, temas, publicação, quem o alterou ou revogou (com o id do ato novo, para seguir a cadeia), " +
+      "legislação correlata e o TEXTO COMPILADO, com as alterações marcadas no próprio texto. `artigo` devolve só aquele artigo; texto longo vem " +
+      "em fatias (`inicio`). Atos antigos podem existir só em PDF: aí vem o link, sem texto. Cite sempre a redação compilada e a norma que a deu; " +
+      "ato não vigente não se cita como em vigor. Divide a cota de ritmo com o JURIS.",
+    inputSchema: {
+      id: z.string().describe("Id do ato no portal (ex.: \"3438\")."),
+      artigo: z.string().optional().describe("Número do artigo a recortar (\"4\", \"4º\"). Sem isso, o texto inteiro em fatias."),
+      inicio: z.number().int().min(0).optional().describe("Posição (caracteres) de onde continuar o texto. Padrão 0."),
+      max_caracteres: z.number().int().min(1000).max(60000).optional().describe(`Tamanho da fatia. Padrão ${NORMA_TEXTO_MAX}.`),
+    },
+  },
+  async (a) => {
+    try {
+      const d = await obterNorma(a.id);
+      return { content: [{ type: "text", text: formatNormaDetalhe(d, { artigo: a.artigo, inicio: a.inicio, maxCaracteres: a.max_caracteres }) }] };
+    } catch (e) {
+      const texto = e instanceof ErroNorma ? e.message : `Erro inesperado ao abrir o ato normativo: ${e?.message || e}`;
       return { content: [{ type: "text", text: texto }], isError: true };
     }
   }
