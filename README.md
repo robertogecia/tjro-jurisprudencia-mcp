@@ -197,7 +197,9 @@ vivem no portal oficial `atos.tjro.jus.br`, e duas ferramentas o consultam:
 O que vale saber: a situação é a do cadastro do portal (o próprio TJRO avisa quando um
 ato está "em fila de revisão"); ato **Alterado** se cita pela redação compilada e pela
 norma que a deu; ato **Revogado** não se cita como em vigor. Alguns atos antigos só
-existem em PDF, e aí a ferramenta dá o link e diz que não há texto para citar. Zero
+existem em PDF, e aí a ferramenta dá o link e diz que não há texto para citar. Cada ato aberto deixa um
+recibo local (`~/.tjro-jurisprudencia-recibos/norma-<id>.json`) com o texto e a situação, para quem confere
+citações contra a fonte. Zero
 resultado nunca é "a norma não existe": o portal procura o termo exato, então varie a
 grafia ("licença especial", "licença-prêmio", "assiduidade") ou tire os filtros. Essas
 consultas dividem a cota de ritmo da extensão, como as demais.

@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import he from "he";
-import { HEADERS, reservarRequisicao, dirCache } from "./lib.js";
+import { HEADERS, reservarRequisicao, dirCache, dirRecibos } from "./lib.js";
 
 export const ATOS_BASE = "https://atos.tjro.jus.br";
 const TIMEOUT_MS = 30000;
@@ -283,16 +283,39 @@ export async function buscarNormas(o, fetchImpl = fetch) {
   return { ...dados, url };
 }
 
+// Recibo da norma para o lint da peticao-rg: o que o portal entregou, por id, em
+// `~/.tjro-jurisprudencia-recibos/norma-<id>.json` (mesma pasta dos acórdãos).
+export function gravarReciboNorma(d, id, pasta = dirRecibos(), agora = new Date()) {
+  try {
+    if (!d || d.inexistente || !d.texto) return false;
+    fs.mkdirSync(pasta, { recursive: true });
+    const r = {
+      id_norma: String(id), identificacao: d.identificacao, tipo: d.tipo, numero: d.numero, data: d.data,
+      situacao: d.situacao, alteracao: d.alteracao?.texto || "", obtido_em: agora.toISOString(), texto: d.texto,
+    };
+    const tmp = path.join(pasta, `.norma-${id}.${process.pid}.tmp`);
+    fs.writeFileSync(tmp, JSON.stringify(r));
+    fs.renameSync(tmp, path.join(pasta, `norma-${id}.json`));
+    return true;
+  } catch {
+    return false; /* recibo é conferência extra, nunca condição */
+  }
+}
+
 export async function obterNorma(id, fetchImpl = fetch) {
   const n = String(id || "").replace(/\D/g, "");
   if (!n) throw new ErroNorma("Informe o id numérico da norma (o número depois de detalhar/ no link, ou o id da lista de buscar_norma_tjro).");
   const c = lerCache(arqNorma(n), CACHE_NORMA_MS);
-  if (c) return { ...c.dados, id: n, doCache: c.quando };
+  if (c) {
+    gravarReciboNorma(c.dados, n);
+    return { ...c.dados, id: n, doCache: c.quando };
+  }
   const html = await baixarAtos(`${ATOS_BASE}/detalhar/${n}`, fetchImpl);
   if (html === null || !/identificacao/i.test(html)) return { id: n, inexistente: true };
   const dados = parseNormaDetalhe(html);
   if (!dados.identificacao) return { id: n, inexistente: true };
   gravarCache(arqNorma(n), dados);
+  gravarReciboNorma(dados, n);
   return { ...dados, id: n };
 }
 

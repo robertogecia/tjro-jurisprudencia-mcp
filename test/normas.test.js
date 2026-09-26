@@ -23,6 +23,7 @@ import {
   formatListaNormas,
   formatNormaDetalhe,
   recortarArtigo,
+  gravarReciboNorma,
   buscarNormas as _buscarNormas,
   obterNorma as _obterNorma,
 } from "../server/normas.js";
@@ -280,4 +281,17 @@ test("constantes: 10 por página, tabelas com os códigos do formulário", () =>
   assert.equal(TIPOS_ATO["Regimento Interno"], 19);
   assert.equal(TIPOS_ATO.Provimento, 16);
   assert.equal(ORIGENS_ATO["Corregedoria Geral da Justiça"], 10);
+});
+
+test("gravarReciboNorma: grava norma-<id>.json com texto e situação; não grava inexistente nem sem texto", () => {
+  const pasta = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-recibo-norma-"));
+  const d = parseNormaDetalhe(DET_ALTERADA);
+  assert.equal(gravarReciboNorma(d, "3438", pasta), true);
+  const r = JSON.parse(fs.readFileSync(path.join(pasta, "norma-3438.json"), "utf8"));
+  assert.equal(r.id_norma, "3438");
+  assert.equal(r.situacao, "Alterado");
+  assert.equal(r.alteracao, "Alterada pela Instrução n. 065/2021-TJRO");
+  assert.match(r.texto, /^O PRESIDENTE DO TRIBUNAL/);
+  assert.equal(gravarReciboNorma({ id: "1", inexistente: true }, "1", pasta), false);
+  assert.equal(gravarReciboNorma(parseNormaDetalhe(DET_SO_PDF), "5345", pasta), false);
 });
