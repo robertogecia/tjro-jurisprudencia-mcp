@@ -263,6 +263,11 @@ quatro a seis consultas:
    dobro", "repetição do indébito em dobro"): 3.208 documentos, contra 16 da frase
    exata. Use quando a frase exata der pouco e o conceito for um par de palavras;
    medido em 7 teses, empata com os grupos estreitos, acertando teses diferentes.
+   **Excluir palavras** (desde a v1.7.25): `excluir=["energia elétrica", "telefonia"]`
+   tira da busca os documentos que citam esses termos. Numa busca de "dano moral" por
+   negativação, caiu de 13.573 para 10.573 documentos e zerou o ruído de energia e
+   telefonia nos 20 primeiros. Cuidado: tira também o julgado certo que cite o termo de
+   passagem. Use só para ruído evidente, nunca na única busca de uma tese.
 2. **Âncora pela citação.** Julgados do mesmo assunto costumam citar a mesma
    súmula, tema repetitivo ou IRDR, mesmo quando descrevem o fato com outras
    palavras. Um grupo como `["Súmula 385"]` acha esses julgados. A âncora tem

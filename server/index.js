@@ -102,6 +102,14 @@ server.registerTool(
             'sem este filtro, copie o texto exato do campo "Relator(a)" de um resultado e repita — não adivinhe a ' +
             "caixa. Só filtra o campo do ACÓRDÃO: inclua ACÓRDÃO em tipo (esse campo costuma vir vazio em EMENTA)."
         ),
+      excluir: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Termos ou expressões que NÃO podem aparecer (até 8), ex.: ["energia elétrica", "telefonia", "plano de saúde"]. ' +
+            "Vira AND NOT (termo1 OR termo2). Corta também o julgado certo que cite o termo de passagem: use só para " +
+            "tirar ruído evidente, nunca na única busca de uma tese. Não funciona sozinho: precisa de consulta ou grupos."
+        ),
       grupos: z
         .array(z.array(z.string()))
         .optional()
@@ -164,6 +172,8 @@ server.registerTool(
       const filtros = [];
       if (a.classe_judicial) filtros.push(`classe_judicial="${a.classe_judicial}"`);
       if (a.orgao_colegiado) filtros.push(`orgao_colegiado="${a.orgao_colegiado}"`);
+      if (Array.isArray(a.excluir) && a.excluir.some((t) => String(t).trim()))
+        filtros.push(`excluir=${JSON.stringify(a.excluir.filter((t) => String(t).trim()).slice(0, 8))}`);
       if (a.relator)
         filtros.push(
           `relator="${a.relator}" (grafia e maiúsculas EXATAS como no índice — não há padrão único de caixa; ` +
@@ -181,6 +191,7 @@ server.registerTool(
           orgaoColegiado: a.orgao_colegiado,
           relator: a.relator,
           grupos: a.grupos,
+          excluir: a.excluir,
           assunto: a.assunto,
           dataInicio: a.data_inicio,
           dataFim: a.data_fim,
@@ -195,7 +206,7 @@ server.registerTool(
         content: [{
           type: "text",
           text: await comAvisos(
-            formatBusca(data, a.consulta, tipo, ordenacao, pagina, porPagina, filtros, nota, !!a.termo_exato, temGrupos ? corpo.fields.query : "")
+            formatBusca(data, a.consulta, tipo, ordenacao, pagina, porPagina, filtros, nota, !!a.termo_exato, temGrupos || (Array.isArray(a.excluir) && a.excluir.length) ? corpo.fields.query : "")
           ),
         }],
       };

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  montarExclusao,
   ehOrgao1oGrau,
   msgErro,
   RESPOSTA_CORROMPIDA,
@@ -1626,4 +1627,19 @@ test("proximidade em termo de grupo: \"a b\"~N só com 2+ palavras e N de 1 a 20
   assert.equal(termoParaQuery("repetição dobro ~21"), '"repetição dobro \\~21"');
   assert.equal(termoParaQuery("dano moral"), '"dano moral"');                  // frase comum intacta
   assert.match(montarGrupos([["repetição dobro ~3", "devolução em dobro"], ["estorno"]]), /^\("repetição dobro"~3 OR "devolução em dobro"\) AND \(estorno\)$/);
+});
+
+test("excluir vira AND NOT (...) com o mesmo tratamento seguro dos grupos", () => {
+  assert.equal(montarExclusao(["energia elétrica", "telefonia"]), '("energia elétrica" OR telefonia)');
+  assert.equal(montarExclusao([]), "");
+  assert.equal(montarExclusao(["", "  "]), "");
+  assert.equal(montarExclusao("energia"), "");
+  assert.equal(montarExclusao(Array.from({ length: 12 }, (_, i) => `t${i}`)).split(" OR ").length, 8);
+  assert.equal(montarExclusao(["*tudo"]), "(\\*tudo)"); // curinga inicial continua proibido
+  const b = buildBuscaBody({ consulta: "", tipo: ["EMENTA"], grupos: [["dano moral"], ["negativação"]], excluir: ["energia"] });
+  assert.equal(b.fields.query, '(("dano moral") AND (negativação)) AND NOT (energia)');
+  const semEx = buildBuscaBody({ consulta: "", tipo: ["EMENTA"], grupos: [["dano moral"]] });
+  assert.equal(semEx.fields.query, '("dano moral")');
+  const soEx = buildBuscaBody({ consulta: "", tipo: ["EMENTA"], excluir: ["energia"] });
+  assert.equal(soEx.fields.query, "", "excluir sozinho não gera busca");
 });
