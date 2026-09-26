@@ -199,13 +199,14 @@ export function parseNormaDetalhe(html) {
     situacao: textoPlano(pega("situacao")) || null,
     situacaoStf: situacaoStf && situacaoStf !== "---" ? situacaoStf : null,
     origem: textoPlano(pega("origem")) || null,
-    publicacao: (() => { const p = textoPlano(pega("publicacao")); return p && p !== "---" ? p : null; })(),
+    publicacao: (() => { const p = textoPlano(pega("publicacao")); return p && !/^-+$/.test(p) ? p : null; })(),
     alteracao: { texto: linhas(alteracaoHtml).join(" ").trim(), links: anosDe(alteracaoHtml) },
-    correlatas: linhas(pega("legislacao correlata")).map((l) => {
+    // O portal escreve "--"/"---" onde não há nada (correlata, processo, publicação).
+    correlatas: linhas(pega("legislacao correlata")).filter((l) => !/^-+$/.test(l)).map((l) => {
       const link = anosDe(pega("legislacao correlata")).find((a) => a.texto === l);
       return { texto: l, href: link ? link.href : null, id: link ? link.id : null };
     }),
-    processo: textoPlano(pega("processo")) || null,
+    processo: (() => { const p = textoPlano(pega("processo")); return p && !/^-+$/.test(p) ? p : null; })(),
     pdfs,
     emRevisao,
     outraJanela,
