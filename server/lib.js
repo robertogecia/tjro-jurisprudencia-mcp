@@ -377,6 +377,18 @@ export function ehOrgao1oGrau(orgao) {
   return /\bvara\b|juizado|n[úu]cleo|ju[íi]zo| - /i.test(orgao);
 }
 
+// Exclusão (25/09/2026): termos que NÃO podem aparecer. Sonda real: `"dano moral" AND
+// negativação` = 8.924 docs (7 dos 20 primeiros citavam "energia"); com `NOT energia`
+// = 7.284 e 0 de 20. Mesmo tratamento seguro dos grupos (frase entre aspas, escape),
+// no máximo EXCLUIR_MAX termos. Corta também o julgado certo que cite o termo de
+// passagem: serve para tirar ruído evidente, nunca na única busca de uma tese.
+export const EXCLUIR_MAX = 8;
+export function montarExclusao(excluir) {
+  if (!Array.isArray(excluir)) return "";
+  const termos = [...new Set(excluir.slice(0, EXCLUIR_MAX).map(termoParaQuery).filter(Boolean))];
+  return termos.length ? `(${termos.join(" OR ")})` : "";
+}
+
 export function buildBuscaBody(o) {
   // Escapar ANTES de aspear: na ordem inversa as aspas da frase exata viram
   // \" literais e a API trata os termos como busca solta (OR).
@@ -385,7 +397,9 @@ export function buildBuscaBody(o) {
   // Consulta livre e grupos se somam por AND; a livre vai parentizada para não
   // ser reinterpretada pela falta de precedência do query_string.
   const g = montarGrupos(o.grupos);
-  const query = g ? (q ? `(${q}) AND ${g}` : g) : q;
+  const base = g ? (q ? `(${q}) AND ${g}` : g) : q;
+  const x = montarExclusao(o.excluir);
+  const query = base && x ? `(${base}) AND NOT ${x}` : base;
   // A API espera "tipo" como string ("A,B" p/ OR); array JSON zera os resultados,
   // mesmo com 1 único elemento.
   const fields = { query, tipo: o.tipo.join(",") };
@@ -1547,7 +1561,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.24";
+export const VERSAO = "1.7.25";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
