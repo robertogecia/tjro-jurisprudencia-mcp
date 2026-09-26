@@ -49,6 +49,9 @@ export const ORDENACOES = {
 
 // O Elasticsearch do portal não pagina além dos 10.000 primeiros resultados.
 export const JANELA_MAXIMA = 10000;
+// Medido em 26/09/2026: o portal honra size=250 numa única resposta (2,8 MB); acima
+// disso não foi testado. 250 julgados numa consulta custam o mesmo que 10 no ritmo.
+export const POR_PAGINA_MAX = 250;
 
 // Orçamento máximo de caracteres da resposta do inteiro teor (evita afogar o contexto).
 export const ORCAMENTO_INTEIRO = 50000;
@@ -212,13 +215,16 @@ export const resultadoDe = (texto) => {
   if (/(?<!NAO )\b(PROVI(DO|DOS|DA|DAS)\b|D(A|AO|AR|OU|ERAM|EU)(-SE| SE)? (PARCIAL )?PROVIMENTO)/.test(cauda)) r.add("PROVIDO");
   if (/\bREJEIT/.test(cauda)) r.add("REJEITADO");
   if (/\bACOLH/.test(cauda)) r.add("ACOLHIDO");
+  // PARCIAL é qualificador do PROVIDO (o par OPOSTOS não muda): "parcial
+  // provimento", "parcialmente provido", "provido em parte".
+  if (/\bPARCIAL(MENTE)? PROVI|\bPARCIAL PROVIMENTO|\bPROVIMENTO PARCIAL|\bPROVID[OA]S? EM PARTE/.test(cauda)) r.add("PARCIAL");
   return r;
 };
 // Lado de um par declarado por um documento; null se nenhum ou se ambos (ambíguo).
 export const ladoDe = (conjunto, [a, b]) =>
   conjunto.has(a) && conjunto.has(b) ? null : conjunto.has(a) ? a : conjunto.has(b) ? b : null;
 
-export const ROTULOS_RESULTADO = { PROVIDO: "provido", DESPROVIDO: "desprovido", ACOLHIDO: "acolhido", REJEITADO: "rejeitado" };
+export const ROTULOS_RESULTADO = { PROVIDO: "provido", PARCIAL: "parcialmente provido", DESPROVIDO: "desprovido", ACOLHIDO: "acolhido", REJEITADO: "rejeitado" };
 
 // Resumo 100% OFFLINE (só sobre o texto já trazido pela página, nenhuma requisição
 // nova) de quantos JULGAMENTOS declaram cada resultado. Dedup por julgamento — nº do
@@ -232,6 +238,14 @@ export const ROTULOS_RESULTADO = { PROVIDO: "provido", DESPROVIDO: "desprovido",
 // para um lado. Índice é indício: isto é amostragem para decidir o que ler, nunca
 // posição sobre a tese (recurso provido por outro fundamento também conta como
 // provido e nada diz sobre a tese buscada).
+// Rótulo único de um julgamento a partir do conjunto de resultados declarados:
+// PROVIDO/PARCIAL/DESPROVIDO/ACOLHIDO/REJEITADO, ou null (sem sinal ou ambíguo).
+export const rotuloDoConjunto = (conjunto) => {
+  const lados = OPOSTOS.map((par) => ladoDe(conjunto, par)).filter(Boolean);
+  if (lados.length !== 1) return null; // 0 lados (sem sinal) ou >1 (decide mais de uma coisa): não força
+  return lados[0] === "PROVIDO" && conjunto.has("PARCIAL") ? "PARCIAL" : lados[0];
+};
+const CONTAGEM_VAZIA = () => ({ PROVIDO: 0, PARCIAL: 0, DESPROVIDO: 0, ACOLHIDO: 0, REJEITADO: 0, sem: 0 });
 export function resumoResultadosPagina(hits) {
   const porJulgamento = new Map();
   hits.forEach((h, i) => {
@@ -239,18 +253,104 @@ export function resumoResultadosPagina(hits) {
     const proc = String(s.nr_processo || "").replace(/\D/g, "");
     const data = String(s.dtjulgamento || "");
     const chave = proc && data ? `${proc}|${data}` : `#${i}`;
-    if (!porJulgamento.has(chave)) porJulgamento.set(chave, new Set());
-    const acumulado = porJulgamento.get(chave);
-    for (const r of resultadoDe(limpar(s.ds_modelo_documento || "", 0))) acumulado.add(r);
+    if (!porJulgamento.has(chave)) porJulgamento.set(chave, { conjunto: new Set(), relator: relator(s), orgao: orgao(s), ano: String(s.dtjulgamento || "").slice(0, 4) || "?" });
+    const j = porJulgamento.get(chave);
+    for (const r of resultadoDe(limpar(s.ds_modelo_documento || "", 0))) j.conjunto.add(r);
   });
-  const contagem = { PROVIDO: 0, DESPROVIDO: 0, ACOLHIDO: 0, REJEITADO: 0 };
+  const contagem = { PROVIDO: 0, PARCIAL: 0, DESPROVIDO: 0, ACOLHIDO: 0, REJEITADO: 0 };
   let semResultado = 0;
-  for (const conjunto of porJulgamento.values()) {
-    const lados = OPOSTOS.map((par) => ladoDe(conjunto, par)).filter(Boolean);
-    if (lados.length === 1) contagem[lados[0]] += 1;
-    else semResultado += 1; // 0 lados (sem sinal) ou >1 (decide mais de uma coisa): não força
+  // Quebra por relator, órgão (do ÍNDICE, que erra a câmara — indício) e ano:
+  // é o mesmo dado, só agrupado, para ver tendência e quem decide o quê.
+  const porRelator = new Map(), porOrgao = new Map(), porAno = new Map();
+  const soma = (mapa, k, r) => {
+    if (!mapa.has(k)) mapa.set(k, CONTAGEM_VAZIA());
+    mapa.get(k)[r || "sem"] += 1;
+  };
+  for (const j of porJulgamento.values()) {
+    const r = rotuloDoConjunto(j.conjunto);
+    if (r) contagem[r] += 1;
+    else semResultado += 1;
+    soma(porRelator, j.relator, r);
+    soma(porOrgao, j.orgao, r);
+    soma(porAno, j.ano, r);
   }
-  return { contagem, semResultado, totalJulgamentos: porJulgamento.size };
+  return { contagem, semResultado, totalJulgamentos: porJulgamento.size, porRelator, porOrgao, porAno };
+}
+
+// Linha "Fulano: 5 providos · 2 parcialmente providos · 3 desprovidos (2 sem resultado)" por chave,
+// só chaves com 3+ julgamentos, ordenadas por volume; no máximo `max` linhas.
+export function linhasQuebra(mapa, max = 8, minimo = 3) {
+  const ordem = ["PROVIDO", "PARCIAL", "DESPROVIDO", "ACOLHIDO", "REJEITADO"];
+  return [...mapa.entries()]
+    .map(([k, c]) => [k, c, ordem.reduce((n, r) => n + c[r], 0) + c.sem])
+    .filter(([, , n]) => n >= minimo)
+    .sort((a, b) => b[2] - a[2] || String(a[0]).localeCompare(String(b[0])))
+    .slice(0, max)
+    .map(([k, c, n]) => {
+      const partes = ordem.filter((r) => c[r] > 0).map((r) => `${c[r]} ${ROTULOS_RESULTADO[r]}${c[r] > 1 ? "s" : ""}`);
+      return `${k} (${n}): ${partes.join(" · ") || "—"}${c.sem ? ` (${c.sem} sem resultado)` : ""}`;
+    });
+}
+
+// Filtro de resultado, 100% no cliente, sobre os hits já trazidos: fica quem
+// pertence a um julgamento cujo rótulo é o pedido. "sem" = sem resultado identificável.
+export const ROTULOS_FILTRO = { provido: "PROVIDO", parcial: "PARCIAL", desprovido: "DESPROVIDO", acolhido: "ACOLHIDO", rejeitado: "REJEITADO", sem: null };
+export function filtrarPorResultado(hits, rotulo) {
+  if (!(rotulo in ROTULOS_FILTRO)) return { hits, removidos: 0 };
+  const alvo = ROTULOS_FILTRO[rotulo];
+  const conjuntos = new Map();
+  const chaveDe = (h, i) => {
+    const s = h._source || {};
+    const proc = String(s.nr_processo || "").replace(/\D/g, "");
+    const data = String(s.dtjulgamento || "");
+    return proc && data ? `${proc}|${data}` : `#${i}`;
+  };
+  hits.forEach((h, i) => {
+    const k = chaveDe(h, i);
+    if (!conjuntos.has(k)) conjuntos.set(k, new Set());
+    for (const r of resultadoDe(limpar((h._source || {}).ds_modelo_documento || "", 0))) conjuntos.get(k).add(r);
+  });
+  const fica = hits.filter((h, i) => rotuloDoConjunto(conjuntos.get(chaveDe(h, i))) === alvo);
+  return { hits: fica, removidos: hits.length - fica.length };
+}
+
+// Panorama do RESULTADO INTEIRO (não da página): o portal devolve, em toda busca,
+// agregações fixas sobre todos os documentos que casaram — câmara/vara, gabinete,
+// classe e data de julgamento (medido em 26/09/2026: a soma dos buckets = total).
+// Custa zero requisição. Órgão e gabinete são os do CADASTRO (que erra a câmara).
+export function formatPanorama(data) {
+  const ag = data.aggregations || {};
+  const total = ((data.hits || {}).total || {}).value || 0;
+  const buckets = (k) => ((ag[k] || {}).buckets || []).filter((b) => b && b.doc_count > 0);
+  const top = (k, n) =>
+    buckets(k)
+      .map((b) => [Array.isArray(b.key) ? b.key.join(" ") : String(b.key), b.doc_count])
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, n)
+      .map(([k2, c]) => `${k2} ${c}`)
+      .join(" · ");
+  const anos = new Map();
+  for (const b of buckets("datas_julgamento")) {
+    const ano = typeof b.key === "number" ? new Date(b.key).getUTCFullYear() : String(b.key_as_string || b.key).slice(0, 4);
+    anos.set(ano, (anos.get(ano) || 0) + b.doc_count);
+  }
+  const porAno = [...anos.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map(([a, c]) => `${a}: ${c}`).join(" · ");
+  const linhas = [];
+  const org = top("orgaos_julgadores_colegiados", 6);
+  const gab = top("orgaos_julgadores", 6);
+  const cls = top("classes_judiciais", 5);
+  if (org) linhas.push(`- Órgãos (cadastro): ${org}`);
+  if (gab) linhas.push(`- Gabinetes/varas (cadastro): ${gab}`);
+  if (cls) linhas.push(`- Classes: ${cls}`);
+  if (porAno) linhas.push(`- Por ano de julgamento: ${porAno}`);
+  if (!linhas.length) return "";
+  return (
+    `\n**Panorama dos ${total} documentos que casaram (índice, não só esta página; zero consulta extra):**\n` +
+    linhas.join("\n") +
+    "\n_Câmara e gabinete são os do cadastro do portal, que erra a câmara com frequência; " +
+    "as datas de julgamento cobrem só o que o índice agrega. Serve para ver onde e quando o tema é julgado " +
+    "e escolher filtros (orgao_colegiado, relator, classe_judicial, data), nunca como posição sobre a tese._"
+  );
 }
 
 // Índice é indício, texto é prova: o campo "Câmara" do cadastro do TJRO sai
@@ -1072,7 +1172,8 @@ export async function post(body, fetchImpl = fetch) {
 }
 
 // --------------------------------------------------------------- formatters -
-export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, filtros = [], nota = "", termoExato = false, consultaMontada = "") {
+export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, filtros = [], nota = "", termoExato = false, consultaMontada = "", opcoes = {}) {
+  const compacto = opcoes.modo === "compacto";
   const hitsObj = data.hits || {};
   const total = (hitsObj.total || {}).value || 0;
   const hits = hitsObj.hits || [];
@@ -1094,6 +1195,11 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
         ? "_Dica: para restringir, acrescente um grupo com o fato que distingue o seu caso (o tipo de réu, o produto, a conduta) — os grupos se somam por AND._"
         : '_Dica: para restringir, use operador AND na consulta (ex.: "dano AND moral"), termo_exato=true, ou `grupos` de sinônimos._'
     );
+
+  if (total >= 3 && opcoes.semPanorama !== true) {
+    const pan = formatPanorama(data);
+    if (pan) out.push(pan);
+  }
 
   if (total === 0 || hits.length === 0) {
     if (filtros.length) {
@@ -1150,7 +1256,24 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   let houveCorte = false;
   const quandoDe = (s) => s.dtjulgamento_str || dataBr(s.dtjulgamento) || "?";
 
-  hits.forEach((h, i) => {
+  if (compacto) {
+    // Uma linha por documento: serve para varrer 100–250 resultados e escolher o
+    // que abrir; o modo completo (com trecho) é para os poucos que interessam.
+    out.push("\n**Lista compacta** (nº · tipo · classe · órgão do cadastro · julgado em · relator · resultado declarado · assunto · processo · id):");
+    hits.forEach((h, i) => {
+      const s = h._source || {};
+      const r = rotuloDoConjunto(resultados[i]);
+      const doFecho = orgaoDoFechoDe(i);
+      const org = doFecho && orgaoDiverge(doFecho, orgao(s)) ? `${doFecho} (fecho; índice: ${orgao(s)})` : orgao(s);
+      out.push(
+        `${inicio + i}. ${s.tipo || "?"} · ${s.ds_classe_judicial || "—"} · ${org} · ${quandoDe(s)} · ${relator(s)} · ` +
+          `${r ? ROTULOS_RESULTADO[r] : "sem resultado identificável"} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}`
+      );
+    });
+    out.push("_Resultado declarado é extraído do fim do texto (dispositivo) e não é posição sobre a tese; ementa e acórdão do mesmo julgado aparecem em linhas separadas. Abra o inteiro teor antes de citar._");
+  }
+
+  if (!compacto) hits.forEach((h, i) => {
     const s = h._source || {};
     const hl = (h.highlight || {}).ds_modelo_documento;
     const inteiro = limpar(hl ? hl[0] : s.ds_modelo_documento || "", 0);
@@ -1231,7 +1354,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   // Só com amostra mínima (3+): com 1-2 hits, um resumo teria peso de conclusão
   // que a amostra não sustenta.
   if (hits.length >= 3) {
-    const { contagem, semResultado } = resumoResultadosPagina(hits);
+    const { contagem, semResultado, totalJulgamentos, porRelator, porOrgao, porAno } = resumoResultadosPagina(hits);
     const partes = Object.entries(contagem)
       .filter(([, n]) => n > 0)
       .sort((a, b) => b[1] - a[1])
@@ -1247,6 +1370,21 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
           `sobre a tese buscada. É a amostra desta página, na ordenação "${ordenacao}"${enviesa}. Indício ` +
           "para escolher o que ler, nunca conclusão._"
       );
+      // Quebra por relator / órgão / ano só com amostra que a sustente (10+ julgamentos).
+      if (totalJulgamentos >= 10) {
+        const blocos = [
+          ["Por relator", linhasQuebra(porRelator)],
+          ["Por órgão (cadastro)", linhasQuebra(porOrgao)],
+          ["Por ano", linhasQuebra(porAno, 12)],
+        ].filter(([, l]) => l.length);
+        if (blocos.length)
+          out.push(
+            "\n_Quebra da mesma amostra (só chaves com 3+ julgamentos):_\n" +
+              blocos.map(([t, l]) => `- ${t}: ${l.join("; ")}`).join("\n") +
+              "\n_Taxa de provimento não é taxa de acolhimento da tese: diz quem costuma reformar ou manter, não por quê. " +
+              "Mudança de proporção entre anos é sinal para ler os julgados dos dois períodos, não conclusão._"
+          );
+      }
     }
   }
 
@@ -1255,11 +1393,11 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       out.push(
         "\n_(há mais resultados, mas o portal só expõe os 10.000 primeiros — refine com filtros ou mude a ordenação)_"
       );
-    } else if (porPagina < 50) {
+    } else if (porPagina < POR_PAGINA_MAX) {
       // Preferir UMA busca maior a várias páginas: cada página é uma requisição
       // a mais ao portal, e o orçamento de requisições é limitado.
       out.push(
-        `\n_(há mais resultados — prefira repetir a busca com por_pagina maior (até 50) ` +
+        `\n_(há mais resultados — prefira repetir a busca com por_pagina maior (até ${POR_PAGINA_MAX}; com modo="compacto" cabe na resposta) ` +
           `numa única chamada, em vez de paginar; se precisar mesmo paginar, use pagina=${pagina + 1})_`
       );
     } else {
@@ -1561,7 +1699,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.7.26";
+export const VERSAO = "1.7.27";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

@@ -41,6 +41,12 @@ import {
   extrairRelatorDoTexto,
   relatorDiverge,
   resumoResultadosPagina,
+  rotuloDoConjunto,
+  ROTULOS_RESULTADO,
+  linhasQuebra,
+  filtrarPorResultado,
+  formatPanorama,
+  POR_PAGINA_MAX,
   comCredito,
   CREDITO,
   _resetCreditoParaTeste,
@@ -1078,7 +1084,7 @@ test("resumoResultadosPagina: contagem correta e dedupe por JULGAMENTO — ement
   ];
   const { contagem, semResultado, totalJulgamentos } = resumoResultadosPagina(hits);
   assert.equal(totalJulgamentos, 4, "5 documentos, mas só 4 julgamentos distintos");
-  assert.deepEqual(contagem, { PROVIDO: 1, DESPROVIDO: 1, ACOLHIDO: 1, REJEITADO: 0 });
+  assert.deepEqual(contagem, { PROVIDO: 1, PARCIAL: 0, DESPROVIDO: 1, ACOLHIDO: 1, REJEITADO: 0 });
   assert.equal(semResultado, 1);
 });
 
@@ -1090,7 +1096,7 @@ test("resumoResultadosPagina: sem data, cada documento conta por si (nunca presu
   ];
   const { contagem, totalJulgamentos } = resumoResultadosPagina(hits);
   assert.equal(totalJulgamentos, 3, "sem data, os 3 documentos do mesmo número são 3 julgamentos, não 1");
-  assert.deepEqual(contagem, { PROVIDO: 1, DESPROVIDO: 1, ACOLHIDO: 1, REJEITADO: 0 });
+  assert.deepEqual(contagem, { PROVIDO: 1, PARCIAL: 0, DESPROVIDO: 1, ACOLHIDO: 1, REJEITADO: 0 });
 });
 
 test("resumoResultadosPagina: documento ambíguo (declara os dois lados de um par) cai em semResultado, nunca escolhe lado", () => {
@@ -1642,4 +1648,100 @@ test("excluir vira AND NOT (...) com o mesmo tratamento seguro dos grupos", () =
   assert.equal(semEx.fields.query, '("dano moral")');
   const soEx = buildBuscaBody({ consulta: "", tipo: ["EMENTA"], excluir: ["energia"] });
   assert.equal(soEx.fields.query, "", "excluir sozinho não gera busca");
+});
+
+// ---- v1.7.27: parcial, quebra por relator/órgão/ano, filtro de resultado, panorama, compacto ----
+const srcV27 = (i, texto, extra = {}) => ({
+  _source: { tipo: "ACÓRDÃO", ds_classe_judicial: "APELAÇÃO CÍVEL", grau_jurisdicao: 2, nr_processo: String(1000 + i),
+    dtjulgamento: `20${20 + (i % 6)}-03-0${1 + (i % 9)}`, id_processo_documento: 5000 + i, nome_relator_acordao: i % 2 ? "FULANO" : "BELTRANO",
+    ds_orgao_julgador_colegiado: i % 3 ? "1ª Câmara Cível" : "2ª Câmara Cível", ds_modelo_documento: texto, ...extra },
+});
+
+test("resultadoDe marca PARCIAL como qualificador do PROVIDO e rotuloDoConjunto o distingue", () => {
+  assert.deepEqual([...resultadoDe("ACORDAM ... DAR PARCIAL PROVIMENTO AO RECURSO.")].sort(), ["PARCIAL", "PROVIDO"]);
+  assert.deepEqual([...resultadoDe("recurso parcialmente provido")].sort(), ["PARCIAL", "PROVIDO"]);
+  assert.deepEqual([...resultadoDe("recurso provido em parte")].sort(), ["PARCIAL", "PROVIDO"]);
+  assert.equal(rotuloDoConjunto(new Set(["PROVIDO", "PARCIAL"])), "PARCIAL");
+  assert.equal(rotuloDoConjunto(new Set(["PROVIDO"])), "PROVIDO");
+  assert.equal(rotuloDoConjunto(new Set(["PROVIDO", "DESPROVIDO"])), null, "ambíguo não vira parcial");
+  assert.equal(rotuloDoConjunto(new Set()), null);
+  assert.equal(ROTULOS_RESULTADO.PARCIAL, "parcialmente provido");
+});
+
+test("resumoResultadosPagina quebra por relator, órgão e ano; linhasQuebra exige 3+ e ordena por volume", () => {
+  const hits = [];
+  for (let i = 0; i < 12; i++) hits.push(srcV27(i, i % 4 === 0 ? "recurso desprovido." : i % 4 === 1 ? "dou parcial provimento" : "RECURSO PROVIDO."));
+  const r = resumoResultadosPagina(hits);
+  assert.equal(r.totalJulgamentos, 12);
+  assert.deepEqual(r.contagem, { PROVIDO: 6, PARCIAL: 3, DESPROVIDO: 3, ACOLHIDO: 0, REJEITADO: 0 });
+  assert.equal(r.porRelator.get("FULANO").PARCIAL, 3);
+  assert.equal(r.porRelator.get("BELTRANO").DESPROVIDO, 3);
+  const linhas = linhasQuebra(r.porRelator);
+  assert.equal(linhas.length, 2);
+  assert.match(linhas[0], /^(FULANO|BELTRANO) \(6\): /);
+  assert.ok(linhasQuebra(r.porAno).every((l) => /^20\d\d \(\d+\)/.test(l)));
+  // chave com menos de 3 julgamentos não aparece
+  const poucos = resumoResultadosPagina(hits.slice(0, 2));
+  assert.deepEqual(linhasQuebra(poucos.porRelator), []);
+});
+
+test("filtrarPorResultado é no cliente, por julgamento, e mantém ementa+acórdão do mesmo julgado juntos", () => {
+  const hits = [
+    srcV27(1, "RECURSO PROVIDO."),
+    srcV27(1, "EMENTA sem dispositivo", { tipo: "EMENTA", id_processo_documento: 9001 }), // mesmo nº+data: herda o rótulo
+    srcV27(2, "recurso desprovido."),
+    srcV27(3, "recurso do autor provido, do réu desprovido"),
+    srcV27(4, "dou parcial provimento"),
+  ];
+  assert.deepEqual(filtrarPorResultado(hits, "provido").hits.map((h) => h._source.id_processo_documento), [5001, 9001]);
+  assert.equal(filtrarPorResultado(hits, "desprovido").hits.length, 1);
+  assert.equal(filtrarPorResultado(hits, "parcial").hits.length, 1);
+  assert.equal(filtrarPorResultado(hits, "sem").hits.length, 1, "ambíguo cai em 'sem'");
+  assert.equal(filtrarPorResultado(hits, "inexistente").removidos, 0, "rótulo desconhecido não filtra");
+});
+
+test("formatPanorama usa as agregações fixas do portal (resultado inteiro) e soma datas por ano; sem aggs, vazio", () => {
+  const data = {
+    hits: { total: { value: 1234 }, hits: [] },
+    aggregations: {
+      orgaos_julgadores_colegiados: { buckets: [{ key: "3ª Câmara Cível", doc_count: 700 }, { key: "1ª Câmara Cível", doc_count: 500 }, { key: "Turma X", doc_count: 0 }] },
+      orgaos_julgadores: { buckets: [{ key: "Gabinete Des. A", doc_count: 400 }] },
+      classes_judiciais: { buckets: [{ key: "APELAÇÃO CÍVEL", doc_count: 1000 }] },
+      datas_julgamento: { buckets: [{ key: Date.UTC(2024, 0, 5), doc_count: 10 }, { key: Date.UTC(2024, 5, 5), doc_count: 5 }, { key: Date.UTC(2025, 0, 5), doc_count: 7 }] },
+      quantidade_documentos_por_tipo_e_grau: { buckets: [{ key: ["ACÓRDÃO", 2], doc_count: 1200 }] },
+    },
+  };
+  const p = formatPanorama(data);
+  assert.match(p, /Panorama dos 1234 documentos/);
+  assert.match(p, /Órgãos \(cadastro\): 3ª Câmara Cível 700 · 1ª Câmara Cível 500$/m);
+  assert.match(p, /Por ano de julgamento: 2024: 15 · 2025: 7/);
+  assert.match(p, /cadastro do portal, que erra a câmara/);
+  assert.equal(formatPanorama({ hits: { total: { value: 3 } } }), "");
+  // entra no formatBusca com 3+ documentos e some com opções.semPanorama
+  const out = formatBusca({ ...data, hits: { total: { value: 1234 }, hits: [srcV27(1, "x"), srcV27(2, "y"), srcV27(3, "z")] } }, "q", ["ACÓRDÃO"], "relevantes", 1, 10);
+  assert.match(out, /Panorama dos 1234/);
+  assert.doesNotMatch(formatBusca(data, "q", ["ACÓRDÃO"], "relevantes", 1, 10, [], "", false, "", { semPanorama: true }), /Panorama/);
+});
+
+test("formatBusca modo compacto: uma linha por documento com resultado declarado, sem trecho; quebra aparece com 10+ julgamentos", () => {
+  const hits = [];
+  for (let i = 0; i < 12; i++) hits.push(srcV27(i, (i % 2 ? "RECURSO PROVIDO. " : "recurso desprovido. ") + "corpo ".repeat(300)));
+  const data = { hits: { total: { value: 12 }, hits } };
+  const out = formatBusca(data, "q", ["ACÓRDÃO"], "recentes", 1, 50, [], "", false, "", { modo: "compacto" });
+  assert.match(out, /\*\*Lista compacta\*\*/);
+  assert.match(out, /^1\. ACÓRDÃO · APELAÇÃO CÍVEL · 2ª Câmara Cível · .* · BELTRANO · desprovido · — · 1000 · id 5000$/m);
+  assert.doesNotMatch(out, /Trecho do ACÓRDÃO|Ementa \(trecho\)|fragmentos \(até 800/);
+  assert.match(out, /Quebra da mesma amostra/);
+  assert.match(out, /Por relator: (FULANO|BELTRANO) \(6\)/);
+  assert.doesNotMatch(out, /Por ano: /, "6 anos com 2 julgamentos cada: nenhum chega ao mínimo de 3");
+  const completo = formatBusca(data, "q", ["ACÓRDÃO"], "recentes", 1, 50);
+  assert.match(completo, /Trecho do ACÓRDÃO/);
+  assert.doesNotMatch(completo, /Lista compacta/);
+});
+
+test("por_pagina: teto 250 e a dica de paginar cita o teto e o modo compacto", () => {
+  assert.equal(POR_PAGINA_MAX, 250);
+  const data = { hits: { total: { value: 900 }, hits: [srcV27(1, "x")] } };
+  assert.match(formatBusca(data, "q", ["ACÓRDÃO"], "relevantes", 1, 50), /até 250; com modo="compacto"/);
+  assert.match(formatBusca(data, "q", ["ACÓRDÃO"], "relevantes", 1, 250), /chame novamente com pagina=2/);
 });
