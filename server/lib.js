@@ -199,10 +199,29 @@ export const OPOSTOS = [
   ["PROVIDO", "DESPROVIDO"],
   ["ACOLHIDO", "REJEITADO"],
 ];
+// Fecho do acórdão ("acordam os Magistrados da(o) ... em, RECURSO PROVIDO, À
+// UNANIMIDADE"): é o dispositivo do colegiado. Quando existe, só ele é lido —
+// tudo antes é relatório, voto e histórico (medido em 26/09/2026 contra 80
+// acórdãos rotulados às cegas: de 69% para 91% de concordância). O que vem depois
+// de "VENCIDO(A)(S)" é o voto perdedor e sai. Em fecho de embargos de declaração,
+// "PROVIDOS"/"NÃO PROVIDOS" é acolhimento/rejeição, e assim entra no conjunto.
+const RE_FECHO_DISPOSITIVO = /ACORDAM\s+(?:OS|AS)\s+(?:MAGISTRADOS|DESEMBARGADORES|JUIZES|JUIZAS)[^]*$/;
+export const trechoDispositivo = (cauda) => {
+  const m = RE_FECHO_DISPOSITIVO.exec(cauda);
+  if (!m) return null;
+  const ultimo = cauda.lastIndexOf(m[0].slice(0, 12));
+  let f = cauda.slice(ultimo);
+  const v = f.search(/\bVENCID[OA]S?\b/);
+  if (v > 40) f = f.slice(0, v);
+  return f;
+};
 export const resultadoDe = (texto) => {
   const t = fold(texto).toUpperCase();
-  const cauda = t.length > 2500 ? t.slice(-2500) : t;
+  const caudaToda = t.length > 2500 ? t.slice(-2500) : t;
+  const fecho = trechoDispositivo(caudaToda);
+  const cauda = fecho || caudaToda;
   const r = new Set();
+  const embargos = !!fecho && /\bEMBARGOS (DE DECLARACAO|DECLARATORIOS|(NAO )?PROVIDOS?|REJEITADOS?|ACOLHIDOS?|PARCIALMENTE)/.test(fecho) && !/\bEMBARGOS (DE TERCEIRO|A EXECUCAO|MONITORIOS|INFRINGENTES)/.test(fecho);
   // Cada lado é testado de forma INDEPENDENTE (não é if/else): texto que
   // menciona os dois — ementa que registra o voto vencido ("vencido o relator,
   // que negava provimento"), "recurso do autor provido e do réu desprovido",
@@ -218,6 +237,11 @@ export const resultadoDe = (texto) => {
   // PARCIAL é qualificador do PROVIDO (o par OPOSTOS não muda): "parcial
   // provimento", "parcialmente provido", "provido em parte".
   if (/\bPARCIAL(MENTE)? PROVI|\bPARCIAL PROVIMENTO|\bPROVIMENTO PARCIAL|\bPROVID[OA]S? EM PARTE/.test(cauda)) r.add("PARCIAL");
+  if (embargos) {
+    // "EMBARGOS PROVIDOS" = acolhidos; "EMBARGOS NÃO PROVIDOS" = rejeitados.
+    if (r.has("PROVIDO")) { r.delete("PROVIDO"); r.delete("PARCIAL"); r.add("ACOLHIDO"); }
+    if (r.has("DESPROVIDO")) { r.delete("DESPROVIDO"); r.add("REJEITADO"); }
+  }
   return r;
 };
 // Lado de um par declarado por um documento; null se nenhum ou se ambos (ambíguo).
@@ -240,10 +264,23 @@ export const ROTULOS_RESULTADO = { PROVIDO: "provido", PARCIAL: "parcialmente pr
 // provido e nada diz sobre a tese buscada).
 // Rótulo único de um julgamento a partir do conjunto de resultados declarados:
 // PROVIDO/PARCIAL/DESPROVIDO/ACOLHIDO/REJEITADO, ou null (sem sinal ou ambíguo).
-export const rotuloDoConjunto = (conjunto) => {
-  const lados = OPOSTOS.map((par) => ladoDe(conjunto, par)).filter(Boolean);
-  if (lados.length !== 1) return null; // 0 lados (sem sinal) ou >1 (decide mais de uma coisa): não força
-  return lados[0] === "PROVIDO" && conjunto.has("PARCIAL") ? "PARCIAL" : lados[0];
+// Prioridade entre os pares (medido em 26/09/2026 contra 80 acórdãos rotulados às
+// cegas): fora de embargos de declaração, decide o par do MÉRITO (provido ×
+// desprovido) — "preliminar rejeitada" e "acolho a preliminar" disparavam o par
+// acolhido × rejeitado e mandavam o julgamento para "ambíguo" sem ser. Em embargos
+// (classe), o par acolhido × rejeitado vem primeiro, porque a cauda costuma repetir
+// o histórico do recurso julgado ("recurso provido"). Provido E desprovido no mesmo
+// texto continua ambíguo (red team 04/09/2026).
+const ehEmbargos = (classe) => /EMBARGOS DE DECLARA/i.test(String(classe || ""));
+export const rotuloDoConjunto = (conjunto, classe = "") => {
+  const ordem = ehEmbargos(classe) ? [OPOSTOS[1], OPOSTOS[0]] : [OPOSTOS[0], OPOSTOS[1]];
+  for (const par of ordem) {
+    const [a, b] = par;
+    if (conjunto.has(a) && conjunto.has(b)) return null; // os dois lados do mesmo par: ambíguo, não força
+    const lado = ladoDe(conjunto, par);
+    if (lado) return lado === "PROVIDO" && conjunto.has("PARCIAL") ? "PARCIAL" : lado;
+  }
+  return null;
 };
 const CONTAGEM_VAZIA = () => ({ PROVIDO: 0, PARCIAL: 0, DESPROVIDO: 0, ACOLHIDO: 0, REJEITADO: 0, sem: 0 });
 export function resumoResultadosPagina(hits) {
@@ -253,7 +290,7 @@ export function resumoResultadosPagina(hits) {
     const proc = String(s.nr_processo || "").replace(/\D/g, "");
     const data = String(s.dtjulgamento || "");
     const chave = proc && data ? `${proc}|${data}` : `#${i}`;
-    if (!porJulgamento.has(chave)) porJulgamento.set(chave, { conjunto: new Set(), relator: relator(s), orgao: orgao(s), ano: String(s.dtjulgamento || "").slice(0, 4) || "?" });
+    if (!porJulgamento.has(chave)) porJulgamento.set(chave, { conjunto: new Set(), classe: s.ds_classe_judicial || "", relator: relator(s), orgao: orgao(s), ano: String(s.dtjulgamento || "").slice(0, 4) || "?" });
     const j = porJulgamento.get(chave);
     for (const r of resultadoDe(limpar(s.ds_modelo_documento || "", 0))) j.conjunto.add(r);
   });
@@ -267,7 +304,7 @@ export function resumoResultadosPagina(hits) {
     mapa.get(k)[r || "sem"] += 1;
   };
   for (const j of porJulgamento.values()) {
-    const r = rotuloDoConjunto(j.conjunto);
+    const r = rotuloDoConjunto(j.conjunto, j.classe);
     if (r) contagem[r] += 1;
     else semResultado += 1;
     soma(porRelator, j.relator, r);
@@ -299,6 +336,7 @@ export function filtrarPorResultado(hits, rotulo) {
   if (!(rotulo in ROTULOS_FILTRO)) return { hits, removidos: 0 };
   const alvo = ROTULOS_FILTRO[rotulo];
   const conjuntos = new Map();
+  const classes = new Map();
   const chaveDe = (h, i) => {
     const s = h._source || {};
     const proc = String(s.nr_processo || "").replace(/\D/g, "");
@@ -307,10 +345,10 @@ export function filtrarPorResultado(hits, rotulo) {
   };
   hits.forEach((h, i) => {
     const k = chaveDe(h, i);
-    if (!conjuntos.has(k)) conjuntos.set(k, new Set());
+    if (!conjuntos.has(k)) { conjuntos.set(k, new Set()); classes.set(k, (h._source || {}).ds_classe_judicial || ""); }
     for (const r of resultadoDe(limpar((h._source || {}).ds_modelo_documento || "", 0))) conjuntos.get(k).add(r);
   });
-  const fica = hits.filter((h, i) => rotuloDoConjunto(conjuntos.get(chaveDe(h, i))) === alvo);
+  const fica = hits.filter((h, i) => rotuloDoConjunto(conjuntos.get(chaveDe(h, i)), classes.get(chaveDe(h, i))) === alvo);
   return { hits: fica, removidos: hits.length - fica.length };
 }
 
@@ -324,7 +362,7 @@ export function formatPanorama(data) {
   const buckets = (k) => ((ag[k] || {}).buckets || []).filter((b) => b && b.doc_count > 0);
   const top = (k, n) =>
     buckets(k)
-      .map((b) => [Array.isArray(b.key) ? b.key.join(" ") : String(b.key), b.doc_count])
+      .map((b) => [(Array.isArray(b.key) ? b.key.join(" ") : String(b.key)).trim() || "(sem cadastro)", b.doc_count])
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, n)
       .map(([k2, c]) => `${k2} ${c}`)
@@ -1262,7 +1300,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
     out.push("\n**Lista compacta** (nº · tipo · classe · órgão do cadastro · julgado em · relator · resultado declarado · assunto · processo · id):");
     hits.forEach((h, i) => {
       const s = h._source || {};
-      const r = rotuloDoConjunto(resultados[i]);
+      const r = rotuloDoConjunto(resultados[i], s.ds_classe_judicial);
       const doFecho = orgaoDoFechoDe(i);
       const org = doFecho && orgaoDiverge(doFecho, orgao(s)) ? `${doFecho} (fecho; índice: ${orgao(s)})` : orgao(s);
       out.push(

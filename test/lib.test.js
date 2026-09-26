@@ -847,7 +847,13 @@ test("red team 1/2: texto que menciona os dois lados fica AMBÍGUO e não gera a
   const ementa =
     "ACORDAM os Desembargadores, por maioria, DAR PROVIMENTO ao recurso, nos termos do voto do Redator, " +
     "vencido o Desembargador Relator sorteado, que NEGAVA PROVIMENTO ao recurso.";
-  assert.equal(ladoDe(resultadoDe(ementa), OPOSTOS[0]), null);
+  // 26/09/2026: com fecho ("ACORDAM ..."), só o fecho é lido e o que vem depois de
+  // "vencido" é o voto perdedor — o colegiado DEU provimento, e é isso que conta.
+  // (Antes ficava ambíguo, cautela que a medição contra 80 acórdãos rotulados às
+  // cegas mostrou ser excessiva.) Sem fecho, o texto que menciona os dois lados
+  // continua ambíguo — é a asserção logo abaixo.
+  assert.equal(ladoDe(resultadoDe(ementa), OPOSTOS[0]), "PROVIDO");
+  assert.equal(ladoDe(resultadoDe("por maioria, DAR PROVIMENTO ao recurso, vencido o Relator, que NEGAVA PROVIMENTO"), OPOSTOS[0]), null);
   // Histórico da origem antes do dispositivo: também ambíguo, nunca invertido.
   assert.equal(ladoDe(resultadoDe("DECISÃO AGRAVADA QUE NEGOU PROVIMENTO AO PEDIDO LIMINAR. RECURSO PROVIDO."), OPOSTOS[0]), null);
   const base = { nr_processo: "70025671120248220015", grau_jurisdicao: 2, dtjulgamento: "2026-08-19" };
@@ -1744,4 +1750,16 @@ test("por_pagina: teto 250 e a dica de paginar cita o teto e o modo compacto", (
   const data = { hits: { total: { value: 900 }, hits: [srcV27(1, "x")] } };
   assert.match(formatBusca(data, "q", ["ACÓRDÃO"], "relevantes", 1, 50), /até 250; com modo="compacto"/);
   assert.match(formatBusca(data, "q", ["ACÓRDÃO"], "relevantes", 1, 250), /chame novamente com pagina=2/);
+});
+
+test("resultadoDe lê só o FECHO quando ele existe; embargos 'providos/não providos' viram acolhido/rejeitado; embargos de terceiro não", () => {
+  const hist = "O relator negou provimento ao agravo interno. Rejeito a preliminar. " + "x ".repeat(200);
+  assert.deepEqual([...resultadoDe(hist + "ACORDAM os Magistrados da 2ª Câmara Cível, em, RECURSO PROVIDO, À UNANIMIDADE.")], ["PROVIDO"]);
+  assert.deepEqual([...resultadoDe(hist + "acordam os Magistrados da(o) 3ª Câmara Cível, em, EMBARGOS DE DECLARAÇÃO NÃO PROVIDOS, POR UNANIMIDADE.")], ["REJEITADO"]);
+  assert.deepEqual([...resultadoDe(hist + "acordam os Magistrados da 1ª Câmara Especial, em, \"EMBARGOS PROVIDOS, À UNANIMIDADE.\"")], ["ACOLHIDO"]);
+  assert.deepEqual([...resultadoDe("acordam os Magistrados, em, PRELIMINAR REJEITADA. NO MÉRITO, RECURSO INOMINADO PARCIALMENTE PROVIDO.")].sort(), ["PARCIAL", "PROVIDO", "REJEITADO"]);
+  assert.equal(rotuloDoConjunto(resultadoDe("acordam os Magistrados, em, PRELIMINAR REJEITADA. NO MÉRITO, RECURSO PARCIALMENTE PROVIDO."), "APELAÇÃO CÍVEL"), "PARCIAL");
+  assert.deepEqual([...resultadoDe("acordam os Magistrados, em, EMBARGOS DE TERCEIRO. RECURSO PROVIDO.")], ["PROVIDO"], "embargos de terceiro é recurso de mérito");
+  // Fecho de embargos numa apelação: a classe do índice não ajuda, o fecho decide.
+  assert.equal(rotuloDoConjunto(resultadoDe(hist + "acordam os Magistrados, em, EMBARGOS DE DECLARAÇÃO REJEITADOS, À UNANIMIDADE."), "APELAÇÃO CÍVEL"), "REJEITADO");
 });
