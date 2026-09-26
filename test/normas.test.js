@@ -295,3 +295,12 @@ test("gravarReciboNorma: grava norma-<id>.json com texto e situação; não grav
   assert.equal(gravarReciboNorma({ id: "1", inexistente: true }, "1", pasta), false);
   assert.equal(gravarReciboNorma(parseNormaDetalhe(DET_SO_PDF), "5345", pasta), false);
 });
+
+test("parseNormaDetalhe: '--' do portal em correlata/processo/publicação é vazio, não item", () => {
+  const h = DET_LC.replace("Resolução n. 364/2025", "--").replace("SEI n. 0016311-65.2025.8.22.8000", "--").replace("DIOF-RO n. 189.1, de 6/10/2025, p .1 - Edição Suplementar", "--");
+  const d = parseNormaDetalhe(h);
+  assert.deepEqual(d.correlatas, []);
+  assert.equal(d.processo, null);
+  assert.equal(d.publicacao, null);
+  assert.doesNotMatch(formatNormaDetalhe({ ...d, id: "1" }), /Legislação correlata|Processo administrativo|Publicação:/);
+});
