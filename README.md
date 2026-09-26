@@ -151,6 +151,28 @@ publicação no Diário). Se a consulta voltar vazia, o número está errado ou 
 processo está em segredo de justiça, e isso não prova que ele não existe. É uma
 consulta por processo, a pedido: a ferramenta não varre processos.
 
+## Favorável a quem? E julgados parecidos — desde a 1.9.0
+
+Duas leituras a mais, sem nenhuma consulta extra ao portal:
+
+- **Partes e lado, no inteiro teor.** Em cada ACÓRDÃO aberto por `obter_inteiro_teor_tjro`,
+  a extensão lê o cabeçalho ("Polo Ativo", "Polo Passivo") e o primeiro período do
+  relatório ("X interpôs recurso…", "recurso interposto por X"), cruza com o resultado
+  declarado no fecho e escreve uma linha do tipo: _"Recorreu (pelo relatório): Banco Y →
+  resultado CONTRÁRIO a quem recorreu (Banco Y), favorável a Fulana"_. Quando há mais de
+  um recurso (recurso adesivo, apelações de ambas as partes), ela avisa e **não** arrisca
+  o lado. É heurística sobre o texto, marcada como tal: numa amostra de 92 acórdãos ela
+  identificou as partes em 84 e o lado em 55; confira sempre no dispositivo. Só existe
+  no inteiro teor: o cabeçalho que vem na busca não traz partes legíveis.
+- **`similares_a`, na busca.** Achou um julgado bom na página? Repita a mesma busca
+  (mesma consulta, filtros e página, `por_pagina` alto) passando o id dele em
+  `similares_a`: a página volta **reordenada pela semelhança de texto** com esse julgado
+  (cosseno TF-IDF calculado no seu computador), com a semelhança em % no cabeçalho.
+  Como a resposta da busca fica em cache, isso não gasta consulta. Semelhança de
+  palavras não é semelhança de tese: ementa e acórdão do mesmo julgado pontuam alto
+  entre si, e um julgado do mesmo assunto com outro vocabulário pontua baixo. Serve
+  para escolher o que ler, não para concluir.
+
 ## Normas do próprio TJRO (resoluções, provimentos, instruções) — desde a 1.8.0
 
 Muita tese em Rondônia depende de um ato do próprio tribunal, não de lei: a instrução

@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { camposAlheios } from "./custodia.js";
+import { linhaFavoravel } from "./partes.js";
 
 export const SITE = "https://juris.tjro.jus.br";
 export const API = "https://juris-back.tjro.jus.br";
@@ -1544,6 +1545,12 @@ export function formatInteiro(data, nrProcesso) {
       avisos.push(
         `⚠️ Índice: relator ${relator(s)} · cabeçalho desta peça: "${relTexto}" — pode ser relator sorteado vencido ou o do acórdão embargado; confira no acórdão antes de citar.`
       );
+    // "Favorável a quem": só no ACÓRDÃO (a ementa não tem partes nem fecho) e só
+    // aqui, no inteiro teor — o cabeçalho da busca não traz partes legíveis.
+    if (s.tipo === "ACÓRDÃO") {
+      const lado = linhaFavoravel(corpo, rotuloDoConjunto(resultadoDe(corpo), s.ds_classe_judicial));
+      if (lado) avisos.push(lado);
+    }
     let texto = corpo || "(documento sem texto)";
     const teto = Math.min(tetoPeca, ORCAMENTO_INTEIRO - usado);
     if (texto.length > teto) {
@@ -1737,7 +1744,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.8.0";
+export const VERSAO = "1.9.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
