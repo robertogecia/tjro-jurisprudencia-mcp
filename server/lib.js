@@ -1744,7 +1744,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.9.2";
+export const VERSAO = "1.9.3";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
@@ -1821,6 +1821,9 @@ export const ISSUES_NOVA = "https://github.com/robertogecia/tjro-jurisprudencia-
 
 export function tipoDoErro(mensagem) {
   const m = String(mensagem || "");
+  // O marcador do limitador tem precedência: a prosa do disjuntor cita "suspeita de
+  // automação" e não pode ser confundida com a página de bloqueio do portal.
+  if (/\[espera_segundos=\d+ tipo=limite_de_ritmo\]/.test(m)) return "limite_de_ritmo";
   if (/verificação de navegador/i.test(m)) return "desafio_navegador";
   if (/cabeçalho defeituoso/i.test(m)) return "resposta_corrompida";
   if (/robotiza|suspeita de automação/i.test(m)) return "bloqueio_robotizacao";
@@ -1898,6 +1901,9 @@ export async function comAjudaNoErro(mensagem, opcoes = {}) {
       ? `Detalhe técnico: o portal respondeu com a página de bloqueio do filtro anti-robô (tipo: ${tipo}).`
       : `Erro ao consultar o TJRO: ${mensagem}`
   );
+  // A retomada automática lê este marcador; a mensagem amigável não pode engoli-lo.
+  const marcador = String(mensagem || "").match(/\[espera_segundos=\d+ tipo=[a-z_]+\]/);
+  if (marcador && !partes.some((x) => x.includes(marcador[0]))) partes.push(marcador[0]);
   let nova = null;
   try {
     nova = await iniciarChecagemVersao(opcoes.checagem);

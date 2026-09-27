@@ -1419,6 +1419,16 @@ test("diagnóstico com bloqueios sem volume manda testar outra rede e recusa con
 
 // ---------------------------------------------------------------------------
 // v1.7.9 — no erro, sugerir atualização e relato pré-preenchido (nunca enviado sozinho).
+test("comAjudaNoErro preserva [espera_segundos=N tipo=...] do disjuntor", async () => {
+  const msg =
+    "O TJRO bloqueou uma consulta recente por suspeita de automação; aguarde. [espera_segundos=120 tipo=bloqueio_do_tribunal]";
+  const out = await comAjudaNoErro(msg, { checagem: Promise.resolve(null) });
+  assert.match(out, /\[espera_segundos=120 tipo=bloqueio_do_tribunal\]/);
+  const ritmo = "Muitas consultas em pouco tempo. suspeita de automação [espera_segundos=30 tipo=limite_de_ritmo]";
+  assert.equal(tipoDoErro(ritmo), "limite_de_ritmo");
+  assert.match(await comAjudaNoErro(ritmo, { checagem: Promise.resolve(null) }), /espera_segundos=30/);
+});
+
 test("tipoDoErro classifica as mensagens reais da extensão", () => {
   assert.equal(tipoDoErro(diagnosticarRespostaNaoJson("text/html", HTML_TSPD)), "desafio_navegador");
   assert.equal(tipoDoErro(diagnosticarRespostaNaoJson("text/html", "Página Bloqueada robotização")), "bloqueio_robotizacao");
