@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { camposAlheios } from "./custodia.js";
+import { camposAlheios, linhaCustodia } from "./custodia.js";
 import { linhaFavoravel } from "./partes.js";
 
 export const SITE = "https://juris.tjro.jus.br";
@@ -1551,6 +1551,9 @@ export function formatInteiro(data, nrProcesso) {
       const lado = linhaFavoravel(corpo, rotuloDoConjunto(resultadoDe(corpo), s.ds_classe_judicial));
       if (lado) avisos.push(lado);
     }
+    // v1.10.0: custódia na hora da leitura — a mesma conta do recibo, que antes só o lint via.
+    const cust = linhaCustodia(corpo, s.tipo);
+    if (cust) avisos.push(cust);
     let texto = corpo || "(documento sem texto)";
     const teto = Math.min(tetoPeca, ORCAMENTO_INTEIRO - usado);
     if (texto.length > teto) {
@@ -1665,6 +1668,11 @@ export function recibo(s, agora = new Date()) {
     nr_processo: s.nr_processo ?? null,
     tipo: s.tipo ?? null,
     data_julgamento: s.dtjulgamento_str || dataBr(s.dtjulgamento || "") || null,
+    // v1.10.0: classe, relator e órgão DO ÍNDICE, para a busca local de recibos listar sem reabrir o texto
+    // (o órgão do índice erra a câmara; quem cita usa o fecho — extrairOrgaoComOrigem sobre `texto`).
+    classe: s.ds_classe_judicial ?? null,
+    relator_indice: relator(s) !== "—" ? relator(s) : null,
+    orgao_indice: orgao(s) !== "—" ? orgao(s) : null,
     obtido_em: agora.toISOString(),
     texto,
     ...alheios(texto, s.tipo),
@@ -1744,7 +1752,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.9.3";
+export const VERSAO = "1.10.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
