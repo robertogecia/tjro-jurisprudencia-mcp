@@ -85,3 +85,37 @@ test("recibo(): leva os campos e nunca perde o texto se a custódia falhar", () 
   assert.match(r.normalizacao, /em bruto/);
   assert.equal(recibo({ id_processo_documento: 8, tipo: null, ds_modelo_documento: "texto qualquer" }).texto, "texto qualquer");
 });
+
+// v1.10.0 — a mesma conta, mostrada a quem lê o acórdão na hora.
+import { faixasAlheias, linhaCustodia } from "../server/custodia.js";
+import { formatInteiro } from "../server/lib.js";
+
+test("faixasAlheias: posições batem com os recortes de camposAlheios", () => {
+  const f = faixasAlheias(acordao.texto, acordao.tipo);
+  const c = camposAlheios(acordao.texto, acordao.tipo);
+  assert.deepEqual(f.transcritas.map(([a, b]) => acordao.texto.slice(a, b)), c.trechos_transcritos);
+  assert.equal(acordao.texto.slice(f.divergente[0], f.divergente[1]), c.trecho_divergente);
+  assert.equal(acordao.texto.slice(f.casaIni), c.texto_voz_propria);
+  assert.deepEqual(faixasAlheias("Ementa. Recurso provido.", "EMENTA"), { transcritas: [], divergente: null, casaIni: 24, fecho: 24, ementaDaCasa: true });
+});
+
+test("linhaCustodia: conta transcrições, aponta voto que pode ser o vencido e a voz da casa; null para EMENTA/RELATÓRIO", () => {
+  const l = linhaCustodia(acordao.texto, acordao.tipo);
+  assert.match(l, /^Custódia do texto \(heurística; a mesma do recibo\): \d+ trecho\(s\) transcrito\(s\) de OUTROS julgados \(~\d+% do voto/);
+  assert.match(l, /voto que pode ser o VENCIDO a partir de «VOTO DESEMBARGADOR RELATOR ORIGINÁRIO/);
+  assert.match(l, /voz da casa \(ementa \+ fecho\) a partir de «EMENTA DIREITO PROCESSUAL CIVIL/);
+  assert.match(l, /verificar_citacao_tjro/);
+  assert.match(linhaCustodia("VOTO. Nego provimento porque sim. É como voto.", "VOTO"), /nenhuma transcrição de outro julgado detectada · sem sinal de voto divergente/);
+  assert.equal(linhaCustodia("Ementa. Provido.", "EMENTA"), null);
+  assert.equal(linhaCustodia("Relatório. Trata-se.", "RELATÓRIO"), null);
+});
+
+test("formatInteiro: a linha de custódia entra no ACÓRDÃO e no VOTO, não na EMENTA", () => {
+  const src = (tipo, texto, id) => ({ tipo, nr_processo: "70000000000000000000", ds_classe_judicial: "APELAÇÃO CÍVEL", dtjulgamento_str: "27/03/2026",
+    nome_relator_acordao: "X", ds_orgao_julgador_colegiado: "1ª Câmara Cível", ds_modelo_documento: texto, id_processo_documento: id });
+  const t = formatInteiro({ hits: { total: { value: 3 }, hits: [{ _source: src("ACÓRDÃO", acordao.texto, 1) }, { _source: src("VOTO", voto.texto, 2) }, { _source: src("EMENTA", "Ementa. Provido.", 3) }] } }, "70000000000000000000");
+  const blocos = t.split("\n## ");
+  assert.match(blocos[1], /^ACÓRDÃO[\s\S]*Custódia do texto/);
+  assert.match(blocos[2], /^VOTO[\s\S]*Custódia do texto/);
+  assert.doesNotMatch(blocos[3], /Custódia do texto/);
+});

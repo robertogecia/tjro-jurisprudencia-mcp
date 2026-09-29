@@ -2,6 +2,36 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.10.0 (29/09/2026): verificar antes das aspas, recibos locais e custódia visível
+
+**Problema.** Dos MCPs de jurisprudência do escritório (TRF1, TRT14, TCE-RO, STJ, TJSE, OAB), só o do TJRO,
+o mais usado, não tinha um verificador de citação: o agente descobria que a frase entre aspas era ementa do
+STJ copiada no voto, ou o voto vencido, só no lint da peça, depois da ficha e da minuta prontas. A custódia
+(v1.7.16) existia, mas só no recibo, que ninguém lê na hora. E o servidor Python pessoal, o caminho do
+`pesquisador-juridico`, nunca recebeu o porte da custódia: 228 dos 616 recibos desta máquina estavam sem os
+campos, e o lint "se comportava como antes" com eles.
+
+**O que mudou.**
+
+- **`verificar_citacao_tjro(trecho, id_documento | nr_processo)`**: literalidade por palavra inteira,
+  tolerante a caixa, acento e pontuação; mínimo de 4 palavras; `[...]` separa fragmentos em ordem, a até
+  1.500 caracteres. Lê o recibo local primeiro (zero requisição); sem recibo, busca o inteiro teor pelo
+  número e grava. ✅ pode vir com ALERTA DE ATRIBUIÇÃO: TRANSCRIÇÃO, VOTO DIVERGENTE, ENTRE ASPAS,
+  ALEGAÇÃO DA PARTE, NEGAÇÃO — e uma nota VOZ DA CASA quando o trecho está na ementa/fecho do próprio
+  acórdão. Mesma heurística do recibo que o lint da `peticao-rg` lê.
+- **`buscar_recibos_tjro(consulta | grupos, limite)`**: busca local nos documentos já lidos, sem rede
+  (palavra inteira, `*` de prefixo, frase, sinônimos), com id, número, câmara do fecho, trecho em volta e
+  estado da custódia. Zero aqui nunca é "não localizado".
+- **Linha de custódia no inteiro teor** de ACÓRDÃO e VOTO: quantos trechos são de outros julgados (e a fatia
+  do voto), onde começa o voto que pode ser o vencido, onde começa a voz da casa.
+- **Recibo** ganha `classe`, `relator_indice` e `orgao_indice` (do índice, para a busca local listar sem
+  reabrir o texto). Recibos antigos continuam válidos; `harness/regravar-recibos.mjs --gravar` acrescenta a
+  custódia aos que não têm.
+- **Python** ganha o porte inteiro (custódia, recibos, verificador). Paridade Node × Python medida em
+  `harness/custodia/paridade_custodia.py`: 619 documentos (todos os recibos reais + fixtures), 4.780 casos,
+  0 divergentes.
+
+
 ## v1.7.16 (23/09/2026): o recibo diz o que NÃO é palavra do TJRO
 
 **Problema.** O recibo gravava só o `texto` do documento. O lint de citações da peça conferia se o trecho

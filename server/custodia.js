@@ -96,7 +96,7 @@ const RE_ABRE_BLOCO = new RegExp(
   String.raw`|nessa esteira|nesse diapasao|precedentes?(?: desta corte| deste tribunal| do stj)?|julgados?|jurisprudencia|decidiu|decidido)\s*:`,
   "g");
 // Marcas de que o texto voltou a ser do relator — um bloco não atravessa uma delas.
-const RE_VOZ_PROPRIA = /\b(?:nesse sentido|neste sentido|com efeito|no caso dos autos|no caso em tela|no caso concreto|in casu|na hipotese dos autos|na especie|entendo|ante o exposto|diante do exposto|pelo exposto|isso posto|e como voto|e o voto|voto por|voto pelo|passo a|compulsando|assim sendo|dessa forma|desta forma|rejeito|nao vejo|submeto aos pares|como se sabe|como foi narrado|nesse contexto)\b|\b[ivx]{1,4}\s*[-.)]\s*d[aeo]s?\s+(?:merito|preliminar|recurso|apelacao|dano|pedido)/;
+export const RE_VOZ_PROPRIA = /\b(?:nesse sentido|neste sentido|com efeito|no caso dos autos|no caso em tela|no caso concreto|in casu|na hipotese dos autos|na especie|entendo|ante o exposto|diante do exposto|pelo exposto|isso posto|e como voto|e o voto|voto por|voto pelo|passo a|compulsando|assim sendo|dessa forma|desta forma|rejeito|nao vejo|submeto aos pares|como se sabe|como foi narrado|nesse contexto)\b|\b[ivx]{1,4}\s*[-.)]\s*d[aeo]s?\s+(?:merito|preliminar|recurso|apelacao|dano|pedido)/;
 // As fracas também aparecem DENTRO de ementa ("In casu, ante a inexistência…", "o que se verifica no caso
 // concreto"): toleradas quando a abertura é seguida de cabeçalho de ementa e o bloco é curto.
 const RE_VOZ_FORTE = /\b(?:e como voto|e o voto|voto por|voto pelo|passo a|compulsando|nesse sentido|neste sentido)\b/;
@@ -231,27 +231,71 @@ function votoDoRelator(tn, bruto, ate) {
 }
 
 // --------------------------------------------------------------------- recibo ---
+/** Posições [ini, fim) do que no `texto` não é palavra do TJRO, e onde começa a voz da casa.
+ * É a mesma conta de camposAlheios, sem recortar — o verificador de citação e a linha de
+ * custódia do inteiro teor leem daqui. `casaIni` = início da ementa da casa + fecho (ACÓRDÃO);
+ * nos demais tipos, o fim do texto. */
+export function faixasAlheias(texto, tipo) {
+  const t = String(tipo || "").trim().toUpperCase();
+  const n = texto ? texto.length : 0;
+  if (!texto || t === "EMENTA") return { transcritas: [], divergente: null, casaIni: n, fecho: n, ementaDaCasa: t === "EMENTA" };
+  const tn = norm1(texto);
+  const casa = /AC[ÓO]RD[ÃA]O/.test(t) ? vozDaCasa(tn, texto) : { ini: tn.length, fecho: tn.length };
+  const fim = casa.ini;
+  const transcritas = faixasTranscritas(tn, 0, fim, texto);
+  // VOTO VENCEDOR é, por definição, o que prevaleceu: o "divirjo" dele não é o vencido
+  let div = t === "VOTO VENCEDOR" ? null : faixaDivergente(tn, texto, 0, fim, transcritas);
+  if (div && RE_RELATOR_VENCIDO.test(tn.slice(casa.fecho, casa.fecho + 800))) {
+    const v = votoDoRelator(tn, texto, div[0]);
+    div = v >= 0 ? [v, div[0]] : div;
+  }
+  return { transcritas, divergente: div, casaIni: fim, fecho: casa.fecho, ementaDaCasa: false };
+}
+
 /** Campos de custódia do recibo: o que no `texto` não é palavra do TJRO. */
 export function camposAlheios(texto, tipo) {
   const vazio = { trechos_transcritos: [], trecho_divergente: "" };
   const t = String(tipo || "").trim().toUpperCase();
   if (!texto || t === "EMENTA") return vazio;   // a ementa é a voz da casa
-  const tn = norm1(texto);
-  const casa = /AC[ÓO]RD[ÃA]O/.test(t) ? vozDaCasa(tn, texto) : { ini: tn.length, fecho: tn.length };
-  const fim = casa.ini;
-  const faixas = faixasTranscritas(tn, 0, fim, texto);
-  // VOTO VENCEDOR é, por definição, o que prevaleceu: o "divirjo" dele não é o vencido
-  let div = t === "VOTO VENCEDOR" ? null : faixaDivergente(tn, texto, 0, fim, faixas);
-  if (div && RE_RELATOR_VENCIDO.test(tn.slice(casa.fecho, casa.fecho + 800))) {
-    const v = votoDoRelator(tn, texto, div[0]);
-    div = v >= 0 ? [v, div[0]] : div;
-  }
+  const f = faixasAlheias(texto, tipo);
   // a cauda (ementa da casa + fecho) vai como voz própria: o lint absolve o trecho que está nela, mesmo que o
   // voto tenha transcrito um precedente com a mesma frase (as câmaras reusam ementas-modelo)
-  const voz = fim < tn.length ? { texto_voz_propria: texto.slice(fim) } : {};
+  const voz = f.casaIni < texto.length ? { texto_voz_propria: texto.slice(f.casaIni) } : {};
   return {
-    trechos_transcritos: faixas.map(([a, b]) => texto.slice(a, b)),
-    trecho_divergente: div ? texto.slice(div[0], div[1]) : "",
+    trechos_transcritos: f.transcritas.map(([a, b]) => texto.slice(a, b)),
+    trecho_divergente: f.divergente ? texto.slice(f.divergente[0], f.divergente[1]) : "",
     ...voz,
   };
+}
+
+// ------------------------------------------------------ linha para o inteiro teor ---
+const primeirasPalavras = (s, n = 7) => {
+  const p = String(s || "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  return p.slice(0, n).join(" ") + (p.length > n ? "…" : "");
+};
+
+/** Uma linha, para quem lê o acórdão na hora: quanto do texto é palavra de outro julgado, se há
+ * voto que pode ser o vencido e onde começa a voz da casa. Mesma conta que vai para o recibo;
+ * null para EMENTA e RELATÓRIO (não têm o que marcar) e quando a custódia falhar. */
+export function linhaCustodia(texto, tipo) {
+  try {
+    const t = String(tipo || "").trim().toUpperCase();
+    if (!texto || t === "EMENTA" || t === "RELATÓRIO" || t === "RELATORIO") return null;
+    const f = faixasAlheias(texto, tipo);
+    const partes = [];
+    if (f.transcritas.length) {
+      const chars = f.transcritas.reduce((n, [a, b]) => n + (b - a), 0);
+      const pct = Math.round((100 * chars) / Math.max(1, f.casaIni));
+      partes.push(`${f.transcritas.length} trecho(s) transcrito(s) de OUTROS julgados (~${pct}% do voto: ementa do STJ/TJ copiada não é palavra do TJRO)`);
+    } else partes.push("nenhuma transcrição de outro julgado detectada");
+    if (f.divergente)
+      partes.push(`voto que pode ser o VENCIDO a partir de «${primeirasPalavras(texto.slice(f.divergente[0], f.divergente[0] + 120))}» — leia quem venceu no fecho`);
+    else partes.push("sem sinal de voto divergente");
+    if (f.casaIni < texto.length)
+      partes.push(`voz da casa (ementa + fecho) a partir de «${primeirasPalavras(texto.slice(f.casaIni, f.casaIni + 120))}»`);
+    else if (/AC[ÓO]RD[ÃA]O/.test(t)) partes.push("sem ementa/fecho da casa identificados nesta peça");
+    return `Custódia do texto (heurística; a mesma do recibo): ${partes.join(" · ")}. Antes de pôr aspas: verificar_citacao_tjro diz de quem é a frase.`;
+  } catch {
+    return null;
+  }
 }

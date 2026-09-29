@@ -173,6 +173,31 @@ Duas leituras a mais, sem nenhuma consulta extra ao portal:
   entre si, e um julgado do mesmo assunto com outro vocabulário pontua baixo. Serve
   para escolher o que ler, não para concluir.
 
+## Antes das aspas: verificar a citação, e o que já foi lido — desde a 1.10.0
+
+Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão já foi lido:
+
+- **`verificar_citacao_tjro`** confere se a frase que vai entre aspas na peça está
+  **literalmente** no documento (por palavra inteira, ignorando caixa, acento e
+  pontuação; `[...]` marca cortes, desde que os pedaços apareçam em ordem e perto um do
+  outro) e diz **de quem é a frase**. Um acórdão transcreve ementas inteiras do STJ e de
+  outros tribunais, e o documento ACÓRDÃO traz também o voto que perdeu. Uma frase copiada
+  de lá está no texto, mas não é palavra do TJRO naquele processo. O verificador avisa:
+  TRANSCRIÇÃO, VOTO DIVERGENTE, ENTRE ASPAS, ALEGAÇÃO DA PARTE (o relatório contando o que
+  o apelante sustenta) e NEGAÇÃO (um "não" logo antes do recorte). Ele lê primeiro o recibo
+  que `obter_inteiro_teor_tjro` gravou no seu computador; só vai ao portal se o documento
+  nunca foi lido. Passe o `id_documento` da peça citada; com só o número, confere em todos
+  os documentos do processo.
+- **`buscar_recibos_tjro`** procura nos documentos que **esta máquina já leu**, sem tocar no
+  portal. Serve para reencontrar o acórdão da semana passada antes de gastar cota do JURIS,
+  que conta volume em poucos minutos. Mostra id, número, câmara do fecho, um trecho em
+  volta do termo e se o recibo tem custódia. Não é pesquisa no acervo do tribunal: zero
+  resultado aqui nunca é "não localizado".
+- **Linha de custódia no inteiro teor.** Cada ACÓRDÃO e VOTO abertos vêm com uma linha
+  dizendo quantos trechos são de outros julgados (e que fatia do voto isso é), onde começa o
+  voto que pode ser o vencido e onde começa a ementa da casa. É a mesma conta que vai para
+  o recibo e que o lint da peça lê; antes só o lint via.
+
 ## Normas do próprio TJRO (resoluções, provimentos, instruções) — desde a 1.8.0
 
 Muita tese em Rondônia depende de um ato do próprio tribunal, não de lei: a instrução

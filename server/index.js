@@ -10,6 +10,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { verificarCitacao } from "./verificar.js";
+import { buscarRecibos, RECIBOS_LIMITE_MAX } from "./recibos.js";
 import {
   ORDENACOES,
   JANELA_MAXIMA,
@@ -292,6 +294,66 @@ server.registerTool(
       return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
     }
   }
+);
+
+server.registerTool(
+  "verificar_citacao_tjro",
+  {
+    title: "Verificar citação literal no TJRO (e de quem é a frase)",
+    description:
+      "Confere se um trecho aparece LITERALMENTE num documento do TJRO antes de ir entre aspas para a peça — e diz DE QUEM é a frase. " +
+      "USE antes de qualquer citação direta, e ao montar a ficha de precedente. Lê primeiro o RECIBO local gravado por obter_inteiro_teor_tjro " +
+      "(ZERO requisição ao portal); sem recibo, busca o inteiro teor pelo nr_processo (uma consulta, e grava o recibo). " +
+      "Comparação por palavra inteira, tolerante a caixa, acento e pontuação; mínimo de 4 palavras; `[...]` separa fragmentos que devem aparecer " +
+      "em ordem, a no máximo 1.500 caracteres um do outro (não costura a ementa ao fim do voto). " +
+      "✅ pode vir com ALERTA DE ATRIBUIÇÃO: TRANSCRIÇÃO (ementa do STJ/outro TJ copiada no voto — não é palavra do TJRO), VOTO DIVERGENTE (pode ser o " +
+      "vencido), ENTRE ASPAS (o tribunal citando alguém), ALEGAÇÃO DA PARTE, NEGAÇÃO (negativa logo antes do recorte). Trecho com alerta não entra na " +
+      "ficha como posição do órgão sem resolver a atribuição. É a mesma heurística que o recibo leva ao lint da peticao-rg. " +
+      "Prefira id_documento (o id da peça citada); com só o número, confere em todos os documentos do processo já lidos.",
+    inputSchema: {
+      trecho: z.string().describe("O trecho exatamente como vai entre aspas; cortes com [...]."),
+      id_documento: z.string().optional().describe("Id do documento (id_processo_documento), o mesmo da busca e do inteiro teor. Preferido."),
+      nr_processo: z.string().optional().describe("Número do processo (CNJ), com ou sem máscara. Obrigatório se não houver id, e é o que permite ir ao portal quando não há recibo."),
+    },
+    annotations: { title: "Verificar citação literal no TJRO", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  async (a) => {
+    try {
+      const buscar = async (digitos) => {
+        const tipo = ["ACÓRDÃO", "EMENTA", "VOTO", "RELATÓRIO"];
+        const cache = lerCacheInteiro(digitos, tipo);
+        if (cache) return cache.data;
+        const data = await post(buildInteiroBody(digitos, tipo));
+        gravarRecibos(data);
+        gravarCacheInteiro(digitos, tipo, data);
+        return data;
+      };
+      const texto = await verificarCitacao({ nr_processo: a.nr_processo, id_documento: a.id_documento, trecho: a.trecho, buscar });
+      return { content: [{ type: "text", text: await comAvisos(texto) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
+    }
+  }
+);
+
+server.registerTool(
+  "buscar_recibos_tjro",
+  {
+    title: "Buscar nos documentos do TJRO já lidos nesta máquina (recibos locais)",
+    description:
+      "Procura nos documentos do TJRO JÁ BAIXADOS por obter_inteiro_teor_tjro (recibos locais) — ZERO requisição ao portal. " +
+      "Use ANTES de gastar cota do JURIS (o filtro do portal conta volume em poucos minutos): se o acórdão que resolve o ponto já foi lido, está aqui, " +
+      "com id, número, data, câmara do fecho e um trecho em volta do termo. NÃO substitui buscar_jurisprudencia_tjro: cobre só o que esta máquina já viu — " +
+      "zero resultado aqui NUNCA é \"não localizado\". Termos: todas as palavras da consulta devem aparecer (palavra inteira, sem acento/caixa; `*` no fim = prefixo); " +
+      "`grupos` = sinônimos (OU dentro do grupo, E entre grupos), expressão com espaço = frase exata. Ordena por densidade dos termos e data.",
+    inputSchema: {
+      consulta: z.string().optional().describe("Palavras que devem TODAS aparecer. Ex.: \"licença-prêmio cedência\"."),
+      grupos: z.array(z.array(z.string())).optional().describe('Sinônimos: [["cedência","cedido"],["licença-prêmio","licença prêmio"]].'),
+      limite: z.number().int().min(1).max(RECIBOS_LIMITE_MAX).optional().describe(`Quantos mostrar (1 a ${RECIBOS_LIMITE_MAX}; padrão 10).`),
+    },
+    annotations: { title: "Buscar recibos locais do TJRO", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async (a) => ({ content: [{ type: "text", text: buscarRecibos(a.consulta || "", a.grupos ?? null, a.limite ?? 10) }] })
 );
 
 server.registerTool(
