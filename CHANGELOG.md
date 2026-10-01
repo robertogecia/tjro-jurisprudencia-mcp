@@ -2,6 +2,23 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.10.1 (30/09/2026): dois falsos positivos da custódia
+
+**Problema.** No recibo do acórdão de embargos de declaração da Apelação Cível 7001808-38.2024.8.22.0018, a
+heurística de TRANSCRIÇÃO gravou um único bloco de 8.327 caracteres, do meio do relatório até a lista de
+precedentes no fim do voto, e engolia a fundamentação própria da relatora. `verificar_citacao_tjro` e o lint da
+peça acusavam "não é palavra do TJRO" para frase que é do tribunal.
+
+**Causa.** O relatório cita "(ID 1, Relatório ID 2, Voto ID 3, Ementa ID 4)". O marcador de abertura de bloco
+"ementa" seguido de palavra casava com "Ementa ID …". A única atribuição do voto era a lista de precedentes que a
+própria relatora arrola no fim (vários julgados num parêntese), e o bloco ligou as duas pontas.
+
+**O que mudou.** (1) "Ementa ID nnn" deixa de abrir bloco transcrito. (2) Parêntese com 2+ julgados indicados
+("Rel." duas vezes e ";") é lista de precedentes do relator: só o parêntese é marcado, não a frase que o antecede.
+Medido nos 636 recibos reais: só 2 mudam (o reportado e o voto irmão); o gabarito rotulado à mão fica idêntico.
+`harness/regravar-recibos.mjs --recalcular [--gravar]` refaz a custódia dos recibos já gravados com a lógica
+atual (só os campos que `camposAlheios` produz). Porte idêntico no servidor Python.
+
 ## v1.10.0 (29/09/2026): verificar antes das aspas, recibos locais e custódia visível
 
 **Problema.** Dos MCPs de jurisprudência do escritório (TRF1, TRT14, TCE-RO, STJ, TJSE, OAB), só o do TJRO,

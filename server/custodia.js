@@ -89,7 +89,7 @@ export function atribuicoes(tn, ini = 0, fim = tn.length) {
 // Onde começa um bloco transcrito. A posição que conta é o FIM do marcador: o texto
 // que vem depois é do outro julgado.
 const RE_ABRE_BLOCO = new RegExp(
-  String.raw`\bementa\s*[:.-]|\bementa\b(?=\s+[a-z])|\bacordao\s*:|\bsumula\s+(?:vinculante\s+)?n?\.?\s*\d+\s*[:-]` +
+  String.raw`\bementa\s*[:.-]|\bementa\b(?=\s+(?!id\b)[a-z])|\bacordao\s*:|\bsumula\s+(?:vinculante\s+)?n?\.?\s*\d+\s*[:-]` +
   String.raw`|\b(?:transcrevo|in verbis|verbis|litteris|nos seguintes termos|assim (?:decidiu|se manifestou|ementado))\b\s*:?` +
   String.raw`|\b(?:vejamos|veja-se|confira-se|elucida-se|observe-se|transcreve-se|destaco|assim ementad[oa]|confiram-se|colaciono|colaciona-se|cito|cita-se|a saber|a proposito|exemplificativamente` +
   String.raw`|seguintes?(?: teor| julgados?| precedentes?| ementas?| termos)?|nesse sentido|neste sentido|nessa linha|na mesma linha` +
@@ -109,6 +109,12 @@ export const ENCADEIA_MAX = 1200, ABERTURA_MAX = 9000, RECUO = 300;
 const TERMOS_EMENTA = String.raw`(?:ementa|apelac\w*|agravo|embargos|recurso|reclamac\w*|direito|processual|processo civil|civil|consumidor|mandado|ac[aã]o|habeas|responsabilidade|contrato|dano|indeniza\w*|revis[aã]o|execu\w*|tutela|cumprimento)`;
 // caixa alta só conta se trouxer vocabulário de ementa — "ADVOGADOS DO AGRAVANTE: FULANO DE TAL" não é ementa
 const RE_CABECALHO_EMENTA = new RegExp(String.raw`^\s*['(]?\s*(?:(?:tjro|stj|stf|tj-?[a-z]{2})\s*[-.,]\s*)?(?:` + TERMOS_EMENTA + String.raw`\b[^.]{0,80}\.\s)`, "i");
+
+// Parêntese com 2+ julgados indicados pelo relator ("Rel." / "Relator") — lista de precedentes, não ementa transcrita.
+const RE_REL_NO_PARENTESE = /\brel\b|\brel\.|\brelator/g;
+function listaDeJulgados(par) {
+  return (par.match(RE_REL_NO_PARENTESE) || []).length >= 2 && par.includes(";");
+}
 
 function aberturas(tn, de, ate, bruto) {
   const r = new RegExp(RE_ABRE_BLOCO.source, "g");
@@ -147,6 +153,11 @@ export function faixasTranscritas(tn, inicio = 0, fim = tn.length, bruto = null)
       ini = piso;   // ementas em sequência, sem o relator falar entre elas
     } else if (q >= piso && a - q < 3000) {
       ini = q;
+    } else if (listaDeJulgados(tn.slice(a, b))) {
+      // v1.10.1: "…tem reiteradamente decidido que X (Ap. nº A, Rel. …, j. …; Ap. nº B, Rel. …, j. …)" — vários
+      // julgados no mesmo parêntese são o relator ARROLANDO precedentes em apoio da frase dele, não transcrevendo
+      // um deles. Só o parêntese é de outros; a frase que o antecede é voz do tribunal.
+      ini = a;
     } else {
       // sem abertura: só a frase em que está o parêntese — a anterior pode ser do relator
       // ("A caução deve… Essa compreensão é compatível com a jurisprudência do STJ (AgRg …)")
