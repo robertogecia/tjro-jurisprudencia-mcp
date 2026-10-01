@@ -119,3 +119,48 @@ test("formatInteiro: a linha de custódia entra no ACÓRDÃO e no VOTO, não na 
   assert.match(blocos[2], /^VOTO[\s\S]*Custódia do texto/);
   assert.doesNotMatch(blocos[3], /Custódia do texto/);
 });
+
+// v1.10.1 — falso positivo real (recibo 35889208, EDcl na Apelação 7001808-38.2024.8.22.0018, 30/09/2026): um único
+// bloco de 8.327 caracteres, do "Ementa ID …" do relatório até a lista de precedentes do fim do voto, engolia a
+// fundamentação própria da relatora. Texto sintético com a mesma estrutura.
+const EDCL_IDS =
+  "RELATÓRIO Trata-se de embargos de declaração opostos pelo Banco X S.A. contra o acórdão proferido por esta 2ª Câmara Cível " +
+  "na Sessão nº 1011 (ID 100, Relatório ID 101, Voto ID 102, Ementa ID 103), que, por unanimidade, deu parcial provimento à apelação. ";
+const PRECEDENTES =
+  "Este Tribunal de Justiça, em casos que envolvem fraude contratual comprovada por perícia grafotécnica, tem reiteradamente decidido que os " +
+  "juros de mora sobre a repetição do indébito devem incidir desde o evento danoso.( Apelação Cível nº 7000998-63.2024.8.22.0018, Rel. Des. Fulano, " +
+  "j. 22/10/2025; Apelação Cível nº 7004855-45.2023.8.22.0021, Rel. Des. Beltrano, j. 26/09/2024; Apelação Cível nº 7000353-75.2023.8.22.0017, " +
+  "Rel. Des. Cicrano, j. 13/05/2025) ";
+const PROPRIA =
+  "O argumento do embargante de que a mera disponibilização de crédito na conta do autor atrairia a aplicação do art. 405 do Código Civil " +
+  "não se sustenta diante dos fatos comprovados nos autos, porque a contratação foi fraudulenta e o dano é anterior ao pedido. ";
+const FECHO_EDCL =
+  "EMENTA Embargos de declaração. Rejeitados. ACÓRDÃO Vistos, relatados e discutidos estes autos, acordam os Magistrados da 2ª Câmara Cível " +
+  "do Tribunal de Justiça do Estado de Rondônia, em, EMBARGOS REJEITADOS, À UNANIMIDADE.";
+
+test("'Ementa ID nnn' do relatório não abre bloco transcrito; lista de precedentes do relator só marca o parêntese", () => {
+  const texto = EDCL_IDS + "VOTO Sem omissão. " + PROPRIA + PRECEDENTES + "Ante o exposto, rejeito os embargos. É como voto. " + FECHO_EDCL;
+  const c = camposAlheios(texto, "ACÓRDÃO");
+  assert.equal(c.trechos_transcritos.length, 1);
+  assert.ok(c.trechos_transcritos[0].length < 400, `bloco de ${c.trechos_transcritos[0].length} caracteres`);
+  assert.match(c.trechos_transcritos[0], /^\( ?Apelação Cível nº 7000998-63/);
+  assert.ok(c.trechos_transcritos[0].endsWith("j. 13/05/2025)"));
+  const alheio = [...c.trechos_transcritos, c.trecho_divergente].join(" ");
+  assert.ok(!alheio.includes("O argumento do embargante de que a mera disponibilização"), "fundamentação própria marcada como alheia");
+  assert.ok(!alheio.includes("Este Tribunal de Justiça, em casos que envolvem fraude"), "frase do relator marcada como alheia");
+  assert.ok(!alheio.includes("ID 103"), "cabeçalho de IDs marcado como alheio");
+  // a cauda da casa continua sendo só ementa + fecho
+  assert.match(c.texto_voz_propria, /^EMENTA Embargos de declaração\. Rejeitados\./);
+  const f = faixasAlheias(texto, "ACÓRDÃO");
+  assert.equal(f.transcritas.length, 1);
+});
+
+test("ementa transcrita de verdade continua marcada inteira, mesmo com 'Ementa:' e parêntese de UM julgado", () => {
+  const texto = "VOTO O relator entende. Nesse sentido, julgado deste Tribunal — Ementa: Apelação cível. Consumidor. Fraude bancária. " +
+    "Responsabilidade objetiva. Recurso desprovido. (Apelação Cível, Processo nº 7000000-00.2020.8.22.0001, Relator(a) do Acórdão: Des. Fulano, Data de julgamento: 06/07/2023). " +
+    "Assim, nego provimento.";
+  const c = camposAlheios(texto, "VOTO");
+  assert.equal(c.trechos_transcritos.length, 1);
+  assert.match(c.trechos_transcritos[0], /Apelação cível\. Consumidor\. Fraude bancária\./);
+  assert.ok(!c.trechos_transcritos[0].includes("Assim, nego provimento"));
+});
