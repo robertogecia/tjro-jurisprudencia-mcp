@@ -103,3 +103,39 @@ test("verificarCitacao: sem recibo, vai ao portal pelo número (função buscar 
   const falha = await verificarCitacao({ nr_processo: "7000000-00.2025.8.22.0001", trecho, pasta, buscar: async () => { throw new Error("bloqueio"); } });
   assert.match(falha, /^\[VERIFICAÇÃO NÃO REALIZADA\]/);
 });
+
+// v1.11.0 — ALEGAÇÃO DA PARTE remedida (era 33% de precisão no gabarito de 90 janelas rotuladas à mão; os exemplos abaixo
+// são sintéticos: o gabarito real traz nomes de parte e fica fora do git, em harness/gold-alegacao.local.json).
+import { alegacaoDaParte } from "../server/verificar.js";
+import { norm1 } from "../server/custodia.js";
+const aleg = (texto, trecho) => alegacaoDaParte(norm1(texto), norm1(texto).indexOf(norm1(trecho)));
+
+test("ALEGAÇÃO DA PARTE dispara no relato da tese da parte: verbo conjugado com sujeito, sujeito elíptico, razões, gerúndio, subjuntivo", () => {
+  assert.equal(aleg("RELATÓRIO O banco apelante defende que a contratação ocorreu por meio eletrônico, com assinatura digital e validação biométrica do consumidor.", "assinatura digital e validação biométrica do consumidor"), true);
+  // sujeito elíptico no início de frase ("Alega, ainda, que…", "No mérito, aduz que…")
+  assert.equal(aleg("RELATÓRIO A autora ajuizou a ação. Alega, ainda, que a manutenção da decisão acarreta risco de dano irreversível ao imóvel residencial.", "a manutenção da decisão acarreta risco de dano irreversível"), true);
+  assert.equal(aleg("RELATÓRIO Em suas razões, preliminarmente, aponta nulidade do ato. No mérito, aduz que a sentença desconsiderou a condição de consumidor idoso e analfabeto.", "a sentença desconsiderou a condição de consumidor idoso"), true);
+  assert.equal(aleg("RELATÓRIO O apelante insiste em tese de nulidade, afirmando que a prova pericial era indispensável para a elucidação da controvérsia dos autos.", "a prova pericial era indispensável para a elucidação da controvérsia"), true);
+  assert.equal(aleg("VOTO Ainda que o apelante alegue que os descontos totalizam valor inferior ao limite legal, a norma não se refere ao desconto por instituição.", "os descontos totalizam valor inferior ao limite legal"), true);
+});
+
+test("ALEGAÇÃO DA PARTE não dispara na voz do tribunal: substantivo, nome de parte, infinitivo, adversativo, performativo, frases demais", () => {
+  // "alegação", "argumento": substantivo não é verbo de relato (era a causa do falso alarme do caso 35889208)
+  assert.equal(aleg("VOTO A Súmula 54 do STJ é clara ao afirmar que os juros moratórios fluem a partir do evento danoso. O argumento do embargante de que a mera disponibilização de crédito atrairia o art. 405 do Código Civil não se sustenta diante dos fatos.", "O argumento do embargante de que a mera disponibilização de crédito atrairia o art. 405"), false);
+  // "requerida" é nome de parte, não verbo
+  assert.equal(aleg("VOTO Verifico que a empresa requerida não comprovou a contratação do serviço nem juntou o contrato assinado pelo consumidor aos autos.", "não comprovou a contratação do serviço nem juntou o contrato assinado"), false);
+  // o tribunal responde: marca de voz própria entre o verbo e o trecho
+  assert.equal(aleg("VOTO O apelante sustenta a nulidade da sentença. Contudo, a prova dos autos demonstra que a contratação foi regular e o crédito, disponibilizado.", "a prova dos autos demonstra que a contratação foi regular"), false);
+  assert.equal(aleg("RELATÓRIO A parte recorrente requereu a desistência do recurso. Assim, nos termos do art. 998 do CPC, HOMOLOGO o pedido e condeno ao pagamento das custas.", "condeno ao pagamento das custas e honorários advocatícios arbitrados"), false);
+  // o verbo está a mais de 2 frases do trecho: não é mais o mesmo relato
+  assert.equal(aleg("RELATÓRIO O apelante alega nulidade da citação. O processo seguiu o rito comum. A prova pericial foi produzida em juízo. Ao final, a sentença julgou procedente o pedido da inicial.", "a sentença julgou procedente o pedido da inicial"), false);
+  // sem verbo de relato nenhum
+  assert.equal(aleg("VOTO O contrato eletrônico foi assinado digitalmente e o comprovante de transferência foi juntado aos autos pelo banco, o que afasta a fraude.", "o comprovante de transferência foi juntado aos autos pelo banco"), false);
+});
+
+test("conferirTrecho: o alerta ALEGAÇÃO DA PARTE sai com o texto novo e só fora da voz da casa", () => {
+  const t = "RELATÓRIO O banco sustenta a regularidade da contratação eletrônica, afirmando que a operação foi realizada mediante senha pessoal do cliente. VOTO Nego provimento.";
+  const r = conferirTrecho(t, "a operação foi realizada mediante senha pessoal do cliente", "VOTO");
+  assert.ok(r.alertas.some((a) => a.startsWith("ALEGAÇÃO DA PARTE: o texto relata o que uma parte")), r.alertas.join(" | "));
+  assert.deepEqual(conferirTrecho("Embargos de declaração. Banco sustenta a regularidade da contratação. Recurso desprovido.", "Banco sustenta a regularidade da contratação", "EMENTA").alertas, []);
+});

@@ -11,7 +11,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { verificarCitacao } from "./verificar.js";
-import { buscarRecibos, RECIBOS_LIMITE_MAX } from "./recibos.js";
+import { buscarRecibos, recalcularRecibos, RECIBOS_LIMITE_MAX } from "./recibos.js";
 import {
   ORDENACOES,
   JANELA_MAXIMA,
@@ -499,3 +499,6 @@ server.registerTool(
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+// v1.11.0: recibos gravados por uma heurística de custódia anterior são refeitos em segundo plano, sem rede e sem
+// bloquear a conversa. Falha aqui nunca derruba o servidor.
+recalcularRecibos().catch(() => {});

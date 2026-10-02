@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { dirRecibos, cnj, link, relator, extrairOrgaoComOrigem, extrairRelatorDoTexto } from "./lib.js";
-import { norm1 } from "./custodia.js";
+import { norm1, camposAlheios, CUSTODIA_VERSAO } from "./custodia.js";
 
 // memo por (arquivo, mtime): 600+ recibos de até 100 KB não se releem a cada chamada.
 const MEMO = new Map();
@@ -147,4 +147,55 @@ function trechoEmVolta(texto, tn, re) {
   // norm1 preserva o comprimento: a posição no normalizado é a posição no bruto.
   const a = Math.max(0, m.index - 140), b = Math.min(texto.length, m.index + m[0].length + 140);
   return texto.slice(a, b).replace(/\s+/g, " ").trim();
+}
+
+// ------------------------------------------------------------ recálculo da custódia ---
+const CAMPOS_CUSTODIA = ["trechos_transcritos", "trecho_divergente", "texto_voz_propria"];
+const NORMALIZACAO = "trechos em bruto, recortados de `texto` — normalize com a sua própria função";
+const cedeAoEventLoop = () => new Promise((r) => setImmediate(r));
+
+/**
+ * Refaz a custódia dos recibos gravados por uma heurística diferente da atual (sem `custodia_v` ou com número
+ * diferente de CUSTODIA_VERSAO). Só os campos que camposAlheios produz mudam; texto, id, tipo e data ficam como estão.
+ * Atômico (arquivo temporário + rename) e sem sobrescrever um recibo que mudou desde a leitura (outro processo pode
+ * estar gravando o mesmo). `forcar` recalcula todos, ignorando o carimbo (harness). `gravar:false` só conta.
+ * Assíncrono em blocos: no 1º início depois de uma atualização são centenas de arquivos, e a busca do usuário não
+ * pode esperar por isso.
+ */
+export async function recalcularRecibos({ pasta = dirRecibos(), gravar = true, forcar = false, bloco = 25 } = {}) {
+  const r = { total: 0, desatualizados: 0, alterados: 0, regravados: 0, ignorados: 0, mudancas: [] };
+  let nomes = [];
+  try { nomes = fs.readdirSync(pasta).filter(nomeValido); } catch { return r; }
+  let k = 0;
+  for (const n of nomes) {
+    if (++k % bloco === 0) await cedeAoEventLoop();
+    const cam = path.join(pasta, n);
+    let mt, rec;
+    try {
+      mt = fs.statSync(cam).mtimeMs;
+      rec = JSON.parse(fs.readFileSync(cam, "utf8"));
+    } catch { r.ignorados++; continue; }
+    if (!reciboIntegro(rec)) { r.ignorados++; continue; }
+    r.total++;
+    if (!forcar && rec.custodia_v === CUSTODIA_VERSAO) continue;
+    r.desatualizados++;
+    let novo;
+    try { novo = camposAlheios(rec.texto, rec.tipo); } catch { r.ignorados++; continue; }   // custódia falhou: deixa como está
+    const mudouCampo = CAMPOS_CUSTODIA.some((c) => JSON.stringify(rec[c]) !== JSON.stringify(novo[c]));
+    if (mudouCampo) {
+      r.alterados++;
+      r.mudancas.push([n, (rec.trechos_transcritos || []).reduce((a, x) => a + x.length, 0), novo.trechos_transcritos.reduce((a, x) => a + x.length, 0)]);
+    }
+    if (!gravar) continue;
+    try {
+      if (fs.statSync(cam).mtimeMs !== mt) continue;   // alguém regravou no meio: a próxima vez pega
+      for (const c of CAMPOS_CUSTODIA) delete rec[c];
+      Object.assign(rec, novo, { custodia_v: CUSTODIA_VERSAO, normalizacao: NORMALIZACAO });
+      const tmp = path.join(pasta, `.${n}.${process.pid}.tmp`);
+      fs.writeFileSync(tmp, JSON.stringify(rec));
+      fs.renameSync(tmp, cam);
+      r.regravados++;
+    } catch { r.ignorados++; }
+  }
+  return r;
 }
