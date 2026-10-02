@@ -25,6 +25,13 @@
  * sem a reconstrução aproximada que o TJSE precisa.
  */
 
+/** Versão da heurística de custódia. SUBA sempre que a saída de camposAlheios mudar para algum texto: o recibo leva
+ * este número em `custodia_v`, e o servidor refaz ao iniciar os recibos com número diferente ou ausente (antes, depois
+ * de cada correção, os recibos já gravados ficavam com o resultado antigo até alguém rodar o recálculo à mão, e o lint
+ * lia o campo gravado enquanto o verificador recalculava na hora). Um teste fixa o hash das saídas por versão.
+ * 1 = v1.7.16 (sem carimbo) · 2 = v1.10.1 ("Ementa ID" e lista de precedentes do relator). */
+export const CUSTODIA_VERSAO = 2;
+
 const _cache = new Map();
 /** minúsculas, sem acento, aspas e travessões unificados — 1 unidade UTF-16 → 1 unidade. */
 export function norm1(s) {

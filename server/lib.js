@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { camposAlheios, linhaCustodia } from "./custodia.js";
+import { camposAlheios, linhaCustodia, CUSTODIA_VERSAO } from "./custodia.js";
 import { linhaFavoravel } from "./partes.js";
 
 export const SITE = "https://juris.tjro.jus.br";
@@ -696,6 +696,22 @@ const TRAVA_OBSOLETA_MS = 1_000;
 // escritório saem pelo mesmo IP público e não há como coordenar sem servidor.
 let arquivoEstadoDisjuntor = path.join(os.homedir(), ".tjro-jurisprudencia-mcp-estado.json");
 
+// v1.11.0: a PAUSA do disjuntor é por IDENTIFICAÇÃO. Num mesmo computador convivem a extensão pública (identifica-se
+// como extensão: "honesta") e, às vezes, uma build de uso pessoal que se identifica como navegador ("navegador").
+// O filtro do TJRO recusa a primeira pela identificação, não pelo volume; esse bloqueio não diz nada sobre a segunda e
+// não deve pará-la por 20 minutos (aconteceu em 02/10/2026: um teste da pública armou a pausa da pessoal). O que
+// continua COMPARTILHADO, por ser o mesmo IP perante o portal: a janela de volume, o espaçamento e a escada. Por
+// identificação: bloqueadoAte, backoffMs e ultimoSucessoEm. O diário de incidentes é um só, e cada incidente leva a
+// identificação em que ocorreu; incidente sem etiqueta (arquivo antigo) vale para quem ler.
+export const identidadeDoUA = (ua) => (/compatible;\s*MCP-TJRO/i.test(String(ua || "")) ? "honesta" : "navegador");
+let identidadeAtual = identidadeDoUA(HEADERS["User-Agent"]);
+export const identidadeDoDisjuntor = () => identidadeAtual;
+export function _setIdentidadeParaTeste(id) {
+  identidadeAtual = id === "navegador" ? "navegador" : "honesta";
+}
+const IDENTIDADES = ["honesta", "navegador"];
+const POR_IDENTIDADE_PADRAO = { bloqueadoAte: 0, backoffMs: 0, ultimoSucessoEm: 0 };
+
 // Só para uso em testes: redireciona a persistência pra um arquivo temporário,
 // pra não gravar por cima do estado real aprendido do usuário.
 export function _setArquivoEstadoParaTeste(caminho) {
@@ -705,7 +721,7 @@ export function _setArquivoEstadoParaTeste(caminho) {
 const MAX_INCIDENTES = 20; // histórico curto: serve para diagnosticar padrão, não para auditoria
 
 const ESTADO_PADRAO = {
-  versao: 2,
+  versao: 3,
   requisicoes: [], // carimbos epoch(ms) das requisições dentro da janela
   proximoLivreEm: 0, // epoch(ms) da próxima vaga livre (espaçamento)
   bloqueadoAte: 0, // epoch(ms) do fim do cooldown do disjuntor
@@ -772,31 +788,68 @@ function comTrava(fn) {
 // tráfego — por isso ela domina os dois casos por construção.
 const MARGEM_FUTURO_MS = ESPERA_MAXIMA_MS + ESPACAMENTO_MIN_MS;
 
-function lerEstado() {
+// Estado BRUTO do arquivo, saneado: campos compartilhados + `porIdentidade`. Arquivo da v2 (campos soltos, sem
+// `porIdentidade`) migra assim: a pausa e o recuo valem para as DUAS identificações (conservador: uma pausa em curso
+// na hora da atualização continua), e o último sucesso vai só para "navegador" (a pública nunca mais teve sucesso).
+function lerEstadoBruto() {
   let d;
   try {
     d = JSON.parse(fs.readFileSync(arquivoEstadoDisjuntor, "utf-8"));
   } catch {
-    return { ...ESTADO_PADRAO }; // 1ª execução, arquivo ilegível ou sem permissão
+    d = null; // 1ª execução, arquivo ilegível ou sem permissão
   }
   const agora = Date.now();
+  if (!d || typeof d !== "object") d = {};
   // Saneamento contra relógio que andou (para frente ou para trás) e contra valores
   // absurdos num arquivo corrompido — sem isso, um bloqueadoAte inflado trava a
   // ferramenta por horas e um backoff negativo faz o disjuntor nunca engatar.
   const num = (v, padrao) => (Number.isFinite(Number(v)) ? Number(v) : padrao);
+  const saneia = (x) => ({
+    bloqueadoAte: Math.max(0, Math.min(num(x?.bloqueadoAte, 0), agora + BACKOFF_MAXIMO_MS)),
+    backoffMs: Math.max(BACKOFF_INICIAL_MS, Math.min(num(x?.backoffMs, BACKOFF_INICIAL_MS), BACKOFF_MAXIMO_MS)),
+    ultimoSucessoEm: Math.max(0, Math.min(num(x?.ultimoSucessoEm, 0), agora + MARGEM_FUTURO_MS)),
+  });
+  const temPorIdentidade = d.porIdentidade && typeof d.porIdentidade === "object";
+  const porIdentidade = {};
+  for (const id of IDENTIDADES) {
+    porIdentidade[id] = temPorIdentidade
+      ? saneia(d.porIdentidade[id])
+      : saneia(id === "navegador" ? d : { ...d, ultimoSucessoEm: 0 });
+  }
+  const { bloqueadoAte: _b, backoffMs: _k, ultimoSucessoEm: _u, ...resto } = d;
   return {
     ...ESTADO_PADRAO,
-    ...d,
+    ...resto,
+    versao: ESTADO_PADRAO.versao,
+    porIdentidade,
     requisicoes: (Array.isArray(d.requisicoes) ? d.requisicoes : [])
       .filter(Number.isFinite)
       .filter((t) => t <= agora + MARGEM_FUTURO_MS),
     proximoLivreEm: Math.min(num(d.proximoLivreEm, 0), agora + MARGEM_FUTURO_MS),
-    bloqueadoAte: Math.max(0, Math.min(num(d.bloqueadoAte, 0), agora + BACKOFF_MAXIMO_MS)),
     indiceJanela: Math.max(0, Math.min(num(d.indiceJanela, 0), ESCADA_JANELA_MS.length - 1)),
-    backoffMs: Math.max(BACKOFF_INICIAL_MS, Math.min(num(d.backoffMs, BACKOFF_INICIAL_MS), BACKOFF_MAXIMO_MS)),
     incidentes: Array.isArray(d.incidentes) ? d.incidentes.slice(-MAX_INCIDENTES) : [],
-    ultimoSucessoEm: Math.max(0, Math.min(num(d.ultimoSucessoEm, 0), agora + MARGEM_FUTURO_MS)),
   };
+}
+
+// Visão PLANA do estado para a identificação desta instalação: é o objeto que o resto do código lê e altera
+// (e.bloqueadoAte, e.backoffMs, e.ultimoSucessoEm), como antes da v1.11.0.
+function visaoDoEstado(bruto, id = identidadeAtual) {
+  const { porIdentidade: _p, ...compartilhado } = bruto;
+  return { ...compartilhado, ...POR_IDENTIDADE_PADRAO, ...bruto.porIdentidade[id] };
+}
+
+// Devolve ao bruto o que a visão alterou: os três campos voltam só para a identificação dona; o resto é comum.
+function fundirVisao(bruto, visao, id = identidadeAtual) {
+  const { bloqueadoAte, backoffMs, ultimoSucessoEm, ...compartilhado } = visao;
+  return {
+    ...bruto,
+    ...compartilhado,
+    porIdentidade: { ...bruto.porIdentidade, [id]: { bloqueadoAte, backoffMs, ultimoSucessoEm } },
+  };
+}
+
+function lerEstado() {
+  return visaoDoEstado(lerEstadoBruto());
 }
 
 // Quando o disco não aceita escrita (home somente-leitura, ENOSPC, dotfile criado
@@ -818,20 +871,22 @@ function transacao(fn) {
   return comTrava(() => {
     // Enquanto a persistência estiver quebrada, a memória manda: reler o disco
     // sobreporia o contador com um arquivo congelado (caso do arquivo 444).
-    const estado = persistenciaIndisponivel && estadoMemoria ? estadoMemoria : lerEstado();
+    const bruto = persistenciaIndisponivel && estadoMemoria ? estadoMemoria : lerEstadoBruto();
+    const estado = visaoDoEstado(bruto);
     const resultado = fn(estado);
+    const novoBruto = fundirVisao(bruto, estado);
     try {
       // Escrita atômica: writeFileSync direto é truncate+write e pode ser lido pela
       // metade (medido: 4,8% de leituras inválidas sob escrita concorrente). rename
       // no mesmo volume nunca deixa arquivo incompleto.
       const tmp = `${arquivoEstadoDisjuntor}.${process.pid}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(estado));
+      fs.writeFileSync(tmp, JSON.stringify(novoBruto));
       fs.renameSync(tmp, arquivoEstadoDisjuntor);
       persistenciaIndisponivel = null;
       estadoMemoria = null;
     } catch (e) {
       persistenciaIndisponivel = e?.code || "EIO";
-      estadoMemoria = estado; // segue contando dentro deste processo
+      estadoMemoria = novoBruto; // segue contando dentro deste processo
     }
     return resultado;
   });
@@ -942,6 +997,7 @@ export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?", o
       quando: agora,
       operacao,
       tipo, // "desafio_navegador" | "robotizacao" | "status_NNN" — o diagnóstico separa os dois
+      identidade: identidadeAtual, // v1.11.0: "honesta" | "navegador"
 
       nivel: e.indiceJanela,
       janelaS: Math.round(ESCADA_JANELA_MS[e.indiceJanela] / 1000),
@@ -966,7 +1022,8 @@ export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?", o
 // abrir arquivo nenhum — e para não repetir o diagnóstico errado de "portal
 // fora do ar" quando na verdade é bloqueio por automação.
 export function diagnosticoRitmo(agora = Date.now()) {
-  const e = comTrava(() => lerEstado());
+  const bruto = comTrava(() => lerEstadoBruto());
+  const e = visaoDoEstado(bruto);
   const janelaMs = ESCADA_JANELA_MS[e.indiceJanela];
   const naJanela = (e.requisicoes || []).filter((t) => agora - t <= janelaMs).length;
   const linhas = [
@@ -978,7 +1035,15 @@ export function diagnosticoRitmo(agora = Date.now()) {
     agora < e.bloqueadoAte
       ? `- ⚠️ BLOQUEADO por suspeita de automação — liberando em ${fmtDuracao(e.bloqueadoAte - agora)}`
       : "- Situação: liberado",
+    `- Identificação desta instalação: ${identidadeAtual === "navegador" ? "navegador (build de uso pessoal)" : "extensão (identificação honesta)"}`,
   ];
+  const outra = IDENTIDADES.find((id) => id !== identidadeAtual);
+  if (agora < bruto.porIdentidade[outra].bloqueadoAte) {
+    linhas.push(
+      `- A outra identificação (${outra}) está em pausa por mais ${fmtDuracao(bruto.porIdentidade[outra].bloqueadoAte - agora)}; ` +
+        "isso não afeta esta (a pausa é por identificação; o volume de consultas é o que continua somado)."
+    );
+  }
   if (persistenciaIndisponivel) {
     linhas.splice(
       1,
@@ -1003,6 +1068,7 @@ export function diagnosticoRitmo(agora = Date.now()) {
       `- ${quando} · ${i.reqsUltimos60s} consultas no minuto anterior, ` +
         `${i.reqsNaJanela} na janela de ${fmtDuracao(i.janelaS * 1000)} · ` +
         `intervalo desde a anterior: ${intervalo} · operação: ${i.operacao}` +
+        (i.identidade ? ` · identificação: ${i.identidade}` : "") +
         (i.tipo === "desafio_navegador" ? " · **verificação de navegador** (não é ritmo)" : i.tipo === "resposta_corrompida" ? " · **página de bloqueio com cabeçalho defeituoso** (não é ritmo)" : "")
     );
   }
@@ -1059,7 +1125,10 @@ export const JANELA_SISTEMATICO_MS = 24 * 60 * 60_000;
 export function bloqueioSistematico(agora = Date.now()) {
   const e = comTrava(() => lerEstado());
   const recentes = (e.incidentes || []).filter(
-    (i) => agora - i.quando <= JANELA_SISTEMATICO_MS && (i.reqsUltimos60s ?? 99) <= 2
+    (i) =>
+      agora - i.quando <= JANELA_SISTEMATICO_MS &&
+      (i.reqsUltimos60s ?? 99) <= 2 &&
+      (!i.identidade || i.identidade === identidadeAtual) // bloqueio de OUTRA identificação não prova nada aqui
   );
   const semSucessoDepois = recentes.filter((i) => i.quando > (e.ultimoSucessoEm || 0));
   if (semSucessoDepois.length < 2) return null;
@@ -1683,7 +1752,7 @@ export function recibo(s, agora = new Date()) {
 // vencido), para o lint de citações avisar em vez de aprovar. Lógica e medição em server/custodia.js.
 function alheios(texto, tipo) {
   try {
-    return { ...camposAlheios(texto, tipo), normalizacao: "trechos em bruto, recortados de `texto` — normalize com a sua própria função" };
+    return { ...camposAlheios(texto, tipo), custodia_v: CUSTODIA_VERSAO, normalizacao: "trechos em bruto, recortados de `texto` — normalize com a sua própria função" };
   } catch {
     return {};   /* recibo é conferência extra: falha aqui não pode custar o texto */
   }
@@ -1752,7 +1821,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.10.1";
+export const VERSAO = "1.11.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

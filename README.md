@@ -188,6 +188,10 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
   que `obter_inteiro_teor_tjro` gravou no seu computador; só vai ao portal se o documento
   nunca foi lido. Passe o `id_documento` da peça citada; com só o número, confere em todos
   os documentos do processo.
+  O alerta ALEGAÇÃO DA PARTE (a frase é tese que o acórdão relata como de uma parte) foi medido contra 90 trechos
+  rotulados à mão e refeito na 1.11.0: de 33% para 81% de precisão, com o falso alarme sobre a voz do tribunal caindo
+  de 64% para 10%; a cobertura ficou em 94% no conjunto de ajuste e 55% no de validação (poucos casos), então ele
+  é um aviso de cautela, não uma garantia: a ausência dele não prova que a frase é do tribunal.
 - **`buscar_recibos_tjro`** procura nos documentos que **esta máquina já leu**, sem tocar no
   portal. Serve para reencontrar o acórdão da semana passada antes de gastar cota do JURIS,
   que conta volume em poucos minutos. Mostra id, número, câmara do fecho, um trecho em
@@ -468,6 +472,11 @@ a grafia exata do campo "Assunto:" de um resultado.
   ajustar o certificado/CA do sistema).
 
 ## Se a busca parar de funcionar
+
+_Desde a 1.11.0, a pausa depois de um bloqueio é por identificação: a extensão pública (que se identifica como extensão)
+e uma build que se identifique como navegador não se travam uma à outra. O volume de consultas continua somado, porque
+o IP é o mesmo. `diagnostico_ritmo_tjro` mostra qual identificação esta instalação usa._
+
 
 São dois casos diferentes, e a mensagem de erro agora diz qual é.
 

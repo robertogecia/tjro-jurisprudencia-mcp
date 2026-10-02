@@ -15,9 +15,44 @@ const W = "a-z0-9";
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const RE_CORTE = /\[\s*(?:\.\.\.|…)\s*\]|\(\s*(?:\.\.\.|…)\s*\)|…/;
 
-// Portados do verificador do TRF1 (v1.1.0), sobre texto norm1 (minúsculas, sem acento).
-const RE_ALEGACAO = /\b(sustent\w+|aleg\w+|aduz\w*|argument\w+|pugn\w+|requer\w*|assever\w+|defende\w*|afirm\w+|em suas razoes|nas razoes|em contrarrazoes|irresignad\w+|insurg\w+)\b/g;
-const RE_QUEM_ALEGA = /\b(apelante|apelad[oa]|agravante|agravad[oa]|recorrente|recorrid[oa]|embargante|embargad[oa]|autor[a]?|reu|re|requerente|requerid[oa]|impetrante|parte|banco|estado|municipio|ministerio publico|parquet|procuradoria|defensoria|executad[oa]|exequente)\b/;
+// ALEGAÇÃO DA PARTE (v1.11.0, remedido). A versão portada do TRF1 disparava em ~20% das janelas da voz do próprio
+// tribunal: bastava um "afirmar"/"requerida"/"argumento" nos 400 caracteres anteriores, e cada nome de parte
+// ("requerida", "autor") valia como sujeito. Medida sobre 90 janelas rotuladas à mão (harness/medir-verificador.mjs):
+// precisão de 33% e 58-64% de falso alarme. Agora é estrutural: um VERBO DE RELATO conjugado (sustenta, alega,
+// aduz, defende, requer, pleiteia… e as formas em -ndo e no subjuntivo) com sujeito de parte nos 200 caracteres
+// anteriores, OU no início de frase (o relatório diz "Alega que…", "No mérito, aduz que…" sem repetir o sujeito); o
+// trecho vem a até 350 caracteres e a no máximo 2 frases do verbo; e nenhuma marca de voz do tribunal no meio
+// ("contudo", "verifico", "homologo", "ora,", RE_VOZ_PROPRIA…). Substantivo ("a alegação", "o argumento") nunca conta.
+const VERBO_RELATO = new RegExp(
+  String.raw`(?<![a-z0-9])(?:sustent(?:a|am|ou|aram|ando)|alega(?:m|ram|ndo)?|alegou|aduz(?:em|iu|indo)?|defende(?:m|u|ram|ndo)?|afirma(?:m|ram|ndo)?|afirmou` +
+    String.raw`|argument(?:a|am|ou|ando)|requer(?:em|eu|eram|endo)?|pleite(?:ia|iam|ou|aram|ando)|pugn(?:a|am|ou|ando)|invoc(?:a|am|ou|ando)` +
+    String.raw`|insist(?:e|em|iu|indo)|impugn(?:a|am|ou|ando)|assever(?:a|am|ou|ando)|ressalt(?:a|am|ou)|enfatiz(?:a|am|ou)|reiter(?:a|am|ou)` +
+    String.raw`|postul(?:a|am|ou)|narr(?:a|am|ou)|inform(?:a|am|ou)|disse|diz|suscit(?:a|am|ou)|apont(?:a|am|ou)` +
+    String.raw`|alegue|alegu?em|sustente|sustentem|defenda|defendam|afirme|argumente|pretend(?:a|e|em|eu)|pretendam)(?![a-z0-9])`,
+  "g"
+);
+const PARTE_NO_TEXTO =
+  /(?<![a-z0-9])(?:apelantes?|apelad[oa]s?|agravantes?|agravad[oa]s?|recorrentes?|recorrid[oa]s?|embargantes?|embargad[oa]s?|autor(?:a|es|as)?|reus?|re|requerentes?|requerid[oa]s?|impetrantes?|impetrad[oa]s?|exequentes?|executad[oa]s?|partes?|banco|instituicao financeira|estado|municipio|uniao|ministerio publico|parquet|defensoria|procuradoria|arguentes?|arguid[oa]s?|reclamantes?|reclamad[oa]s?|seguradora|fundo|cessionari[oa]|devedor[a]?|credor[a]?|locatari[oa]|locador[a]?|consumidor[a]?|apelacao|recurso)(?![a-z0-9])/;
+const SUJEITO_EM_RAZOES = /(?<![a-z0-9])(?:em|nas|suas) (?:suas )?(?:razoes|contrarrazoes)(?![a-z0-9])/;
+const VOZ_DO_TRIBUNAL =
+  /(?<![a-z0-9])(?:contudo|todavia|entretanto|no entanto|ocorre que|porem|de fato|com efeito|sem razao|nao assiste|nao merece|nao prospera|improcede|conheco|constato|constatei|verifico|verifiquei|observo|observei|analisei|tenho que|consigno|cumpre|importante destacar|e importante|e certo|e sabido|como e sabido|ora,|logo,|assim,|portanto|dessa forma|neste caso|nesse caso|nesse cenario|nessa hipotese|no caso|a meu ver|na verdade|diante disso|nessa linha|revela|homologo|condeno|julgo|determino|arbitro|fixo|defiro|indefiro|nego|dou provimento|acolho|rejeito|declaro|reconheco|entendo|concluo|decido|passo a)(?![a-z0-9])/;
+export const ALEGACAO_DIST_MAX = 350, ALEGACAO_SUJEITO_JANELA = 200, ALEGACAO_FRASES_MAX = 2;
+
+/** O trecho que começa em `ini0` (texto norm1) é tese que o acórdão relata como DE UMA PARTE? */
+export function alegacaoDaParte(tn, ini0) {
+  const jan = tn.slice(Math.max(0, ini0 - ALEGACAO_DIST_MAX - 120), ini0);
+  let fimVerbo = -1;
+  for (const m of jan.matchAll(VERBO_RELATO)) {
+    const antes = jan.slice(Math.max(0, m.index - ALEGACAO_SUJEITO_JANELA), m.index);
+    const inicioDeFrase = /(?:^|[.;:]\s+(?:\w+,\s+)?)$/.test(jan.slice(Math.max(0, m.index - 40), m.index));
+    if (PARTE_NO_TEXTO.test(antes) || SUJEITO_EM_RAZOES.test(antes) || inicioDeFrase) fimVerbo = m.index + m[0].length;
+  }
+  if (fimVerbo < 0) return false;
+  const entre = jan.slice(fimVerbo);
+  if (entre.length > ALEGACAO_DIST_MAX) return false;
+  if (RE_VOZ_PROPRIA.test(entre) || VOZ_DO_TRIBUNAL.test(entre)) return false;
+  return (entre.match(/[.;]\s+(?=[a-z0-9(\[])/g) || []).length <= ALEGACAO_FRASES_MAX;
+}
 const RE_NEGACAO = /\b(nao|jamais|nunca|inexist\w*|descab\w*|incabivel|incabiveis|inaplicav\w*|indevid\w*|afast\w*|improced\w*|nega\w*|rejeit\w*|sem\s+raz(?:ao|oes)|carece\w*|impossibilidade|vedad[oa]s?)\b[^.;:]{0,60}$/;
 const RE_NEGACAO_FALSA = /\bnao\s+(obstante|so\b|apenas|somente|se\s+confunde)/;
 const RE_TESE_PROPRIA = /\btese\s+(?:juridica\s+)?(?:fixada|firmada|proposta)\b|\bfixando a seguinte tese\b|\bseguinte tese\b/;
@@ -65,11 +100,8 @@ export function conferirTrecho(texto, trecho, tipo) {
     const abre = aspas.length ? aspas[aspas.length - 1] : 0;
     if (aspas.length % 2 === 1 && /'(?![a-z])/.test(depoisQ) && !RE_TESE_PROPRIA.test(antesQ.slice(Math.max(0, abre - 80), abre)))
       alertas.push("ENTRE ASPAS: o trecho parece estar dentro de aspas no acórdão — é o tribunal citando alguém (doutrina, lei, sentença, outro julgado). Confira de quem é a frase antes de atribuí-la ao TJRO.");
-    const jan = tn.slice(Math.max(0, ini0 - 400), ini0);
-    const alegs = [...jan.matchAll(RE_ALEGACAO)];
-    const ult = alegs.length ? Math.max(...alegs.map((m) => m.index + m[0].length)) : -1;
-    if (ult >= 0 && RE_QUEM_ALEGA.test(jan.slice(Math.max(0, ult - 160), ult + 160)) && !RE_VOZ_PROPRIA.test(jan.slice(ult)))
-      alertas.push("ALEGAÇÃO DA PARTE: pouco antes do trecho o texto relata o que uma parte (apelante, banco, Estado…) sustenta/alega — pode ser tese da parte, não decisão do tribunal. Confira no relatório/voto quem fala.");
+    if (alegacaoDaParte(tn, ini0))
+      alertas.push("ALEGAÇÃO DA PARTE: o texto relata o que uma parte (apelante, banco, Estado…) sustenta, alega ou requer logo antes do trecho — pode ser tese da parte, não decisão do tribunal. Confira no relatório/voto quem fala.");
   }
   const antes = tn.slice(Math.max(0, ini0 - 90), ini0);
   if (RE_NEGACAO.test(antes) && !RE_NEGACAO_FALSA.test(antes.slice(-40)))

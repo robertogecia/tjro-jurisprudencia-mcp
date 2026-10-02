@@ -2,6 +2,41 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.11.0 (02/10/2026): pausa por identificação, recibos que se atualizam sozinhos, alerta de alegação medido
+
+Três melhorias que saíram de uma sessão de teste (a pública e a build pessoal convivem no mesmo computador).
+
+**1. Pausa do disjuntor por identificação.** O filtro do TJRO recusa a identificação honesta da extensão pública, não o
+volume. Esse bloqueio armava a pausa que a build pessoal (identificação de navegador) também respeitava: um teste da
+pública parou a pessoal por ~20 minutos. Agora `bloqueadoAte`, `backoffMs` e `ultimoSucessoEm` são de cada
+identificação (`porIdentidade` no arquivo de estado, versão 3); a janela de volume, o espaçamento e a escada continuam
+somados, porque o IP é o mesmo. Cada incidente leva a etiqueta da identificação; o bloqueio sistemático só conta os da
+própria identificação; o diagnóstico mostra a identificação da instalação e avisa se a outra está em pausa. Arquivo
+antigo migra sozinho (pausa em curso vale para as duas). O Python tem estado próprio e identificação única: não muda.
+
+**2. Recibo carimbado e recálculo automático.** O recibo leva `custodia_v` (a versão da heurística de custódia, hoje 2).
+Ao iniciar, o servidor refaz em segundo plano, sem rede, os recibos com carimbo diferente ou ausente (só os campos de
+custódia; atômico; não sobrescreve recibo que mudou no meio). Antes, depois de cada correção como a da 1.10.1, os
+recibos já gravados ficavam com o resultado antigo até alguém rodar o recálculo à mão, e o lint lia o campo gravado
+enquanto o verificador recalculava na hora. Um teste fixa o hash da saída da custódia por versão: mudou a heurística
+sem subir `CUSTODIA_VERSAO`, o teste falha.
+
+**3. ALEGAÇÃO DA PARTE medida e refeita.** Gabarito rotulado à mão (90 janelas de 12 palavras; o arquivo fica fora do
+git por trazer nomes de parte): o alerta herdado do TRF1 tinha 33% de precisão e 58-64% de falso alarme, porque um
+"afirmar" ou "requerida" nos 400 caracteres anteriores bastava. Agora é estrutural: verbo de relato conjugado com
+sujeito de parte (ou no início de frase, quando o relatório não repete o sujeito), trecho a até 350 caracteres e 2
+frases do verbo, sem marca de voz do tribunal no meio; "a alegação"/"o argumento" (substantivo) não conta.
+
+| Gabarito de ALEGAÇÃO DA PARTE | ajuste (60) | validação (30, separada antes do ajuste) |
+|---|---|---|
+| precisão: antes → depois | 33% → 81% | 45% → 75% |
+| cobertura: antes → depois | 72% → 94% | 82% → 55% |
+| falso alarme sobre o tribunal: antes → depois | 64% → 10% | 58% → 11% |
+
+A cobertura da validação caiu (n=11): o alerta ficou mais calado. É aviso consultivo (o lint da peça não dispara por
+ele), e o preço de avisar em toda frase era não informar nada. `harness/medir-verificador.mjs` mede os três blocos.
+Paridade Node × Python: 25.003 casos, 0 divergentes.
+
 ## v1.10.1 (30/09/2026): dois falsos positivos da custódia
 
 **Problema.** No recibo do acórdão de embargos de declaração da Apelação Cível 7001808-38.2024.8.22.0018, a

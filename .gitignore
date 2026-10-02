@@ -2,3 +2,4 @@ node_modules/
 *.mcpb
 .DS_Store
 harness/_anonimizar.local.json
+harness/gold-alegacao.local.json
