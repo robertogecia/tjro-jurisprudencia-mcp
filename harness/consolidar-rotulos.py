@@ -15,7 +15,11 @@ adj = {}
 if "--adjudicacao" in sys.argv:
     adj = json.load(open(sys.argv[sys.argv.index("--adjudicacao") + 1]))
 resumo = json.load(open(os.path.join(pasta, "resumo.json")))
-POS = {"alegacao": "parte", "negacao": "inverte", "aspas": "citacao"}
+# rótulo(s) POSITIVO(s) de cada conjunto; só entram os conjuntos cujo <nome>-chave.json existir na pasta
+TODOS = {"alegacao": ("parte",), "negacao": ("inverte",), "aspas": ("citacao",),
+         "transcricao": ("transcrito_julgado", "transcrito_outro"), "divergente": ("vencido",), "alegacao2": ("parte",)}
+POS = {k: v for k, v in TODOS.items() if os.path.exists(os.path.join(pasta, f"{k}-chave.json"))}
+GOLD = sys.argv[sys.argv.index("--gold") + 1] if "--gold" in sys.argv else "gold-alertas.local.json"
 
 
 def kappa(pares, rotulos):
@@ -36,8 +40,7 @@ for alerta, pos in POS.items():
     assert not faltam, f"{alerta}: sem rótulo em {faltam[:5]}"
     rot = lambda d, c: d[c]["r"] if isinstance(d[c], dict) else d[c]
     pares = [(rot(A, c), rot(B, c)) for c in chave if rot(A, c) != "duvida" and rot(B, c) != "duvida"]
-    neg = [r for r in {a for a, _ in pares} | {b for _, b in pares} if r != pos]
-    k = kappa(pares, [pos] + neg)
+    k = kappa(pares, sorted({a for a, _ in pares} | {b for _, b in pares}))
     acordo = sum(a == b for a, b in pares)
     print(f"{alerta}: {len(chave)} itens · concordância {acordo}/{len(pares)} = {100*acordo/max(1,len(pares)):.0f}% · kappa {k:.2f} · "
           f"duvida A {sum(rot(A,c)=='duvida' for c in chave)}, B {sum(rot(B,c)=='duvida' for c in chave)}")
@@ -49,7 +52,7 @@ for alerta, pos in POS.items():
             pendentes.append({"cod": c, "alerta": alerta, "A": a, "mA": A[c].get("m") if isinstance(A[c], dict) else "",
                               "B": b, "mB": B[c].get("m") if isinstance(B[c], dict) else ""})
         itens.append({"alerta": alerta, "cod": c, "id": info["id"], "t": info["t"], "estrato": info["estrato"], "rA": a, "rB": b,
-                      "r": final, "positivo": None if final in (None, "duvida") else final == pos,
+                      "r": final, "positivo": None if final in (None, "duvida") else final in pos,
                       "peso": pop[info["estrato"]] / max(1, am[info["estrato"]])})
 print(f"pendentes de adjudicação: {len(pendentes)}")
 json.dump(pendentes, open(os.path.join(pasta, "pendentes.json"), "w"), ensure_ascii=False, indent=1)
@@ -57,5 +60,5 @@ if "--adjudicacao" in sys.argv:
     sem = [i["cod"] for i in itens if i["r"] is None]
     assert not sem, f"ainda sem rótulo final: {sem[:8]}"
     json.dump({"_sobre": "Gabarito CEGO e DUPLO dos alertas do verificador (05/10/2026): dois rotuladores independentes por alerta, sem ver o estrato nem a decisão da heurística; divergências adjudicadas pelo autor. Estratos: 'dispara' (o alerta disparou na versão 1.11.0) e 'calado' (não disparou, mas há verbo de relato / negação / aspas por perto). peso = população do estrato / tamanho da amostra. LOCAL: trechos reais com nomes de parte.",
-               "itens": itens}, open(os.path.join(AQUI, "gold-alertas.local.json"), "w"), ensure_ascii=False, indent=1)
-    print("gravado harness/gold-alertas.local.json")
+               "itens": itens}, open(os.path.join(AQUI, GOLD), "w"), ensure_ascii=False, indent=1)
+    print("gravado harness/" + GOLD)

@@ -188,17 +188,21 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
   que `obter_inteiro_teor_tjro` gravou no seu computador; só vai ao portal se o documento
   nunca foi lido. Passe o `id_documento` da peça citada; com só o número, confere em todos
   os documentos do processo.
-  Os avisos foram medidos na 1.12.0 contra um gabarito **cego e duplo**: 260 trechos reais, cada um rotulado por dois
-  revisores independentes que não sabiam o que o verificador dizia (concordância entre eles: kappa de 0,93 a 1,00).
+  Todos os avisos foram medidos contra gabaritos **cegos e duplos** (1.12.0 e 1.13.0): 630 trechos reais, cada um
+  rotulado por dois revisores independentes que não sabiam o que o verificador dizia (kappa de 0,93 a 1,00).
 
   | Aviso | acerta quando avisa | pega dos casos reais | avisa à toa sobre frase limpa |
   |---|---|---|---|
-  | ALEGAÇÃO DA PARTE | ~69% | ~76% | ~8% |
+  | TRANSCRIÇÃO (outro julgado, ou sentença/decisão que o relator anuncia copiar) | ~91% | ~84% | ~4% |
+  | VOTO DIVERGENTE | ~74% | ~89% | ~6% |
+  | ENTRE ASPAS | ~100% | ~70% | ~0% |
+  | ALEGAÇÃO DA PARTE | 71% a 90% | ~83% | 2% a 8% |
   | NEGAÇÃO | ~68% | ~75% | ~7% |
-  | ENTRE ASPAS | ~97% | ~72% | ~1% |
 
-  São avisos de cautela, não garantia: a ausência deles não prova que a frase é do tribunal. TRANSCRIÇÃO e VOTO
-  DIVERGENTE, que vêm da custódia do recibo, detectam 97% e 100% no gabarito próprio.
+  A faixa da ALEGAÇÃO vem de duas amostras (120 e 160 trechos). São avisos de cautela, não garantia: a ausência
+  deles não prova que a frase é do tribunal. Os números antigos de TRANSCRIÇÃO e VOTO DIVERGENTE (97% e 100% de
+  detecção) vinham de um gabarito rotulado por quem desenhou a regra e não mediam alarme falso; às cegas, o VOTO
+  DIVERGENTE acertava só 43% das vezes em que avisava, e a 1.13.0 corrigiu a maior causa (acórdão unânime).
 - **`buscar_recibos_tjro`** procura nos documentos que **esta máquina já leu**, sem tocar no
   portal. Serve para reencontrar o acórdão da semana passada antes de gastar cota do JURIS,
   que conta volume em poucos minutos. Mostra id, número, câmara do fecho, um trecho em

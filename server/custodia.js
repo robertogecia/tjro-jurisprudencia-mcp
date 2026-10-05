@@ -29,8 +29,9 @@
  * este número em `custodia_v`, e o servidor refaz ao iniciar os recibos com número diferente ou ausente (antes, depois
  * de cada correção, os recibos já gravados ficavam com o resultado antigo até alguém rodar o recálculo à mão, e o lint
  * lia o campo gravado enquanto o verificador recalculava na hora). Um teste fixa o hash das saídas por versão.
- * 1 = v1.7.16 (sem carimbo) · 2 = v1.10.1 ("Ementa ID" e lista de precedentes do relator). */
-export const CUSTODIA_VERSAO = 2;
+ * 1 = v1.7.16 (sem carimbo) · 2 = v1.10.1 ("Ementa ID" e lista de precedentes do relator) · 3 = v1.13.0 (transcrição
+ * declarada, cabeçalho fora, unanimidade e 1ª pessoa na divergência; medida às cegas). */
+export const CUSTODIA_VERSAO = 3;
 
 const _cache = new Map();
 /** minúsculas, sem acento, aspas e travessões unificados — 1 unidade UTF-16 → 1 unidade. */
@@ -177,6 +178,60 @@ export function faixasTranscritas(tn, inicio = 0, fim = tn.length, bruto = null)
   return faixas;
 }
 
+// ------------------------------------------------------- transcrição declarada ---
+// v1.13.0 (custódia v3): o relator ANUNCIA que vai copiar a sentença, a decisão recorrida ou o acórdão embargado
+// ("cuja parte dispositiva transcrevo:", "peço vênia para transcrever trecho da sentença:", "nos seguintes termos:") e o
+// bloco vem sem aspas e sem parêntese de atribuição — a custódia por atribuição não vê o fim, e não há aspas para parear.
+// Começa depois dos dois-pontos do anúncio e termina quando o texto volta a falar como 2º grau: vocabulário que a peça
+// copiada (sentença) não usa — apelante, embargante, "a sentença", "juízo a quo", "É o relatório", cabeçalho VOTO… Sem
+// retorno identificado em DECLARADA_MAX caracteres, não marca nada (melhor calar que marcar o voto inteiro).
+const RE_ANUNCIO = /(?:\btranscrev(?:o|e-se|emos|er|endo)(?:-[ao]s?)?\b[^.:;]{0,70}|\b(?:sentenca|decisao|dispositivo|fundamentos?|acordao)\b[^.:;]{0,140}\b(?:nos seguintes termos|in verbis|verbis|litteris|assim (?:decidiu|fundamentou|consignou|dispos))[^.:;]{0,20}):/g;
+const RE_RETORNO = /(?<![a-z0-9])(?:apelantes?|apelad[oa]s?|agravantes?|agravad[oa]s?|embargantes?|embargad[oa]s?|irresignad[oa]s?|inconformad[oa]s?|em suas razoes|e o relatorio|e como voto|a sentenca|r\. sentenca|sentenca recorrida|sentenca proferida|juizo a quo|juiz a quo|magistrado sentenciante|decisao agravada|decisao recorrida|acordao embargado|acordao recorrido|o acordao|pois bem|como se ve|como visto|da leitura d|extrai-se d|depreende-se d)(?![a-z0-9])/g;
+// dois-pontos seguidos de marca de supressão ("transcrevo-a na íntegra: [...]", "nos seguintes termos: (...)"): quem
+// abre com "[...]" está copiando. No texto norm1 a reticência "…" vira um ponto só.
+const RE_ANUNCIO_ELISAO = /:\s*(?:\[\s*\.(?:\s*\.){0,2}\s*\]|\(\s*\.(?:\s*\.){0,2}\s*\))/g;
+export const DECLARADA_MAX = 9000, DECLARADA_MIN = 200;
+
+/** Faixas [ini, fim) de blocos que o relator anuncia transcrever (sentença, decisão, acórdão anterior). */
+export function faixasDeclaradas(tn, bruto, inicio = 0, fim = tn.length) {
+  const out = [], inicios = [];
+  for (const fonte of [RE_ANUNCIO, RE_ANUNCIO_ELISAO]) {
+    const r = new RegExp(fonte.source, "g");
+    r.lastIndex = inicio;
+    for (let m; (m = r.exec(tn)) && m.index < fim;) inicios.push(m.index + m[0].length);
+  }
+  inicios.sort((x, y) => x - y);
+  for (const ini of inicios) {
+    if (out.length && ini < out[out.length - 1][1]) continue;
+    const limite = Math.min(fim, ini + DECLARADA_MAX);
+    // o retorno conta a partir do INÍCIO DA FRASE em que o vocabulário de 2º grau aparece
+    const rr = new RegExp(RE_RETORNO.source, "g");
+    rr.lastIndex = ini + 40;
+    let fimBloco = -1;
+    const mr = rr.exec(tn);
+    if (mr && mr.index < limite) {
+      const pt = Math.max(tn.lastIndexOf(". ", mr.index), tn.lastIndexOf("] ", mr.index), tn.lastIndexOf(") ", mr.index));
+      fimBloco = pt > ini ? pt + 1 : mr.index;
+    }
+    const cab = bruto.slice(ini, limite).search(/\b(?:VOTO|EMENTA|AC[ÓO]RD[ÃA]O)\b\s+[A-ZÀ-Ý]/);   // cabeçalho de seção em caixa alta
+    if (cab >= 0 && (fimBloco < 0 || ini + cab < fimBloco)) fimBloco = ini + cab;
+    if (fimBloco < 0 || fimBloco - ini < DECLARADA_MIN) continue;
+    out.push([ini, fimBloco]);
+  }
+  return out;
+}
+
+/** União de listas de faixas, ordenada e sem sobreposição. */
+export function unirFaixas(...listas) {
+  const todas = listas.flat().filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+  const out = [];
+  for (const [a, b] of todas) {
+    if (out.length && a <= out[out.length - 1][1]) out[out.length - 1][1] = Math.max(out[out.length - 1][1], b);
+    else out.push([a, b]);
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------- divergência ---
 const RE_DIVERGENCIA = /\b(?:peco|pedi[dn]o\s+de?|com a devida|com a maxima|data)\s+venia\b[^.]{0,120}\b(?:diverg|discord)|\bdivirjo\b|\bouso\s+divergir\b|\bvoto\s+(?:vencido|divergente)\b|\bvoto[- ]vista\b|\b(?:acompanho|acompanhando|sigo|seguindo)\s+a\s+divergencia\b|\binaugur\w*\s+(?:a\s+)?divergencia\b|\babr\w*\s+(?:a\s+)?divergencia\b|\bdivergencia\s+inaugurada\b|\brelator(?:a)?\s+vencid[oa]\b|\bvencid[oa]s?\s+(?:o|a|os|as)\s+(?:relator|relatora|desembargador|desembargadora|juiz|juiza)/;
 // cabeçalho do voto de vogal no documento ACÓRDÃO: "DESEMBARGADOR RADUAN MIGUEL FILHO De acordo."
@@ -184,8 +239,13 @@ const RE_VOGAL = /\b(?:DESEMBARGADORA?|JU[IÍ]ZA?(?: CONVOCAD[OA])?)\s+[A-ZÀ-Ý
 const RE_FIM_VOTO_RELATOR = /\be (?:como|o) (?:voto|meu voto)\b/;
 
 /** [ini, fim) da parte do documento que pode ser voto VENCIDO, ou null. */
-export function faixaDivergente(tn, bruto, inicio = 0, fim = tn.length, transcritas = []) {
-  const r0 = new RegExp(RE_DIVERGENCIA.source, "g");
+// Só as marcas em 1ª pessoa (quem fala está divergindo AGORA). As demais de RE_DIVERGENCIA são substantivos ("voto
+// divergente", "voto-vista", "relator vencido") que também aparecem quando o relator só MENCIONA um voto de outro
+// processo: valem apenas quando o fecho confirma julgamento por maioria (v1.13.0).
+const RE_DIVERGENCIA_1A_PESSOA = /\b(?:peco|pedi[dn]o\s+de?|com a devida|com a maxima|data)\s+venia\b[^.]{0,120}\b(?:diverg|discord)|\bdivirjo\b|\bouso\s+divergir\b|\b(?:acompanho|acompanhando|sigo|seguindo)\s+a\s+divergencia\b|\binaugur(?:o|ando)\s+(?:a\s+)?divergencia\b|\babr(?:o|indo)\s+(?:a\s+)?divergencia\b/;
+
+export function faixaDivergente(tn, bruto, inicio = 0, fim = tn.length, transcritas = [], so1aPessoa = false) {
+  const r0 = new RegExp((so1aPessoa ? RE_DIVERGENCIA_1A_PESSOA : RE_DIVERGENCIA).source, "g");
   let ini = -1;
   for (let m; (m = r0.exec(tn.slice(0, fim)));) {
     if (m.index < inicio) { r0.lastIndex = inicio; continue; }
@@ -200,7 +260,7 @@ export function faixaDivergente(tn, bruto, inicio = 0, fim = tn.length, transcri
   // relator citando outro julgamento
   const dv = /\bDECLARA[ÇC][ÃA]O DE VOTO\b/g;
   dv.lastIndex = inicio;
-  for (let m; (m = dv.exec(bruto)) && m.index < fim;)
+  for (let m; !so1aPessoa && (m = dv.exec(bruto)) && m.index < fim;)
     if (!transcritas.some(([a, b]) => m.index >= a && m.index < b)) { if (ini < 0 || m.index < ini) ini = m.index; break; }
   if (ini < 0) return null;
   // "Acompanho a divergência" é do 3º a votar; o voto divergente é o do vogal anterior.
@@ -239,6 +299,9 @@ export function vozDaCasa(tn, bruto) {
 // acórdãos com divergência dos recibos medidos (23/09/2026) foi assim.
 const RE_RELATOR_VENCIDO = /\bvencid[oa]s?\s+(?:o|a)\s+relator|\brelator(?:a)?\s+vencid|\bnos termos do voto divergente\b|\blavrara o acordao\b|\brelator(?:a)? para o acordao\b/;
 
+const RE_UNANIME = /\bunanimidade\b|\bunanime\b|\bunanimemente\b/;
+const RE_MAIORIA = /\bmaioria\b|\bvencid[oa]s?\b|\bvoto de desempate\b|\bvoto medio\b/;
+
 /** [ini, fim) do voto do relator: do cabeçalho VOTO depois do relatório até o voto seguinte. */
 function votoDoRelator(tn, bruto, ate) {
   const rel = bruto.search(/\bRELAT[ÓO]RIO\b/);
@@ -246,6 +309,52 @@ function votoDoRelator(tn, bruto, ate) {
   r.lastIndex = Math.max(0, rel);
   const v = r.exec(bruto);
   return v && v.index < ate ? v.index : -1;
+}
+
+// ---------------------------------------------------------------------- aspas ---
+// ENTRE ASPAS (v1.12.0, remedida: contar aspas numa janela de 1.200 caracteres invertia a paridade sempre que uma aspa
+// ficava fora da janela; precisão de 57% e cobertura de 36%). Agora pareia as aspas no DOCUMENTO inteiro, no texto bruto:
+// “ abre e ” fecha (aspas curvas têm direção), ‘ abre e ’ só fecha se houver ‘ aberta (senão é apóstrofo), " reto alterna;
+// citação sem fechamento em 6.000 caracteres é descartada. O alerta sai quando a MAIORIA dos caracteres do trecho está
+// dentro de citação. Aspas logo depois de "tese fixada/firmada" são a tese do próprio tribunal e não contam.
+export const ASPAS_SPAN_MAX = 6000;
+export function trechosCitados(bruto) {
+  // pilha para as curvas (citação dentro de citação é comum: o voto cita a decisão, que cita a lei); a reta alterna
+  const out = [], duplas = [], simples = [];
+  let reta = -1;
+  for (let i = 0; i < bruto.length; i++) {
+    const c = bruto[i];
+    if (c === "\u201c") duplas.push(i);
+    else if (c === "\u201d") { if (duplas.length) { const a = duplas.pop(); if (i - a <= ASPAS_SPAN_MAX) out.push([a, i + 1]); } }
+    else if (c === "\u2018") simples.push(i);
+    else if (c === "\u2019") { if (simples.length) { const a = simples.pop(); if (i - a <= ASPAS_SPAN_MAX) out.push([a, i + 1]); } }
+    else if (c === '"') {
+      if (reta < 0) reta = i;
+      else { if (i - reta <= ASPAS_SPAN_MAX) out.push([reta, i + 1]); reta = -1; }
+    }
+  }
+  return out;
+}
+
+/** Quantos caracteres de [ini, fim) estão dentro de alguma citação (união dos intervalos, sem contar duas vezes). */
+export function coberturaCitada(cit, ini, fim) {
+  const pedacos = cit.map(([x, y]) => [Math.max(x, ini), Math.min(y, fim)]).filter(([x, y]) => y > x).sort((p, q) => p[0] - q[0]);
+  let total = 0, ate = ini;
+  for (const [x, y] of pedacos) { if (y <= ate) continue; total += y - Math.max(x, ate); ate = y; }
+  return total;
+}
+export const RE_TESE_PROPRIA = /\btese\s+(?:juridica\s+)?(?:fixada|firmada|proposta)\b|\bfixando a seguinte tese\b|\bseguinte tese\b/;
+export const ASPAS_MIN = 60;
+
+/** Citações entre aspas do corpo do voto que vão para o recibo (v1.13.0): o lint da peça avisa quando o trecho citado
+ * está dentro de uma delas. Só as de ASPAS_MIN caracteres ou mais (termo destacado não é citação), fora de bloco já
+ * marcado como transcrição (lá o aviso é o de TRANSCRIÇÃO) e que não sejam a tese fixada pelo próprio tribunal. */
+export function aspasDoCorpo(texto, tn, ini, fim, transcritas) {
+  return trechosCitados(texto)
+    .filter(([a, b]) => a >= ini && b <= fim && b - a >= ASPAS_MIN)
+    .filter(([a, b]) => !transcritas.some(([x, y]) => a >= x && b <= y))
+    .filter(([a]) => !RE_TESE_PROPRIA.test(tn.slice(Math.max(0, a - 80), a)))
+    .sort((p, q) => p[0] - q[0]);
 }
 
 // --------------------------------------------------------------------- recibo ---
@@ -256,23 +365,35 @@ function votoDoRelator(tn, bruto, ate) {
 export function faixasAlheias(texto, tipo) {
   const t = String(tipo || "").trim().toUpperCase();
   const n = texto ? texto.length : 0;
-  if (!texto || t === "EMENTA") return { transcritas: [], divergente: null, casaIni: n, fecho: n, ementaDaCasa: t === "EMENTA" };
+  if (!texto || t === "EMENTA") return { transcritas: [], divergente: null, casaIni: n, fecho: n, ementaDaCasa: t === "EMENTA", aspas: [] };
   const tn = norm1(texto);
   const casa = /AC[ÓO]RD[ÃA]O/.test(t) ? vozDaCasa(tn, texto) : { ini: tn.length, fecho: tn.length };
   const fim = casa.ini;
-  const transcritas = faixasTranscritas(tn, 0, fim, texto);
+  // o cabeçalho da peça ("Classe: Apelação Cível Polo Ativo: … ADVOGADO…") não abre transcrição: a busca começa no
+  // RELATÓRIO quando ele aparece logo no início (v1.13.0: um bloco de 5.320 caracteres nascia no "Classe:").
+  const rel = texto.slice(0, 4000).search(/\bRELAT[ÓO]RIO\b/);
+  const corpo = rel > 0 ? rel : 0;
+  const transcritas = unirFaixas(faixasTranscritas(tn, corpo, fim, texto), faixasDeclaradas(tn, texto, corpo, fim));
   // VOTO VENCEDOR é, por definição, o que prevaleceu: o "divirjo" dele não é o vencido
-  let div = t === "VOTO VENCEDOR" ? null : faixaDivergente(tn, texto, 0, fim, transcritas);
+  const proclamado0 = casa.fecho < tn.length ? tn.slice(casa.fecho, casa.fecho + 1800) : "";
+  let div = t === "VOTO VENCEDOR" ? null : faixaDivergente(tn, texto, 0, fim, transcritas, /AC[ÓO]RD[ÃA]O/.test(t) && !RE_MAIORIA.test(proclamado0));
+  // v1.13.0 (custódia v3): fecho que proclama UNANIMIDADE e não fala em maioria nem em vencido = ninguém ficou vencido.
+  // Voto-vista que acompanha, "divirjo" superado no debate e "voto divergente" de OUTRO processo citado no voto marcavam
+  // metade do acórdão como possível voto vencido (medido às cegas: 43% de precisão; 10 dos 12 falsos alarmes eram isto).
+  if (div && casa.fecho < tn.length) {
+    const proclamado = tn.slice(casa.fecho, casa.fecho + 1800);
+    if (RE_UNANIME.test(proclamado) && !RE_MAIORIA.test(proclamado)) div = null;
+  }
   if (div && RE_RELATOR_VENCIDO.test(tn.slice(casa.fecho, casa.fecho + 800))) {
     const v = votoDoRelator(tn, texto, div[0]);
     div = v >= 0 ? [v, div[0]] : div;
   }
-  return { transcritas, divergente: div, casaIni: fim, fecho: casa.fecho, ementaDaCasa: false };
+  return { transcritas, divergente: div, casaIni: fim, fecho: casa.fecho, ementaDaCasa: false, aspas: aspasDoCorpo(texto, tn, corpo, fim, transcritas) };
 }
 
 /** Campos de custódia do recibo: o que no `texto` não é palavra do TJRO. */
 export function camposAlheios(texto, tipo) {
-  const vazio = { trechos_transcritos: [], trecho_divergente: "" };
+  const vazio = { trechos_transcritos: [], trecho_divergente: "", trechos_entre_aspas: [] };
   const t = String(tipo || "").trim().toUpperCase();
   if (!texto || t === "EMENTA") return vazio;   // a ementa é a voz da casa
   const f = faixasAlheias(texto, tipo);
@@ -282,6 +403,7 @@ export function camposAlheios(texto, tipo) {
   return {
     trechos_transcritos: f.transcritas.map(([a, b]) => texto.slice(a, b)),
     trecho_divergente: f.divergente ? texto.slice(f.divergente[0], f.divergente[1]) : "",
+    trechos_entre_aspas: f.aspas.map(([a, b]) => texto.slice(a, b)),
     ...voz,
   };
 }
