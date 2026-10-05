@@ -10,7 +10,9 @@
 //     são avisos de cautela, mas quando disparam em TODA frase deixam de informar;
 //  3. gabarito de ALEGAÇÃO DA PARTE (gold-alegacao.local.json, local, rotulado à mão: "parte" = a frase é a tese que o acórdão
 //     relata como da parte; "tribunal" = é o tribunal falando): precisão e cobertura do alerta, separando o conjunto de
-//     ajuste do de validação (v=true, rotulado depois do ajuste).
+//     ajuste do de validação (v=true, rotulado depois do ajuste). ATENÇÃO: rotulado pelo próprio autor da regra — inflou
+//     a precisão (81% aqui × 56% às cegas); serve só de checagem de regressão;
+//  4. gabarito CEGO e DUPLO dos três avisos (gold-alertas.local.json, v1.12.0): é o que vale para publicar número.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -141,4 +143,35 @@ if (fs.existsSync(arqAleg)) {
     console.log(`  ${n}: precisão ${pct(k.tp, k.tp + k.fp)} · cobertura ${pct(k.tp, k.tp + k.fn)} · falso alarme sobre o tribunal ${pct(k.fp, k.fp + k.tn)}`);
   }
   for (const e of erros) console.log("  - " + e);
+}
+
+// ---------------------------------------------------------------- 4. gabarito CEGO e DUPLO dos três alertas
+// gold-alertas.local.json (harness/consolidar-rotulos.py): cada item tem o estrato em que foi sorteado ("dispara" /
+// "calado") e o peso da amostragem; a métrica PONDERADA estima precisão e cobertura na população de janelas perto do
+// gatilho (verbo de relato, negação, aspas). A decisão é recalculada com o código ATUAL, então a medida acompanha o
+// ajuste. Metade dos itens (por código) é AJUSTE e a outra metade VALIDAÇÃO — só a validação diz se o ajuste generaliza.
+const arqAlertas = path.join(aqui, "gold-alertas.local.json");
+if (fs.existsSync(arqAlertas)) {
+  const NOME = { alegacao: "ALEGAÇÃO DA PARTE", negacao: "NEGAÇÃO", aspas: "ENTRE ASPAS" };
+  const itens = JSON.parse(fs.readFileSync(arqAlertas, "utf8")).itens.filter((g) => g.positivo !== null);
+  const metade = (cod) => (Number(cod.slice(3)) % 2 ? "ajuste" : "validacao");
+  console.log("gabarito cego e duplo dos alertas (ponderado pela população de cada estrato):");
+  for (const [k, nome] of Object.entries(NOME)) {
+    for (const parte of ["ajuste", "validacao", "total"]) {
+      let tp = 0, fp = 0, fn = 0, tn = 0, n = 0; const erros = [];
+      for (const g of itens.filter((x) => x.alerta === k && (parte === "total" || metade(x.cod) === parte))) {
+        const r = porId.get(g.id);
+        if (!r) continue;
+        const c = conferirTrecho(r.texto, g.t, r.tipo);
+        if (!c.ok) continue;
+        n++;
+        const d = c.alertas.some((a) => a.startsWith(nome));
+        if (g.positivo) d ? (tp += g.peso) : (fn += g.peso); else d ? (fp += g.peso) : (tn += g.peso);
+        if (d !== g.positivo && parte === "ajuste") erros.push(`${g.positivo ? "PERDIDO" : "FALSO ALARME"} ${g.cod}: ${g.t.slice(0, 80)}`);
+      }
+      const f = (a, b) => (b ? (100 * a / b).toFixed(0) + "%" : "—");
+      console.log(`  ${nome.padEnd(18)} ${parte.padEnd(9)} n=${String(n).padStart(3)} · precisão ${f(tp, tp + fp)} · cobertura ${f(tp, tp + fn)} · falso alarme ${f(fp, fp + tn)}`);
+      if (args.includes("--erros")) for (const e of erros) console.log("     - " + e);
+    }
+  }
 }

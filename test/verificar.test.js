@@ -139,3 +139,45 @@ test("conferirTrecho: o alerta ALEGAÇÃO DA PARTE sai com o texto novo e só fo
   assert.ok(r.alertas.some((a) => a.startsWith("ALEGAÇÃO DA PARTE: o texto relata o que uma parte")), r.alertas.join(" | "));
   assert.deepEqual(conferirTrecho("Embargos de declaração. Banco sustenta a regularidade da contratação. Recurso desprovido.", "Banco sustenta a regularidade da contratação", "EMENTA").alertas, []);
 });
+
+// v1.12.0 — NEGAÇÃO por alcance e ENTRE ASPAS por pareamento, remedidas em gabarito CEGO e DUPLO (dois rotuladores
+// independentes; kappa 0,93 e 1,00). Exemplos sintéticos: o gabarito real fica fora do git.
+import { negacaoAntes, trechosCitados, coberturaCitada } from "../server/verificar.js";
+const neg = (texto, trecho) => { const tn = norm1(texto), i = tn.indexOf(norm1(trecho)); return negacaoAntes(tn, i, i + trecho.length); };
+
+test("NEGAÇÃO dispara quando a negação alcança o trecho: 'não há que se falar em', vírgula de adjunto, 'rejeita-se, portanto,'", () => {
+  assert.equal(neg("VOTO Não há que se falar em dano moral indenizável pela simples cobrança indevida de tarifa bancária.", "dano moral indenizável pela simples cobrança indevida de tarifa"), true);
+  assert.equal(neg("VOTO Identifico que jamais foi contestada, em qualquer momento do processo, a nulidade daquela decisão em razão do impedimento.", "contestada, em qualquer momento do processo, a nulidade daquela decisão"), true);
+  assert.equal(neg("VOTO Rejeita-se, portanto, a tese de ilegitimidade passiva da imobiliária requerida nestes autos.", "tese de ilegitimidade passiva da imobiliária requerida"), true);
+  assert.equal(neg("VOTO A sentença julgou improcedentes os pedidos de repetição de indébito e danos morais formulados.", "os pedidos de repetição de indébito e danos morais"), true);
+});
+
+test("NEGAÇÃO não dispara: adjetivo solto, alcance de 1-2 palavras, oração nova no meio, trecho que abre com 'e,', 'não obstante'", () => {
+  assert.equal(neg("VOTO O erro de fato exige que o julgado tenha admitido fato inexistente ou ignorado fato efetivamente ocorrido, verificável pelo exame dos autos.", "fato efetivamente ocorrido, verificável pelo exame dos autos"), false);
+  assert.equal(neg("VOTO Os embargos declaratórios não constituem sucedâneo recursal, de forma que eventual insatisfação deve ensejar o recurso cabível.", "recursal, de forma que eventual insatisfação deve ensejar"), false);
+  assert.equal(neg("VOTO O juízo julgou improcedente o pedido, além de condenar a parte autora por litigância de má-fé processual.", "autora por litigância de má-fé processual"), false);
+  assert.equal(neg("RELATÓRIO Argumentou que o agravo não foi conhecido e, nessa condição, não acarretaria prevenção do órgão.", "e, nessa condição, não acarretaria prevenção do órgão"), false);
+  assert.equal(neg("VOTO Não obstante o esforço argumentativo da apelante, a prova dos autos demonstra a contratação regular do empréstimo.", "a prova dos autos demonstra a contratação regular do empréstimo"), false);
+});
+
+test("trechosCitados: aspas curvas aninhadas com pilha, retas alternam, apóstrofo não abre citação, citação longa demais é descartada", () => {
+  const t = "consta da decisão: “Vistos. O réu alegou que “não recebeu” o valor e requereu a extinção do feito.” Assim, decido.";
+  const cit = trechosCitados(t);
+  assert.deepEqual(cit.map(([a, b]) => t.slice(a, b)), ["“não recebeu”", "“Vistos. O réu alegou que “não recebeu” o valor e requereu a extinção do feito.”"]);
+  const ini = t.indexOf("O réu"), fim = t.indexOf(" Assim");
+  assert.equal(coberturaCitada(cit, ini, fim), fim - ini);    // a união não conta duas vezes a citação de dentro
+  assert.deepEqual(trechosCitados('a lei diz "art. 1º" e "art. 2º".').length, 2);
+  assert.deepEqual(trechosCitados("caixa d’água e pingo-d’água"), []);
+  assert.deepEqual(trechosCitados("“" + "x".repeat(6100) + "”"), []);
+});
+
+test("conferirTrecho: ENTRE ASPAS pela maioria do trecho; tese fixada entre aspas é do tribunal; NEGAÇÃO com o texto de sempre", () => {
+  const dec = "VOTO O juízo assim decidiu: “Vistos. O réu alegou que não recebeu o valor e requereu a extinção do feito por ausência de prova.” Assim, mantenho.";
+  assert.ok(conferirTrecho(dec, "O réu alegou que não recebeu o valor e requereu a extinção", "VOTO").alertas.some((a) => a.startsWith("ENTRE ASPAS")));
+  const borda = "VOTO Trata-se do processo n. 4510/2015, que trata da “Fiscalização de atos e contratos administrativos do município”. Nego provimento.";
+  assert.ok(!conferirTrecho(borda, "Trata-se do processo n. 4510/2015, que trata da Fiscalização", "VOTO").alertas.some((a) => a.startsWith("ENTRE ASPAS")));
+  const tese = "VOTO O Superior Tribunal julgou o repetitivo fixando a seguinte tese: “É devida a restituição em dobro independentemente da comprovação de má-fé do fornecedor.” Aplico-a.";
+  assert.ok(!conferirTrecho(tese, "É devida a restituição em dobro independentemente da comprovação de má-fé", "VOTO").alertas.some((a) => a.startsWith("ENTRE ASPAS")));
+  const n = conferirTrecho("VOTO Não há que se falar em dano moral indenizável pela simples cobrança indevida de tarifa bancária.", "dano moral indenizável pela simples cobrança indevida de tarifa", "VOTO");
+  assert.ok(n.alertas.some((a) => a.startsWith("NEGAÇÃO: há negativa logo antes do trecho")), n.alertas.join(" | "));
+});

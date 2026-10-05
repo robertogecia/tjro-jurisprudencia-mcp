@@ -188,10 +188,17 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
   que `obter_inteiro_teor_tjro` gravou no seu computador; só vai ao portal se o documento
   nunca foi lido. Passe o `id_documento` da peça citada; com só o número, confere em todos
   os documentos do processo.
-  O alerta ALEGAÇÃO DA PARTE (a frase é tese que o acórdão relata como de uma parte) foi medido contra 90 trechos
-  rotulados à mão e refeito na 1.11.0: de 33% para 81% de precisão, com o falso alarme sobre a voz do tribunal caindo
-  de 64% para 10%; a cobertura ficou em 94% no conjunto de ajuste e 55% no de validação (poucos casos), então ele
-  é um aviso de cautela, não uma garantia: a ausência dele não prova que a frase é do tribunal.
+  Os avisos foram medidos na 1.12.0 contra um gabarito **cego e duplo**: 260 trechos reais, cada um rotulado por dois
+  revisores independentes que não sabiam o que o verificador dizia (concordância entre eles: kappa de 0,93 a 1,00).
+
+  | Aviso | acerta quando avisa | pega dos casos reais | avisa à toa sobre frase limpa |
+  |---|---|---|---|
+  | ALEGAÇÃO DA PARTE | ~69% | ~76% | ~8% |
+  | NEGAÇÃO | ~68% | ~75% | ~7% |
+  | ENTRE ASPAS | ~97% | ~72% | ~1% |
+
+  São avisos de cautela, não garantia: a ausência deles não prova que a frase é do tribunal. TRANSCRIÇÃO e VOTO
+  DIVERGENTE, que vêm da custódia do recibo, detectam 97% e 100% no gabarito próprio.
 - **`buscar_recibos_tjro`** procura nos documentos que **esta máquina já leu**, sem tocar no
   portal. Serve para reencontrar o acórdão da semana passada antes de gastar cota do JURIS,
   que conta volume em poucos minutos. Mostra id, número, câmara do fecho, um trecho em
