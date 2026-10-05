@@ -150,7 +150,7 @@ function trechoEmVolta(texto, tn, re) {
 }
 
 // ------------------------------------------------------------ recálculo da custódia ---
-const CAMPOS_CUSTODIA = ["trechos_transcritos", "trecho_divergente", "texto_voz_propria"];
+const CAMPOS_CUSTODIA = ["trechos_transcritos", "trecho_divergente", "trechos_entre_aspas", "texto_voz_propria"];
 const NORMALIZACAO = "trechos em bruto, recortados de `texto` — normalize com a sua própria função";
 const cedeAoEventLoop = () => new Promise((r) => setImmediate(r));
 

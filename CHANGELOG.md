@@ -2,6 +2,46 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.13.0 (05/10/2026): a custódia medida às cegas, transcrição anunciada e aspas no recibo
+
+**Por quê.** Os números de TRANSCRIÇÃO e VOTO DIVERGENTE (97% e 100% de detecção) vinham de 53 trechos rotulados em
+23/09 por quem desenhou a custódia, e não mediam alarme falso. São os dois avisos que o lint da peça usa. Repetido o
+método cego e duplo da 1.12.0 (mais 370 trechos: 130 de transcrição em três estratos, 80 de divergência, 160 de
+alegação; kappa 0,94, 1,00 e 0,93; 11 divergências adjudicadas lendo o documento inteiro):
+
+| Aviso (ponderado) | 1.12.0 às cegas | 1.13.0 na validação | 1.13.0 no total |
+|---|---|---|---|
+| TRANSCRIÇÃO × qualquer transcrição | 82% · 79% · 8% (com aspas) | 92% · 83% · 3% | 91% · 84% · 4% |
+| VOTO DIVERGENTE | 43% · 89% · 23% | 62% · 100% · 10% | 74% · 89% · 6% |
+| ALEGAÇÃO DA PARTE (160 trechos novos) | 66% · 81% · 10% | 96% · 73% · 1% | 90% · 84% · 2% |
+| ALEGAÇÃO DA PARTE (120 trechos da 1.12.0) | 69% · 76% · 8% | 64% · 75% · 11% | 71% · 82% · 8% |
+
+(precisão · cobertura · falso alarme; validação de 65, 40, 80 e 60 trechos: ordem de grandeza.)
+
+**O que mudou (custódia v3; os recibos são refeitos sozinhos ao iniciar).**
+- **VOTO DIVERGENTE.** Fecho que proclama unanimidade e não fala em maioria nem em vencido = ninguém ficou vencido
+  (10 dos 12 alarmes falsos do ajuste eram voto-vista que acompanha, "divirjo" superado no debate ou menção a voto
+  divergente de outro processo). Em ACÓRDÃO sem maioria no fecho, só marcas em 1ª pessoa contam ("peço vênia para
+  divergir", "divirjo"); substantivos ("voto divergente", "voto-vista") deixam de bastar.
+- **Transcrição anunciada.** "cuja parte dispositiva transcrevo:", "nos seguintes termos:", ou dois-pontos seguidos de
+  "[...]"/"(...)": o bloco copiado (sentença, decisão recorrida, acórdão embargado) é marcado até o texto voltar a
+  falar como 2º grau (apelante, embargante, "a sentença", "É o relatório", cabeçalho VOTO). Sem retorno identificado,
+  não marca nada. O cabeçalho da peça ("Classe: … Polo Ativo: …") deixa de abrir transcrição.
+- **ALEGAÇÃO DA PARTE por frase.** O verbo de relato precisa estar na frase que contém o grosso do trecho (antes dele
+  ou na cabeça dele). Não contam: verbo negado, impessoal ("reitera-se"), concessiva em que o trecho é a oração
+  principal, adversativa entre o verbo e o trecho, atribuição explícita dentro do trecho. Passam a contar: sujeito
+  depois do verbo ("Alega o agravante que"), "Diz que" abrindo frase, "Contrarrazões …, pugnando".
+- **Aspas no recibo.** `trechos_entre_aspas` leva ao recibo as citações longas entre aspas do corpo do voto (fora de
+  transcrição, fora de tese fixada pelo tribunal); o lint da `peticao-rg` passa a AVISAR quando o trecho da ficha
+  está dentro de uma delas. O pareamento de aspas foi para `custodia.js`.
+
+Paridade Node × Python: 50.463 casos, 0 divergentes. 209 testes no Node.
+
+**Irmãos.** O mesmo método aplicado aos avisos do STJ (162 trechos) e do TRT14 (130), sem tocar em nenhum tribunal,
+mostra precisão bem menor lá (por exemplo, ENTRE ASPAS 41% e 48%; NEGAÇÃO entre 11% e 67% conforme o rotulador;
+FALA DE TERCEIRO do TRT14 1 em 8). O material fica fora deste repositório; as regras desta versão são candidatas a
+porte para aqueles servidores.
+
 ## v1.12.0 (05/10/2026): os três avisos de atribuição remedidos às cegas, e uma correção de números
 
 **Correção.** Os números que a 1.11.0 publicou para ALEGAÇÃO DA PARTE (precisão de 81%, falso alarme de 10%) foram

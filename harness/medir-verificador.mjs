@@ -175,3 +175,39 @@ if (fs.existsSync(arqAlertas)) {
     }
   }
 }
+
+// ---------------------------------------------------------------- 5. custódia às cegas + 2ª rodada de alegação
+// gold-custodia2.local.json (v1.13.0): TRANSCRIÇÃO em três estratos (dispara / calado perto de gatilho / longe) e duas
+// definições de positivo — "outro julgado" (o que a custódia promete) e "qualquer transcrição" (inclui sentença, lei,
+// doutrina, laudo reproduzidos); VOTO DIVERGENTE só em ACÓRDÃO; ALEGAÇÃO DA PARTE, 160 trechos novos.
+const arqC2 = path.join(aqui, "gold-custodia2.local.json");
+if (fs.existsSync(arqC2)) {
+  const itens = JSON.parse(fs.readFileSync(arqC2, "utf8")).itens.filter((g) => g.r && g.r !== "duvida");
+  const metade = (cod) => (Number(cod.slice(3)) % 2 ? "ajuste" : "validacao");
+  const LINHAS = [
+    ["transcricao", "TRANSCRIÇÃO × outro julgado", (c) => c.alertas.some((a) => a.startsWith("TRANSCRIÇÃO")), (g) => g.r === "transcrito_julgado"],
+    ["transcricao", "TRANSCRIÇÃO × qualquer transcr.", (c) => c.alertas.some((a) => a.startsWith("TRANSCRIÇÃO")), (g) => g.r !== "proprio"],
+    ["transcricao", "TRANSCR. ou ASPAS × qualquer", (c) => c.alertas.some((a) => /^(TRANSCRIÇÃO|ENTRE ASPAS)/.test(a)), (g) => g.r !== "proprio"],
+    ["divergente", "VOTO DIVERGENTE", (c) => c.alertas.some((a) => a.startsWith("VOTO DIVERGENTE")), (g) => g.r === "vencido"],
+    ["alegacao2", "ALEGAÇÃO DA PARTE (2ª rodada)", (c) => c.alertas.some((a) => a.startsWith("ALEGAÇÃO DA PARTE")), (g) => g.r === "parte"],
+  ];
+  console.log("custódia às cegas e 2ª rodada de alegação (ponderado por estrato):");
+  for (const [k, nome, dispara, positivo] of LINHAS) {
+    for (const parte of ["ajuste", "validacao", "total"]) {
+      let tp = 0, fp = 0, fn = 0, tn = 0, n = 0; const erros = [];
+      for (const g of itens.filter((x) => x.alerta === k && (parte === "total" || metade(x.cod) === parte))) {
+        const r = porId.get(g.id);
+        if (!r) continue;
+        const c = conferirTrecho(r.texto, g.t, r.tipo);
+        if (!c.ok) continue;
+        n++;
+        const d = dispara(c), pos = positivo(g);
+        if (pos) d ? (tp += g.peso) : (fn += g.peso); else d ? (fp += g.peso) : (tn += g.peso);
+        if (d !== pos && parte === "ajuste") erros.push(`${pos ? "PERDIDO" : "FALSO ALARME"} ${g.cod} [${g.r}/${g.estrato}]: ${g.t.slice(0, 70)}`);
+      }
+      const f = (a, b) => (b ? (100 * a / b).toFixed(0) + "%" : "—");
+      console.log(`  ${nome.padEnd(30)} ${parte.padEnd(9)} n=${String(n).padStart(3)} · precisão ${f(tp, tp + fp)} · cobertura ${f(tp, tp + fn)} · falso alarme ${f(fp, fp + tn)}`);
+      if (args.includes("--erros")) for (const e of erros) console.log("     - " + e);
+    }
+  }
+}

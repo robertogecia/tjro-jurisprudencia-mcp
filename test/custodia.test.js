@@ -74,7 +74,7 @@ test("ACÓRDÃO por maioria com vogal vencido: o voto do vogal é o trecho_diver
 });
 
 test("EMENTA e VOTO VENCEDOR: sem campo alheio que acuse a voz da casa", () => {
-  assert.deepEqual(camposAlheios("Apelação cível. Recurso provido.", "EMENTA"), { trechos_transcritos: [], trecho_divergente: "" });
+  assert.deepEqual(camposAlheios("Apelação cível. Recurso provido.", "EMENTA"), { trechos_transcritos: [], trecho_divergente: "", trechos_entre_aspas: [] });
   assert.equal(camposAlheios("Com a devida vênia, divirjo do relator. É como voto.", "VOTO VENCEDOR").trecho_divergente, "");
 });
 
@@ -96,7 +96,7 @@ test("faixasAlheias: posições batem com os recortes de camposAlheios", () => {
   assert.deepEqual(f.transcritas.map(([a, b]) => acordao.texto.slice(a, b)), c.trechos_transcritos);
   assert.equal(acordao.texto.slice(f.divergente[0], f.divergente[1]), c.trecho_divergente);
   assert.equal(acordao.texto.slice(f.casaIni), c.texto_voz_propria);
-  assert.deepEqual(faixasAlheias("Ementa. Recurso provido.", "EMENTA"), { transcritas: [], divergente: null, casaIni: 24, fecho: 24, ementaDaCasa: true });
+  assert.deepEqual(faixasAlheias("Ementa. Recurso provido.", "EMENTA"), { transcritas: [], divergente: null, casaIni: 24, fecho: 24, ementaDaCasa: true, aspas: [] });
 });
 
 test("linhaCustodia: conta transcrições, aponta voto que pode ser o vencido e a voz da casa; null para EMENTA/RELATÓRIO", () => {
@@ -163,4 +163,60 @@ test("ementa transcrita de verdade continua marcada inteira, mesmo com 'Ementa:'
   assert.equal(c.trechos_transcritos.length, 1);
   assert.match(c.trechos_transcritos[0], /Apelação cível\. Consumidor\. Fraude bancária\./);
   assert.ok(!c.trechos_transcritos[0].includes("Assim, nego provimento"));
+});
+
+// v1.13.0 (custódia v3) — medida às cegas: divergência com 43% de precisão e transcrição sem marca escapando.
+import { faixasDeclaradas, unirFaixas } from "../server/custodia.js";
+const FECHO = (resultado) => ` EMENTA Apelação cível. Tese da casa. ACÓRDÃO Vistos, relatados e discutidos estes autos, acordam os Magistrados da 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, em, ${resultado} Porto Velho, 3 de fevereiro de 2026.`;
+
+test("fecho UNÂNIME sem 'maioria'/'vencido': voto-vista e 'divirjo' superado não viram voto vencido", () => {
+  const corpo = "RELATÓRIO Relatado. VOTO DESEMBARGADOR FULANO Nego provimento ao recurso. É como voto. VOTO-VISTA JUIZ BELTRANO Pedi vista dos autos. " +
+    "De início, divirjo do relator quanto à preliminar, mas, após os debates, acompanho integralmente a conclusão do voto condutor quanto ao mérito.";
+  assert.equal(camposAlheios(corpo + FECHO("RECURSO NÃO PROVIDO NOS TERMOS DO VOTO DO RELATOR, À UNANIMIDADE."), "ACÓRDÃO").trecho_divergente, "");
+  // o mesmo corpo com julgamento por maioria continua marcado
+  assert.match(camposAlheios(corpo + FECHO("RECURSO NÃO PROVIDO, POR MAIORIA, VENCIDO O JUIZ BELTRANO."), "ACÓRDÃO").trecho_divergente, /JUIZ BELTRANO Pedi vista/);
+  // unanimidade na preliminar e maioria no mérito: há vencido
+  assert.notEqual(camposAlheios(corpo + FECHO("PRELIMINAR REJEITADA, À UNANIMIDADE. NO MÉRITO, RECURSO NÃO PROVIDO, POR MAIORIA, VENCIDO O JUIZ BELTRANO."), "ACÓRDÃO").trecho_divergente, "");
+});
+
+test("ACÓRDÃO sem maioria no fecho: menção a 'voto divergente' de outro processo não marca; 1ª pessoa marca; documento VOTO isolado mantém as marcas", () => {
+  const mencao = "RELATÓRIO Relatado. VOTO DESEMBARGADOR FULANO O embargante aponta que foi juntado um voto divergente estranho aos autos, proferido em processo diverso. " +
+    "Assiste-lhe razão, pois o documento não pertence a este feito. Acolho os embargos. É como voto.";
+  assert.equal(camposAlheios(mencao, "ACÓRDÃO").trecho_divergente, "");
+  const primeira = "RELATÓRIO Relatado. VOTO DESEMBARGADOR FULANO Nego provimento. É como voto. DESEMBARGADOR BELTRANO Peço vênia para divergir do relator, pois a prescrição é trienal.";
+  assert.match(camposAlheios(primeira, "ACÓRDÃO").trecho_divergente, /^DESEMBARGADOR BELTRANO Peço vênia/);
+  assert.notEqual(camposAlheios("DECLARAÇÃO DE VOTO Apresento voto divergente quanto ao mérito do recurso, pelas razões que seguem adiante.", "VOTO").trecho_divergente, "");
+});
+
+test("transcrição DECLARADA: 'cuja parte dispositiva transcrevo:' e ': [...]' marcam a sentença copiada até o texto voltar a falar como 2º grau", () => {
+  const sentenca = "Ante o exposto, JULGO PARCIALMENTE PROCEDENTE o pedido inicial e CONDENO a requerida a ressarcir de forma simples o valor sacado, corrigido desde o desembolso. " +
+    "Em caso de recurso, intime-se a parte recorrida para apresentar contrarrazões no prazo de 15 dias. Publique-se. Registre-se. Intimem-se. ";
+  const t = "RELATÓRIO A sentença julgou parcialmente procedente o pedido, cuja parte dispositiva transcrevo: (...) " + sentenca +
+    "Inconformada, a apelante interpôs o recurso, em que aduz desconhecer a contratação. É o relatório. VOTO Conheço do recurso.";
+  const c = camposAlheios(t, "VOTO");
+  assert.equal(c.trechos_transcritos.length, 1);
+  assert.ok(c.trechos_transcritos[0].includes("JULGO PARCIALMENTE PROCEDENTE") && c.trechos_transcritos[0].includes("apresentar contrarrazões no prazo"));
+  assert.ok(!c.trechos_transcritos[0].includes("Inconformada"));
+  const t2 = t.replace("cuja parte dispositiva transcrevo: (...)", "que decidiu a causa nos seguintes termos: [...].");
+  assert.ok(camposAlheios(t2, "VOTO").trechos_transcritos[0].includes("JULGO PARCIALMENTE PROCEDENTE"));
+  // sem retorno ao 2º grau no alcance: não marca nada (melhor calar que marcar o voto inteiro)
+  assert.deepEqual(faixasDeclaradas(norm1("VOTO Transcrevo: " + "texto sem volta. ".repeat(40)), "VOTO Transcrevo: " + "texto sem volta. ".repeat(40)), []);
+  assert.deepEqual(unirFaixas([[10, 20], [30, 40]], [[15, 32]], [[50, 50]]), [[10, 40]]);
+});
+
+test("cabeçalho da peça não abre transcrição: a busca começa no RELATÓRIO", () => {
+  const t = "Número do processo: 7000000-00.2025.8.22.0001 Classe: Apelação Cível Polo Ativo: FULANO DE TAL ADVOGADO DO APELANTE: BELTRANO RELATÓRIO Trata-se de apelação. " +
+    "VOTO O art. 86 do CPC prevê a sucumbência recíproca. Mantenho a sentença (REsp n. 1.234.567/SP, Rel. Min. Fulano, julgado em 1/2/2020). É como voto.";
+  const c = camposAlheios(t, "VOTO");
+  assert.ok(!c.trechos_transcritos.some((b) => b.includes("Polo Ativo") || b.includes("Trata-se de apelação")), JSON.stringify(c.trechos_transcritos));
+});
+
+test("trechos_entre_aspas: citação longa do corpo vai para o recibo; termo destacado, tese fixada e aspas dentro de transcrição não", () => {
+  const t = "RELATÓRIO Relatado. VOTO A doutrina ensina que “o dano moral in re ipsa dispensa a prova do prejuízo concreto suportado pela vítima do ato ilícito”. " +
+    "O produto “REFIN” foi contratado. O STJ julgou o repetitivo fixando a seguinte tese: “É devida a restituição em dobro independentemente da comprovação de má-fé do fornecedor do serviço.” " +
+    "Nesse sentido: “APELAÇÃO CÍVEL. DANO MORAL CONFIGURADO NA HIPÓTESE DE INSCRIÇÃO INDEVIDA. RECURSO DESPROVIDO.” (Apelação Cível, Processo nº 7000000-00.2020.8.22.0001, Relator(a) do Acórdão: Des. Fulano, Data de julgamento: 06/07/2023). É como voto.";
+  const c = camposAlheios(t, "VOTO");
+  assert.equal(c.trechos_entre_aspas.length, 1);
+  assert.match(c.trechos_entre_aspas[0], /^“o dano moral in re ipsa dispensa a prova/);
+  assert.ok(c.trechos_transcritos.some((b) => b.includes("DANO MORAL CONFIGURADO")));
 });

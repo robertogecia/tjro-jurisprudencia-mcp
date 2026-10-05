@@ -108,7 +108,7 @@ test("verificarCitacao: sem recibo, vai ao portal pelo número (função buscar 
 // são sintéticos: o gabarito real traz nomes de parte e fica fora do git, em harness/gold-alegacao.local.json).
 import { alegacaoDaParte } from "../server/verificar.js";
 import { norm1 } from "../server/custodia.js";
-const aleg = (texto, trecho) => alegacaoDaParte(norm1(texto), norm1(texto).indexOf(norm1(trecho)));
+const aleg = (texto, trecho) => { const i = norm1(texto).indexOf(norm1(trecho)); assert.ok(i >= 0, "trecho fora do texto: " + trecho); return alegacaoDaParte(norm1(texto), i, i + trecho.length, texto); };
 
 test("ALEGAÇÃO DA PARTE dispara no relato da tese da parte: verbo conjugado com sujeito, sujeito elíptico, razões, gerúndio, subjuntivo", () => {
   assert.equal(aleg("RELATÓRIO O banco apelante defende que a contratação ocorreu por meio eletrônico, com assinatura digital e validação biométrica do consumidor.", "assinatura digital e validação biométrica do consumidor"), true);
@@ -126,7 +126,7 @@ test("ALEGAÇÃO DA PARTE não dispara na voz do tribunal: substantivo, nome de 
   assert.equal(aleg("VOTO Verifico que a empresa requerida não comprovou a contratação do serviço nem juntou o contrato assinado pelo consumidor aos autos.", "não comprovou a contratação do serviço nem juntou o contrato assinado"), false);
   // o tribunal responde: marca de voz própria entre o verbo e o trecho
   assert.equal(aleg("VOTO O apelante sustenta a nulidade da sentença. Contudo, a prova dos autos demonstra que a contratação foi regular e o crédito, disponibilizado.", "a prova dos autos demonstra que a contratação foi regular"), false);
-  assert.equal(aleg("RELATÓRIO A parte recorrente requereu a desistência do recurso. Assim, nos termos do art. 998 do CPC, HOMOLOGO o pedido e condeno ao pagamento das custas.", "condeno ao pagamento das custas e honorários advocatícios arbitrados"), false);
+  assert.equal(aleg("RELATÓRIO A parte recorrente requereu a desistência do recurso. Assim, nos termos do art. 998 do CPC, HOMOLOGO o pedido e condeno ao pagamento das custas e honorários advocatícios arbitrados.", "condeno ao pagamento das custas e honorários advocatícios arbitrados"), false);
   // o verbo está a mais de 2 frases do trecho: não é mais o mesmo relato
   assert.equal(aleg("RELATÓRIO O apelante alega nulidade da citação. O processo seguiu o rito comum. A prova pericial foi produzida em juízo. Ao final, a sentença julgou procedente o pedido da inicial.", "a sentença julgou procedente o pedido da inicial"), false);
   // sem verbo de relato nenhum
@@ -180,4 +180,22 @@ test("conferirTrecho: ENTRE ASPAS pela maioria do trecho; tese fixada entre aspa
   assert.ok(!conferirTrecho(tese, "É devida a restituição em dobro independentemente da comprovação de má-fé", "VOTO").alertas.some((a) => a.startsWith("ENTRE ASPAS")));
   const n = conferirTrecho("VOTO Não há que se falar em dano moral indenizável pela simples cobrança indevida de tarifa bancária.", "dano moral indenizável pela simples cobrança indevida de tarifa", "VOTO");
   assert.ok(n.alertas.some((a) => a.startsWith("NEGAÇÃO: há negativa logo antes do trecho")), n.alertas.join(" | "));
+});
+
+// v1.13.0 — 2ª rodada cega de ALEGAÇÃO DA PARTE (160 trechos): o relato vale dentro da frase.
+test("ALEGAÇÃO DA PARTE (v1.13.0): frase nova sem verbo de relato, verbo negado, impessoal, concessiva, adversativa e atribuição explícita não disparam", () => {
+  assert.equal(aleg("RELATÓRIO O banco defendeu a regularidade da contratação, afirmando que o autor aderiu ao cartão. Juntou cópia do contrato e demais documentos aos autos do processo.", "Juntou cópia do contrato e demais documentos aos autos"), false);
+  assert.equal(aleg("VOTO A parte autora não narra nenhum prejuízo além da frustração da relação contratual estabelecida entre as partes.", "nenhum prejuízo além da frustração da relação contratual"), false);
+  assert.equal(aleg("VOTO Reitera-se que o excedente de energia possui natureza de empréstimo gratuito, não gerando fato gerador de ICMS.", "o excedente de energia possui natureza de empréstimo gratuito"), false);
+  assert.equal(aleg("VOTO Embora o banco sustente a segurança de seus sistemas, os documentos apresentados são telas sistêmicas e registros unilaterais sem valor.", "os documentos apresentados são telas sistêmicas e registros unilaterais"), false);
+  assert.equal(aleg("VOTO A parte reclamante invoca a inafastabilidade da jurisdição e a existência de teratologia, mas não demonstra aderência estrita entre o acórdão e o paradigma.", "mas não demonstra aderência estrita entre o acórdão e o paradigma"), false);
+  assert.equal(aleg("VOTO O empréstimo foi efetivado por meio de terminal de autoatendimento que, segundo o apelado, tem como característica a facilidade de contratação.", "que, segundo o apelado, tem como característica a facilidade de contratação"), false);
+});
+
+test("ALEGAÇÃO DA PARTE (v1.13.0): verbo na cabeça do trecho, sujeito depois do verbo, 'Diz que', contrarrazões, 'não X, mas Y' da própria parte", () => {
+  assert.equal(aleg("RELATÓRIO Sustentaram que foram induzidos a outorgar procuração relativa ao lote rural de Cacoal/RO. Requereram a declaração de inexistência da dívida e a nulidade dos títulos emitidos.", "Cacoal/RO. Requereram a declaração de inexistência da dívida e a nulidade"), true);
+  assert.equal(aleg("VOTO 1. PRELIMINAR Alega o agravante que a inobservância do rito de publicação configurou cerceamento de defesa, pois obstou o pedido de sustentação oral.", "a inobservância do rito de publicação configurou cerceamento de defesa"), true);
+  assert.equal(aleg("RELATÓRIO Alega que a decisão parte de premissa equivocada. Diz que atualmente tem como atividade laboral motorista de aplicativo e que sua renda é insuficiente.", "atualmente tem como atividade laboral motorista de aplicativo"), true);
+  assert.equal(aleg("RELATÓRIO Contrarrazões juntadas, pugnando pela manutenção da sentença, sob o argumento de que a informação prestada decorre de dever regulatório do banco.", "a informação prestada decorre de dever regulatório do banco"), true);
+  assert.equal(aleg("RELATÓRIO Assevera que o agravo de instrumento não se voltou contra a autoridade da sentença, mas contra a interpretação ampliativa conferida à fase executiva.", "a autoridade da sentença, mas contra a interpretação ampliativa"), true);
 });
