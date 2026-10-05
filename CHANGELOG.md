@@ -2,6 +2,43 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.12.0 (05/10/2026): os três avisos de atribuição remedidos às cegas, e uma correção de números
+
+**Correção.** Os números que a 1.11.0 publicou para ALEGAÇÃO DA PARTE (precisão de 81%, falso alarme de 10%) foram
+medidos num gabarito rotulado pelo próprio autor da regra, depois de desenhá-la. Num gabarito **cego e duplo** (dois
+rotuladores independentes, sem ver o estrato nem a decisão do verificador; kappa 0,96 em alegação, 0,93 em negação e
+1,00 em aspas; 5 divergências em 260 adjudicadas pelo autor), a 1.11.0 tinha 56% de precisão em alegação. Os números
+abaixo substituem os anteriores.
+
+**Gabarito.** 260 janelas de 12 palavras de acórdãos e votos reais, sorteadas em dois estratos por aviso: onde ele
+dispara e onde fica calado com o gatilho por perto (verbo de relato, negação, aspas). As métricas são ponderadas pela
+população de cada estrato. Metade dos itens serviu ao ajuste; a outra metade só foi olhada depois, uma vez, como
+validação. O arquivo traz trechos com nomes de parte e fica fora do git (`harness/*.local.json`); o sorteio
+(`harness/amostrar-alertas.mjs`), a consolidação (`harness/consolidar-rotulos.py`) e a medida
+(`harness/medir-verificador.mjs`) estão no repositório.
+
+**O que mudou.**
+- **NEGAÇÃO por alcance.** Antes, qualquer "inexistente", "negativo", "vedada" ou "improcedente" nos 60 caracteres
+  anteriores disparava, e também a negação que só alcançava a primeira palavra do trecho. Agora conta só operador de
+  negação ou rejeição (não, jamais, nem, "não há que se falar", afasta-se, rejeito, julgou improcedente…), sem quebra
+  de oração até o trecho, alcançando ao menos 3 palavras dele.
+- **ENTRE ASPAS por pareamento.** Antes contava aspas numa janela de 1.200 caracteres, e uma aspa fora da janela
+  invertia a conta. Agora pareia as aspas no documento inteiro (pilha para as curvas, que se aninham; a reta alterna;
+  apóstrofo não abre citação) e avisa quando a maioria do trecho está dentro de citação. Tese fixada entre aspas segue
+  sendo palavra do tribunal.
+- **ALEGAÇÃO DA PARTE**: marcas impessoais do tribunal ("tem-se que", "verifica-se", "trata-se", "não há dúvida"…),
+  "Estado"/"recurso" deixam de valer como sujeito de parte, "diz" sai dos verbos de relato, e o relato só se estende
+  por 1 frase depois do verbo (era 2).
+
+| Aviso (ponderado) | 1.11.0: precisão · cobertura · falso alarme | 1.12.0 na VALIDAÇÃO | 1.12.0 no total |
+|---|---|---|---|
+| ALEGAÇÃO DA PARTE | 56% · 79% · 15% | 62% · 70% · 11% | 69% · 76% · 8% |
+| NEGAÇÃO | 35% · 70% · 26% | 67% · 71% · 11% | 68% · 75% · 7% |
+| ENTRE ASPAS | 57% · 36% · 10% | 100% · 100% · 0% | 97% · 72% · 1% |
+
+A validação tem 60, 40 e 30 itens: ordem de grandeza, não casa decimal. Paridade Node × Python: 50.440 casos, 0
+divergentes. 202 testes no Node.
+
 ## v1.11.0 (02/10/2026): pausa por identificação, recibos que se atualizam sozinhos, alerta de alegação medido
 
 Três melhorias que saíram de uma sessão de teste (a pública e a build pessoal convivem no mesmo computador).

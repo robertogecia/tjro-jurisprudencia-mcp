@@ -27,16 +27,17 @@ const VERBO_RELATO = new RegExp(
   String.raw`(?<![a-z0-9])(?:sustent(?:a|am|ou|aram|ando)|alega(?:m|ram|ndo)?|alegou|aduz(?:em|iu|indo)?|defende(?:m|u|ram|ndo)?|afirma(?:m|ram|ndo)?|afirmou` +
     String.raw`|argument(?:a|am|ou|ando)|requer(?:em|eu|eram|endo)?|pleite(?:ia|iam|ou|aram|ando)|pugn(?:a|am|ou|ando)|invoc(?:a|am|ou|ando)` +
     String.raw`|insist(?:e|em|iu|indo)|impugn(?:a|am|ou|ando)|assever(?:a|am|ou|ando)|ressalt(?:a|am|ou)|enfatiz(?:a|am|ou)|reiter(?:a|am|ou)` +
-    String.raw`|postul(?:a|am|ou)|narr(?:a|am|ou)|inform(?:a|am|ou)|disse|diz|suscit(?:a|am|ou)|apont(?:a|am|ou)` +
+    String.raw`|postul(?:a|am|ou)|narr(?:a|am|ou)|inform(?:a|am|ou)|disse|suscit(?:a|am|ou)|apont(?:a|am|ou)` +
     String.raw`|alegue|alegu?em|sustente|sustentem|defenda|defendam|afirme|argumente|pretend(?:a|e|em|eu)|pretendam)(?![a-z0-9])`,
   "g"
 );
 const PARTE_NO_TEXTO =
-  /(?<![a-z0-9])(?:apelantes?|apelad[oa]s?|agravantes?|agravad[oa]s?|recorrentes?|recorrid[oa]s?|embargantes?|embargad[oa]s?|autor(?:a|es|as)?|reus?|re|requerentes?|requerid[oa]s?|impetrantes?|impetrad[oa]s?|exequentes?|executad[oa]s?|partes?|banco|instituicao financeira|estado|municipio|uniao|ministerio publico|parquet|defensoria|procuradoria|arguentes?|arguid[oa]s?|reclamantes?|reclamad[oa]s?|seguradora|fundo|cessionari[oa]|devedor[a]?|credor[a]?|locatari[oa]|locador[a]?|consumidor[a]?|apelacao|recurso)(?![a-z0-9])/;
+  /(?<![a-z0-9])(?:apelantes?|apelad[oa]s?|agravantes?|agravad[oa]s?|recorrentes?|recorrid[oa]s?|embargantes?|embargad[oa]s?|autor(?:a|es|as)?|reus?|re|requerentes?|requerid[oa]s?|impetrantes?|impetrad[oa]s?|exequentes?|executad[oa]s?|partes?|banco|instituicao financeira|estado|municipio|uniao|ministerio publico|parquet|defensoria|procuradoria|arguentes?|arguid[oa]s?|reclamantes?|reclamad[oa]s?|seguradora|fundo|cessionari[oa]|devedor[a]?|credor[a]?|locatari[oa]|locador[a]?|consumidor[a]?)(?![a-z0-9])/;
 const SUJEITO_EM_RAZOES = /(?<![a-z0-9])(?:em|nas|suas) (?:suas )?(?:razoes|contrarrazoes)(?![a-z0-9])/;
 const VOZ_DO_TRIBUNAL =
-  /(?<![a-z0-9])(?:contudo|todavia|entretanto|no entanto|ocorre que|porem|de fato|com efeito|sem razao|nao assiste|nao merece|nao prospera|improcede|conheco|constato|constatei|verifico|verifiquei|observo|observei|analisei|tenho que|consigno|cumpre|importante destacar|e importante|e certo|e sabido|como e sabido|ora,|logo,|assim,|portanto|dessa forma|neste caso|nesse caso|nesse cenario|nessa hipotese|no caso|a meu ver|na verdade|diante disso|nessa linha|revela|homologo|condeno|julgo|determino|arbitro|fixo|defiro|indefiro|nego|dou provimento|acolho|rejeito|declaro|reconheco|entendo|concluo|decido|passo a)(?![a-z0-9])/;
-export const ALEGACAO_DIST_MAX = 350, ALEGACAO_SUJEITO_JANELA = 200, ALEGACAO_FRASES_MAX = 2;
+  /(?<![a-z0-9])(?:contudo|todavia|entretanto|no entanto|ocorre que|porem|de fato|com efeito|sem razao|nao assiste|nao merece|nao prospera|improcede|conheco|constato|constatei|verifico|verifiquei|observo|observei|analisei|tenho que|consigno|cumpre|importante destacar|e importante|e certo|e sabido|como e sabido|ora,|logo,|assim,|portanto|dessa forma|neste caso|nesse caso|nesse cenario|nessa hipotese|no caso|a meu ver|na verdade|diante disso|nessa linha|revela|homologo|condeno|julgo|determino|arbitro|fixo|defiro|indefiro|nego|dou provimento|acolho|rejeito|declaro|reconheco|entendo|concluo|decido|passo a|tem-se|tem se|infere-se|conclui-se|depreende-se|extrai-se|verifica- ?se|constata- ?se|nota-se|observa- ?se|percebe-se|denota-se|ve-se|evidencia-se|trata-se|nao ha duvidas?|nao resta duvida|nao restam duvidas|compete ao|compete a|cabe ao|cabia ao|incumbe|incumbia|com razao|razao assiste|assiste razao)(?![a-z0-9])/;
+export const ALEGACAO_DIST_MAX = 350, ALEGACAO_SUJEITO_JANELA = 200;
+export const ALEGACAO_FRASES_MAX = 1;
 
 /** O trecho que começa em `ini0` (texto norm1) é tese que o acórdão relata como DE UMA PARTE? */
 export function alegacaoDaParte(tn, ini0) {
@@ -53,8 +54,66 @@ export function alegacaoDaParte(tn, ini0) {
   if (RE_VOZ_PROPRIA.test(entre) || VOZ_DO_TRIBUNAL.test(entre)) return false;
   return (entre.match(/[.;]\s+(?=[a-z0-9(\[])/g) || []).length <= ALEGACAO_FRASES_MAX;
 }
-const RE_NEGACAO = /\b(nao|jamais|nunca|inexist\w*|descab\w*|incabivel|incabiveis|inaplicav\w*|indevid\w*|afast\w*|improced\w*|nega\w*|rejeit\w*|sem\s+raz(?:ao|oes)|carece\w*|impossibilidade|vedad[oa]s?)\b[^.;:]{0,60}$/;
-const RE_NEGACAO_FALSA = /\bnao\s+(obstante|so\b|apenas|somente|se\s+confunde)/;
+// NEGAÇÃO (v1.12.0, remedida em gabarito cego e duplo: a regra herdada disparava com "inexistente", "negativo", "vedada"
+// ou "improcedente" em qualquer ponto dos 60 caracteres anteriores, e com negação que só alcançava a 1ª palavra do
+// trecho; precisão de 35%). Agora conta o ALCANCE: um operador de negação ou rejeição (não, jamais, nem, "não há que se
+// falar", afasta-se, rejeito, julgou improcedente…; adjetivo solto não conta) a até 80 caracteres do trecho, sem quebra
+// de oração entre ele e o trecho, e alcançando ao menos 3 palavras do trecho antes da 1ª quebra de oração dentro dele.
+const RE_NEG_OPERADOR = /(?<![a-z0-9])(?:nao|jamais|nunca|nem|descabe|descabid[oa]s?|incabive(?:l|is)|afasta-se|afasto|afastad[oa]s?|rejeita-se|rejeito|rejeitad[oa]s?|nego|negou|negar|nega-se|negam|improcede|julg(?:ou|o|ar|aram|ada|ado|ados|adas)\s+improcedentes?|inexist(?:e|em|ir|iu|indo)|carece|carecem|impossibilidade de)(?![a-z0-9])/g;
+const RE_NEG_FALSA = /^\s*(?:obstante|so\b|apenas|somente|se\s+confunde)/;
+const RE_QUEBRA_ORACAO = /[.;:]|,\s*(?:mas|e|ou|que|o que|de forma|de modo|sendo|alem|conforme|porque|pois|porquanto|embora|ainda|razao pela|motivo pelo|[a-z]+ndo)(?![a-z0-9])|\smas\s/;
+export const NEGACAO_JANELA = 80, NEGACAO_ALCANCE_MIN = 3;
+
+/** O trecho que começa em `ini0` (texto norm1) e termina em `fim` está sob o alcance de uma negação anterior? */
+export function negacaoAntes(tn, ini0, fim) {
+  const jan = tn.slice(Math.max(0, ini0 - NEGACAO_JANELA), ini0);
+  let op = null;
+  for (const m of jan.matchAll(RE_NEG_OPERADOR)) {
+    if (m[0] === "nao" && RE_NEG_FALSA.test(jan.slice(m.index + 3))) continue;
+    op = m;
+  }
+  if (!op) return false;
+  const ponte = jan.slice(op.index + op[0].length);
+  if (/[.;:]/.test(ponte)) return false;
+  if (ponte.includes(",") && ponte.trim().length > 15) return false;     // ", portanto, a" passa; oração nova não
+  const tr = tn.slice(ini0, fim);
+  if (/^\s*e[\s,]/.test(tr)) return false;                               // trecho começa com nova oração coordenada
+  const q = tr.search(RE_QUEBRA_ORACAO);
+  const alcance = (q < 0 ? tr : tr.slice(0, q)).trim().split(/\s+/).filter(Boolean).length;
+  return alcance >= NEGACAO_ALCANCE_MIN;
+}
+
+// ENTRE ASPAS (v1.12.0, remedida: contar aspas numa janela de 1.200 caracteres invertia a paridade sempre que uma aspa
+// ficava fora da janela; precisão de 57% e cobertura de 36%). Agora pareia as aspas no DOCUMENTO inteiro, no texto bruto:
+// “ abre e ” fecha (aspas curvas têm direção), ‘ abre e ’ só fecha se houver ‘ aberta (senão é apóstrofo), " reto alterna;
+// citação sem fechamento em 6.000 caracteres é descartada. O alerta sai quando a MAIORIA dos caracteres do trecho está
+// dentro de citação. Aspas logo depois de "tese fixada/firmada" são a tese do próprio tribunal e não contam.
+export const ASPAS_SPAN_MAX = 6000;
+export function trechosCitados(bruto) {
+  // pilha para as curvas (citação dentro de citação é comum: o voto cita a decisão, que cita a lei); a reta alterna
+  const out = [], duplas = [], simples = [];
+  let reta = -1;
+  for (let i = 0; i < bruto.length; i++) {
+    const c = bruto[i];
+    if (c === "\u201c") duplas.push(i);
+    else if (c === "\u201d") { if (duplas.length) { const a = duplas.pop(); if (i - a <= ASPAS_SPAN_MAX) out.push([a, i + 1]); } }
+    else if (c === "\u2018") simples.push(i);
+    else if (c === "\u2019") { if (simples.length) { const a = simples.pop(); if (i - a <= ASPAS_SPAN_MAX) out.push([a, i + 1]); } }
+    else if (c === '"') {
+      if (reta < 0) reta = i;
+      else { if (i - reta <= ASPAS_SPAN_MAX) out.push([reta, i + 1]); reta = -1; }
+    }
+  }
+  return out;
+}
+
+/** Quantos caracteres de [ini, fim) estão dentro de alguma citação (união dos intervalos, sem contar duas vezes). */
+export function coberturaCitada(cit, ini, fim) {
+  const pedacos = cit.map(([x, y]) => [Math.max(x, ini), Math.min(y, fim)]).filter(([x, y]) => y > x).sort((p, q) => p[0] - q[0]);
+  let total = 0, ate = ini;
+  for (const [x, y] of pedacos) { if (y <= ate) continue; total += y - Math.max(x, ate); ate = y; }
+  return total;
+}
 const RE_TESE_PROPRIA = /\btese\s+(?:juridica\s+)?(?:fixada|firmada|proposta)\b|\bfixando a seguinte tese\b|\bseguinte tese\b/;
 
 const sobrepoe = (a, b, x, y) => a < y && b > x;
@@ -94,17 +153,15 @@ export function conferirTrecho(texto, trecho, tipo) {
   if (fx.divergente && spans.some(([a, b]) => sobrepoe(a, b, fx.divergente[0], fx.divergente[1])))
     alertas.push("VOTO DIVERGENTE: o trecho está na parte do acórdão que pode ser o voto VENCIDO (pedido de vênia, voto-vista ou relator vencido). Leia o fecho (\"por maioria, vencido…\") antes de citar como entendimento do órgão.");
   if (!emTranscricao && !naCasa && !fx.ementaDaCasa) {
-    const antesQ = tn.slice(Math.max(0, ini0 - 1200), ini0);
-    const depoisQ = tn.slice(pos, pos + 1200);
-    const aspas = [...antesQ.matchAll(/(?<![a-z])'|'(?![a-z])/g)].map((m) => m.index);
-    const abre = aspas.length ? aspas[aspas.length - 1] : 0;
-    if (aspas.length % 2 === 1 && /'(?![a-z])/.test(depoisQ) && !RE_TESE_PROPRIA.test(antesQ.slice(Math.max(0, abre - 80), abre)))
+    const cit = trechosCitados(String(texto || ""));
+    const dentro = coberturaCitada(cit, ini0, pos);
+    const abreCit = cit.find(([x, y]) => x <= ini0 + (pos - ini0) / 2 && y >= ini0);
+    if (dentro * 2 > pos - ini0 && !(abreCit && RE_TESE_PROPRIA.test(tn.slice(Math.max(0, abreCit[0] - 80), abreCit[0]))))
       alertas.push("ENTRE ASPAS: o trecho parece estar dentro de aspas no acórdão — é o tribunal citando alguém (doutrina, lei, sentença, outro julgado). Confira de quem é a frase antes de atribuí-la ao TJRO.");
     if (alegacaoDaParte(tn, ini0))
       alertas.push("ALEGAÇÃO DA PARTE: o texto relata o que uma parte (apelante, banco, Estado…) sustenta, alega ou requer logo antes do trecho — pode ser tese da parte, não decisão do tribunal. Confira no relatório/voto quem fala.");
   }
-  const antes = tn.slice(Math.max(0, ini0 - 90), ini0);
-  if (RE_NEGACAO.test(antes) && !RE_NEGACAO_FALSA.test(antes.slice(-40)))
+  if (negacaoAntes(tn, ini0, pos))
     alertas.push("NEGAÇÃO: há negativa logo antes do trecho — o recorte pode inverter o julgado. Não citar sem ler a frase inteira.");
   const contexto = String(texto || "").slice(Math.max(0, ini0 - 120), pos + 120).replace(/\s+/g, " ").trim();
   return { ok: true, alertas, notas, contexto, spans };

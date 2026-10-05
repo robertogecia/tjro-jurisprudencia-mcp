@@ -3,3 +3,4 @@ node_modules/
 .DS_Store
 harness/_anonimizar.local.json
 harness/gold-alegacao.local.json
+harness/*.local.json
