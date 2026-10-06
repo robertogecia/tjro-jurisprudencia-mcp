@@ -74,6 +74,9 @@ import {
   GRUPOS_MAX,
   TERMOS_POR_GRUPO_MAX,
   TERMO_MAX_CHARS,
+  _setIdentidadeParaTeste,
+  identidadeDoUA,
+  HEADERS,
 } from "../server/lib.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -1411,10 +1414,17 @@ test("diagnóstico com bloqueios sem volume manda testar outra rede e recusa con
   await assert.rejects(() =>
     post({ fields: { query: "x" } }, async () => respostaFalsa(200, "text/html", HTML_BLOQUEIO_STIC))
   );
+  _setIdentidadeParaTeste("honesta");
   const rel = diagnosticoRitmo();
+  _setIdentidadeParaTeste("navegador");
+  const relNav = diagnosticoRitmo();
+  _setIdentidadeParaTeste(identidadeDoUA(HEADERS["User-Agent"]));
   assert.match(rel, /trocar de conexão não resolve/);
   assert.match(rel, /juris\.tjro\.jus\.br/);
   assert.match(rel, /não troca de IP/);
+  // build pessoal: sem a frase de extensão barrada (v1.13.4)
+  assert.doesNotMatch(relNav, /recusando as consultas desta extensão/);
+  assert.match(relNav, /espere a pausa terminar/);
 });
 
 // ---------------------------------------------------------------------------
