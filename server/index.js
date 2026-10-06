@@ -87,8 +87,8 @@ server.registerTool(
       "(até 800 caracteres) do local do match, não a peça inteira, e só corresponde à ementa oficial quando o " +
       "tipo é EMENTA: ementa numerada costuma ENUNCIAR a tese nos primeiros itens e APLICÁ-LA nos últimos, às " +
       "vezes com alcance menor — abra o inteiro teor antes de fichar ou citar. " +
-      "A CÂMARA do cadastro do portal erra com frequência (amostra real de 14/09/2026: 15 de 24 processos " +
-      "cadastrados na \"3ª Câmara Cível\" foram julgados pela 1ª ou pela 2ª): quando o acórdão da página declara " +
+      "A CÂMARA do cadastro do portal é a ATUAL do processo, não a que julgou: com a criação da 3ª Câmara Cível, relatores da 1ª e da 2ª foram realocados para ela e levaram seus processos (prevenção). Amostra real de 14/09/2026: 15 de 24 processos " +
+      "cadastrados na \"3ª Câmara Cível\" foram julgados pela 1ª ou pela 2ª. Quando o acórdão da página declara " +
       "outra câmara no fecho (\"acordam os Magistrados da(o) ...\"), o resultado mostra a câmara do fecho, avisa, " +
       "e a Citação já sai com ela. Pela mesma razão, orgao_colegiado filtra pelo cadastro, não pelo julgamento. " +
       "Sempre confirme número, relator, câmara, data e ementa no inteiro teor antes de citar. " +
@@ -112,7 +112,7 @@ server.registerTool(
         .describe('Tipos de documento. Padrão ["EMENTA","ACÓRDÃO"]. Opções: ACÓRDÃO, EMENTA, DECISÃO, "DECISÃO DA PRESIDÊNCIA", SENTENÇA, VOTO, RELATÓRIO. Todos são peças de 2º grau, exceto SENTENÇA (única de 1º grau).'),
       grau: z.number().int().optional().describe("1 (primeiro grau) ou 2 (câmaras). Omitir = ambos. Com grau=1, a busca é ajustada automaticamente para tipo=SENTENÇA."),
       classe_judicial: z.string().optional().describe('Classe EXATA em CAIXA ALTA (aplicada automaticamente). Ex.: "APELAÇÃO CÍVEL", "RECURSO INOMINADO CÍVEL".'),
-      orgao_colegiado: z.string().optional().describe('Órgão EXATO em Formato de Título, sensível a maiúsculas. 2º grau: "1ª Câmara Cível", "2ª Câmara Criminal", "1ª Turma Recursal". 1º grau (vara/juizado, só SENTENÇA): "Comarca - Vara", ex.: "Porto Velho - 4ª Vara Cível" — copie do campo "Órgão" de um resultado; com vara, a busca vai sozinha para tipo=SENTENÇA. Filtra pelo CADASTRO do portal, que erra a câmara com frequência (sobretudo "3ª Câmara Cível"): para a posição de uma câmara, confira a câmara declarada no fecho de cada acórdão, e saiba que julgados dela cadastrados em outra ficam de fora. UM órgão só: vírgula ou "ou" não somam órgãos (o portal devolve 0). Não filtre por família de câmara por padrão: nas teses medidas, 2 de 8 julgados essenciais vinham de Câmara Especial ou Turma Recursal e 2 tinham órgão vazio no índice.'),
+      orgao_colegiado: z.string().optional().describe('Órgão EXATO em Formato de Título, sensível a maiúsculas. 2º grau: "1ª Câmara Cível", "2ª Câmara Criminal", "1ª Turma Recursal". 1º grau (vara/juizado, só SENTENÇA): "Comarca - Vara", ex.: "Porto Velho - 4ª Vara Cível" — copie do campo "Órgão" de um resultado; com vara, a busca vai sozinha para tipo=SENTENÇA. Filtra pelo CADASTRO do portal, que mostra a câmara ATUAL do processo, não a que julgou (relatores realocados para a nova "3ª Câmara Cível" levaram seus processos): para a posição de uma câmara, confira a câmara declarada no fecho de cada acórdão, e saiba que julgados dela cadastrados em outra ficam de fora. UM órgão só: vírgula ou "ou" não somam órgãos (o portal devolve 0). Não filtre por família de câmara por padrão: nas teses medidas, 2 de 8 julgados essenciais vinham de Câmara Especial ou Turma Recursal e 2 tinham órgão vazio no índice.'),
       relator: z
         .string()
         .optional()
@@ -264,7 +264,7 @@ server.registerTool(
       "Parâmetro obrigatório: nr_processo (número CNJ). O id do documento NÃO é parâmetro e não substitui o número: a ferramenta busca pelo processo e devolve todos os julgamentos dele, cada um com o seu id; para citar um deles, use o id que aparece na resposta. " +
       "Se o processo tiver julgamentos distintos (original, embargos, segundos embargos), a resposta lista todos com data, relator e id " +
       "do documento — a Citação do cabeçalho é só da decisão mais recente. Cada peça avisa quando a câmara ou o relator do índice " +
-      "divergem do que o texto do acórdão declara (prevalece o texto; o cadastro do portal erra a câmara com frequência). " +
+      "divergem do que o texto do acórdão declara (prevalece o texto; o cadastro do portal mostra a câmara atual do processo, não a que julgou). " +
       "A câmara vem do FECHO do acórdão (\"acordam os Magistrados da(o) ...\"), a ata do julgamento; sem fecho, do cabeçalho. " +
       "Quando o fecho diverge do índice, a Citação do cabeçalho já sai com a câmara do fecho. " +
       "Cada peça traz o PRÓPRIO link do portal (\"· link ...\" no título da peça); o link do topo é o da peça mais recente. " +

@@ -1731,7 +1731,7 @@ test("formatPanorama usa as agregações fixas do portal (resultado inteiro) e s
   assert.match(p, /Panorama dos 1234 documentos/);
   assert.match(p, /Órgãos \(cadastro\): 3ª Câmara Cível 700 · 1ª Câmara Cível 500$/m);
   assert.match(p, /Por ano de julgamento: 2024: 15 · 2025: 7/);
-  assert.match(p, /cadastro do portal, que erra a câmara/);
+  assert.match(p, /cadastro do portal, que mostra a câmara ATUAL/);
   assert.equal(formatPanorama({ hits: { total: { value: 3 } } }), "");
   // entra no formatBusca com 3+ documentos e some com opções.semPanorama
   const out = formatBusca({ ...data, hits: { total: { value: 1234 }, hits: [srcV27(1, "x"), srcV27(2, "y"), srcV27(3, "z")] } }, "q", ["ACÓRDÃO"], "relevantes", 1, 10);

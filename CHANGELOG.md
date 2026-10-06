@@ -2,6 +2,14 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.13.3 (06/10/2026): por que o cadastro mostra a 3ª Câmara Cível
+
+O cadastro do portal não "erra" a câmara: mostra a câmara ATUAL do processo. Com a criação da 3ª Câmara Cível, relatores
+da 1ª e da 2ª foram realocados para ela e levaram, preventos, os processos que relatavam — daí acórdãos julgados pela 1ª ou
+pela 2ª aparecerem cadastrados na 3ª (15 de 24 na amostra de 14/09/2026). A regra não muda (cita-se pela câmara do fecho,
+quem julgou); mudam as explicações nas descrições das ferramentas e nos avisos. Para a linha de um desembargador, buscar
+pelo relator rende mais que filtrar pela câmara. Informação do autor (06/10/2026).
+
 ## v1.13.2 (06/10/2026): marcador de espera nunca passa do teto de 1 h
 
 O teste "arquivo ilegível ou valores absurdos" falhou de forma intermitente na publicação da 1.13.1: o saneamento do estado
