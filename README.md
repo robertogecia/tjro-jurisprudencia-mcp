@@ -204,7 +204,7 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
   | ENTRE ASPAS | ~100% | ~70% | ~0% |
   | ALEGAÇÃO DA PARTE | 71% a 90% | ~83% | 2% a 8% |
   | NEGAÇÃO | ~68% | ~75% | ~7% |
-  | OBITER DICTUM? ("ainda que assim não fosse", "a título de argumentação") | ~86% | ~12% | ~0% |
+  | OBITER DICTUM? ("ainda que assim não fosse", "a título de argumentação") | ~86% | ~8% | ~0% |
 
   A faixa da ALEGAÇÃO vem de duas amostras (120 e 160 trechos). São avisos de cautela, não garantia: a ausência
   deles não prova que a frase é do tribunal. Os números antigos de TRANSCRIÇÃO e VOTO DIVERGENTE (97% e 100% de

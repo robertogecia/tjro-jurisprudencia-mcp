@@ -264,7 +264,7 @@ test("v1.15.0: OBITER DICTUM? dispara com marca contrafactual na mesma frase; n�
   const v = (txt, x) => { const tn = norm1(txt), i = tn.indexOf(norm1(x)); assert.ok(i >= 0, x); return obiterAntes(tn, i, i + x.length, txt); };
   assert.equal(v("VOTO Mesmo que se admitisse a ausência de notificação, tal circunstância não invalidaria o negócio jurídico.", "tal circunstância não invalidaria o negócio jurídico"), "mesmo que se admitisse");
   assert.equal(v("VOTO Apenas para argumentar, ainda que superada a preclusão, não haveria cerceamento de defesa.", "não haveria cerceamento de defesa"), "ainda que superada");
-  assert.equal(v("VOTO De todo modo, a matéria é integralmente devolvida ao Tribunal e será examinada.", "a matéria é integralmente devolvida ao Tribunal"), "de todo modo");
+  assert.equal(v("VOTO De todo modo, a matéria é integralmente devolvida ao Tribunal e será examinada.", "a matéria é integralmente devolvida ao Tribunal"), null);   // "de todo modo" saiu: no TRT14 abria fundamento principal (4 ratio : 1 obiter)
   assert.equal(v("VOTO Ainda que se admita que a apelada realizou a operação, isso não torna legítimo o saldo devedor.", "isso não torna legítimo o saldo devedor"), null);   // concessiva no presente: o tribunal enfrenta
   assert.equal(v("VOTO O pedido é, em tese, cabível, mas a prova dos autos demonstra a regularidade da contratação.", "a prova dos autos demonstra a regularidade da contratação"), null);
   assert.equal(v("VOTO A revisão só cabe quando o valor se mostrar irrisório ou exorbitante, o que não é o caso dos autos.", "o valor se mostrar irrisório ou exorbitante"), null);
