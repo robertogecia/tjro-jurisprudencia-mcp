@@ -1,3 +1,4 @@
 harness/
 test/
 .github/
+*.bak*
