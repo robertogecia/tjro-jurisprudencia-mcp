@@ -76,3 +76,28 @@ test("recibo() da 1.10.0 leva classe, relator e órgão do índice; ausentes vir
   assert.equal(v.relator_indice, null);
   assert.equal(v.orgao_indice, null);
 });
+
+test("buscarRecibos (v1.14.0): filtro por processo (prefixo) e por id, com ou sem termos; entrada inválida orienta", () => {
+  _limparMemoParaTeste();
+  const pasta = pastaComTres();
+  let out = buscarRecibos("", null, 10, pasta, { nrProcesso: "7000000-00.2025.8.22.0001" });
+  assert.match(out, /2 de 3 documento\(s\) já lidos nesta máquina atendem a «\(sem termos\)» em processo 7000000-00\.2025\.8\.22\.0001/);
+  assert.ok(out.includes("id 1 ") && out.includes("id 2 ") && !out.includes("id 3 "), out);
+  out = buscarRecibos("banco", null, 10, pasta, { nrProcesso: "700000000" });
+  assert.match(out, /0 de 3 documento/);          // o processo …00.2025 não fala em banco
+  out = buscarRecibos("banco", null, 10, pasta, { nrProcesso: "70000000" });
+  assert.match(out, /1 de 3 documento\(s\).*em processo 70000000…/);
+  out = buscarRecibos("", null, 10, pasta, { idDocumento: "3" });
+  assert.match(out, /1 de 3 documento\(s\).*em id 3/);
+  assert.match(buscarRecibos("", null, 10, pasta, { nrProcesso: "123" }), /^BUSCA LOCAL NÃO REALIZADA — nr_processo/);
+  assert.match(buscarRecibos("", null, 10, pasta, { idDocumento: "abc" }), /^BUSCA LOCAL NÃO REALIZADA — id_documento/);
+});
+
+test("buscarRecibos (v1.15.0): filtro por relator (parte do nome, sem acento), do índice ou do texto", () => {
+  _limparMemoParaTeste();
+  const pasta = pastaComTres();
+  const out = buscarRecibos("", null, 10, pasta, { relator: "fulano" });
+  assert.match(out, /1 de 3 documento\(s\).*em relator «fulano»/);
+  assert.ok(out.includes("id 1 "), out);
+  assert.match(buscarRecibos("", null, 10, pasta, { relator: "Sicrano" }), /0 de 3 documento/);
+});

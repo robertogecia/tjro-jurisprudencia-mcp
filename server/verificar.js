@@ -10,6 +10,8 @@ import { norm1, faixasAlheias, RE_VOZ_PROPRIA, trechosCitados, coberturaCitada, 
 export { trechosCitados, coberturaCitada, ASPAS_SPAN_MAX };
 import { recibo, cnj, dirRecibos } from "./lib.js";
 import { reciboPorId, recibosDoProcesso, soDigitos } from "./recibos.js";
+import { posicaoNoJulgado, RE_OBITER } from "./posicao.js";
+export { posicaoNoJulgado };
 
 export const PISO_TRECHO_PALAVRAS = 4, PISO_TRECHO_CHARS = 25, VAO_MAXIMO = 1500;
 const W = "a-z0-9";
@@ -47,6 +49,8 @@ export const ALEGACAO_DIST_MAX = 600, ALEGACAO_SUJEITO_JANELA = 200, ALEGACAO_CA
 const ABREV = /(?:^|[^a-z0-9])(?:art|arts|n|no|nos|fl|fls|id|ids|des|desa|dr|dra|sr|sra|min|rel|inc|p|pp|pag|proc|cf|num|ex|exmo|exma|res|sum|ed|v|vol|cap|al|rr|c\/c|ss)$/;
 const RE_ADVERSATIVA = /(?<![a-z0-9])(?:contudo|todavia|entretanto|no entanto|porem|mas(?! tambem))(?![a-z0-9])/;
 const RE_CONCESSIVA = /(?<![a-z0-9])(?:embora|conquanto|ainda que|apesar de|em que pese|nao obstante|a despeito de|malgrado|se bem que)(?![a-z0-9])[^,.;]{0,90}$/;
+// v1.14.0: "ao contrário do que sustenta o apelante, …" é o tribunal refutando — o verbo de relato não abre alegação
+const RE_AO_CONTRARIO = /(?:ao contrario|diferentemente|diversamente|contrariamente)\s+(?:do|ao)\s+que\s+(?:[a-z]+\s+){0,2}$/;
 const RE_ATRIB_EXPLICITA = /(?<![a-z0-9])(?:segundo|conforme|de acordo com|na visao d[eoa]|para)\s+(?:[oa]s?\s+)?(?:parte\s+)?(?:apelantes?|apelad[oa]s?|agravantes?|agravad[oa]s?|recorrentes?|recorrid[oa]s?|embargantes?|embargad[oa]s?|autor(?:a|es|as)?|reus?|requerentes?|requerid[oa]s?|banco|inicial|contestacao)(?![a-z0-9])/;
 
 /** início (no texto) da frase que contém a posição `p`, olhando só para trás até `piso`. Usa o BRUTO: ponto + espaço +
@@ -75,6 +79,7 @@ export function alegacaoDaParte(tn, ini0, fim = ini0 + 80, bruto = null) {
     const pos = frase0 + m.index, depois = tn.slice(pos + m[0].length, pos + m[0].length + 45);
     if (/^-se/.test(depois)) continue;                                              // "reitera-se", "alega-se"
     if (/(?:^|[^a-z0-9])(?:nao|nem|jamais|nunca)\s+(?:se\s+)?$/.test(tn.slice(Math.max(frase0, pos - 12), pos))) continue;   // "não narra"
+    if (RE_AO_CONTRARIO.test(tn.slice(Math.max(frase0, pos - 30), pos))) continue;                                         // "ao contrário do que sustenta"
     const antes = tn.slice(Math.max(frase0, pos - ALEGACAO_SUJEITO_JANELA), pos);
     // verbo abrindo a frase, com até dois adjuntos curtos antes: "Alega,", "No mérito, aduz", "Ao final, com base nessa retórica, propugna"
     const noInicio = /^\s*(?:[a-z]+(?: [a-z]+){0,4},\s+){0,2}(?:[a-z]+\s+){0,2}$/.test(tn.slice(frase0, pos));
@@ -101,7 +106,8 @@ export function alegacaoDaParte(tn, ini0, fim = ini0 + 80, bruto = null) {
 // falar", afasta-se, rejeito, julgou improcedente…; adjetivo solto não conta) a até 80 caracteres do trecho, sem quebra
 // de oração entre ele e o trecho, e alcançando ao menos 3 palavras do trecho antes da 1ª quebra de oração dentro dele.
 const RE_NEG_OPERADOR = /(?<![a-z0-9])(?:nao|jamais|nunca|nem|descabe|descabid[oa]s?|incabive(?:l|is)|afasta-se|afasto|afastad[oa]s?|rejeita-se|rejeito|rejeitad[oa]s?|nego|negou|negar|nega-se|negam|improcede|julg(?:ou|o|ar|aram|ada|ado|ados|adas)\s+improcedentes?|inexist(?:e|em|ir|iu|indo)|carece|carecem|impossibilidade de)(?![a-z0-9])/g;
-const RE_NEG_FALSA = /^\s*(?:obstante|so\b|apenas|somente|se\s+confunde)/;
+// v1.14.0: "não havendo/há/resta dúvida de que…" afirma, não nega (achado no porte ao STJ/TRT14)
+const RE_NEG_FALSA = /^\s*(?:obstante|so\b|apenas|somente|se\s+confunde|(?:havendo|ha|houve|resta|restam|restando|pairam?)\s+(?:qualquer\s+|mais\s+)?duvidas?)/;
 const RE_QUEBRA_ORACAO = /[.;:]|,\s*(?:mas|e|ou|que|o que|de forma|de modo|sendo|alem|conforme|porque|pois|porquanto|embora|ainda|razao pela|motivo pelo|[a-z]+ndo)(?![a-z0-9])|\smas\s/;
 export const NEGACAO_JANELA = 80, NEGACAO_ALCANCE_MIN = 3;
 
@@ -127,7 +133,28 @@ export function negacaoAntes(tn, ini0, fim, bruto = null) {
 }
 
 
+// OBITER DICTUM? (v1.15.0): marca de raciocínio hipotético ou fundamento alternativo na MESMA frase do trecho, antes dele
+// ou na cabeça dele ("Ainda que se admitisse X, …", "De todo modo, Y"). Devolve a marca, ou null.
+export const OBITER_JANELA = 400, OBITER_CABECA = 0.4;
+export function obiterAntes(tn, ini0, fim, bruto) {
+  const cabeca = ini0 + Math.floor((fim - ini0) * OBITER_CABECA);
+  const piso = Math.max(0, ini0 - OBITER_JANELA);
+  const frase0 = inicioDaFrase(bruto, tn, piso, cabeca);
+  let m = null;
+  for (const x of tn.slice(frase0, cabeca).matchAll(RE_OBITER)) m = x;
+  return m ? m[0] : null;
+}
+
 const sobrepoe = (a, b, x, y) => a < y && b > x;
+
+/** A proclamação do fecho ("…em, RECURSO PROVIDO NOS TERMOS DO VOTO DIVERGENTE…, VENCIDO O RELATOR"), para o alerta. */
+export function proclamacao(texto, fecho) {
+  if (!(fecho >= 0) || fecho >= texto.length) return "";
+  const cauda = texto.slice(fecho, fecho + 1800).replace(/\s+/g, " ");
+  const m = /\bem,\s*["“]?\s*([^]*?)(?=\s*["”]?\s*(?:Dou f[eé]|Porto Velho|Ji-Paran[aá]|Cacoal|Vilhena|Ariquemes|Guajar[aá]|Rolim|Jaru|Ouro Preto|$))/i.exec(cauda);
+  const p = (m ? m[1] : cauda).trim().slice(0, 420);
+  return p ? ` Fecho: «${p}${p.length >= 420 ? "…" : ""}». Se o fecho diz "vencido o relator"/"nos termos do voto divergente", o voto do RELATOR é o vencido (ao menos no ponto decidido por maioria: preliminar unânime no mesmo acórdão continua sendo do órgão).` : "";
+}
 
 /** Confere `trecho` em `texto` (documento do TJRO do `tipo` dado). Posições em norm1 = posições no bruto. */
 export function conferirTrecho(texto, trecho, tipo) {
@@ -161,8 +188,10 @@ export function conferirTrecho(texto, trecho, tipo) {
   else if (naCasa) notas.push("VOZ DA CASA: o trecho está na ementa/fecho do próprio acórdão (parte que é palavra do TJRO, mesmo que o voto transcreva frase igual de outro julgado).");
   if (emTranscricao)
     alertas.push("TRANSCRIÇÃO: o trecho está dentro de bloco que o voto transcreve de OUTRO julgado/tribunal — não é palavra do TJRO neste processo. Se for citar, cite como o TJRO citando; melhor: pesquise o original.");
-  if (fx.divergente && spans.some(([a, b]) => sobrepoe(a, b, fx.divergente[0], fx.divergente[1])))
-    alertas.push("VOTO DIVERGENTE: o trecho está na parte do acórdão que pode ser o voto VENCIDO (pedido de vênia, voto-vista ou relator vencido). Leia o fecho (\"por maioria, vencido…\") antes de citar como entendimento do órgão.");
+  // v1.14.0: conta a MAIORIA do trecho dentro da faixa (trecho que só encosta na fronteira — "…é como voto. DECLARAÇÃO DE
+  // VOTO…" — não é o vencido), e o alerta já traz a proclamação do fecho, para o agente ler quem venceu sem reabrir o acórdão.
+  if (fx.divergente && coberturaCitada([fx.divergente], ini0, pos) * 2 > pos - ini0)
+    alertas.push("VOTO DIVERGENTE: o trecho está na parte do acórdão que pode ser o voto VENCIDO (pedido de vênia, voto-vista ou relator vencido). Leia o fecho (\"por maioria, vencido…\") antes de citar como entendimento do órgão." + proclamacao(String(texto || ""), fx.fecho));
   if (!emTranscricao && !naCasa && !fx.ementaDaCasa) {
     const cit = trechosCitados(String(texto || ""));
     const dentro = coberturaCitada(cit, ini0, pos);
@@ -174,6 +203,12 @@ export function conferirTrecho(texto, trecho, tipo) {
   }
   if (negacaoAntes(tn, ini0, pos, String(texto || "")))
     alertas.push("NEGAÇÃO: há negativa logo antes do trecho — o recorte pode inverter o julgado. Não citar sem ler a frase inteira.");
+  // v1.15.0: onde o trecho está (seção da ementa, relatório/fundamentação/dispositivo do voto) e marca de obiter
+  const posicao = posicaoNoJulgado(String(texto || ""), tipo, ini0, pos, fx);
+  if (posicao) notas.push(`POSIÇÃO NO JULGADO: ${posicao}.`);
+  const ob = !emTranscricao && !naCasa && !fx.ementaDaCasa ? obiterAntes(tn, ini0, pos, String(texto || "")) : null;
+  if (ob)
+    alertas.push(`OBITER DICTUM?: o trecho vem sob «${ob}» — raciocínio hipotético ou fundamento alternativo; o resultado do julgado não dependeu dele. Vale como reforço, não como ratio decidendi; cite dizendo que é obiter.`);
   const contexto = String(texto || "").slice(Math.max(0, ini0 - 120), pos + 120).replace(/\s+/g, " ").trim();
   return { ok: true, alertas, notas, contexto, spans };
 }
@@ -182,7 +217,7 @@ export function conferirTrecho(texto, trecho, tipo) {
 export const recibosDeResposta = (data) => ((data?.hits?.hits) || []).map((h) => recibo(h._source || {})).filter(Boolean);
 
 const RODAPE =
-  `\nCobre o TEXTO INTEIRO de cada documento (ementa, relatório, voto, fecho) e diz DE QUEM é a frase: TRANSCRIÇÃO (ementa de outro tribunal/julgado copiada no voto), VOTO DIVERGENTE (pode ser o vencido), ENTRE ASPAS, ALEGAÇÃO DA PARTE e NEGAÇÃO. Trecho com alerta NÃO entra na ficha como posição do órgão sem resolver a atribuição. ` +
+  `\nCobre o TEXTO INTEIRO de cada documento (ementa, relatório, voto, fecho) e diz DE QUEM é a frase: TRANSCRIÇÃO (ementa de outro tribunal/julgado copiada no voto), VOTO DIVERGENTE (pode ser o vencido), ENTRE ASPAS, ALEGAÇÃO DA PARTE, NEGAÇÃO e OBITER DICTUM? (raciocínio hipotético/alternativo). Trecho com alerta NÃO entra na ficha como posição do órgão sem resolver a atribuição. A nota POSIÇÃO NO JULGADO diz ONDE a frase está (seção da ementa do CNJ, relatório, fundamentação ou dispositivo do voto): é a evidência para \`ratio_ou_dictum\` da ficha, não a decisão. ` +
   `Comparação por palavra inteira, tolerante a caixa, acento e pontuação; mínimo de ${PISO_TRECHO_PALAVRAS} palavras; \`[...]\` separa fragmentos em ordem, a até ${VAO_MAXIMO} caracteres. Se ❌: não cite entre aspas — parafraseie, ou confira no portal. A heurística é a mesma do recibo que o lint da peticao-rg lê: ✅ aqui e erro lá não deveriam divergir; se divergirem, vale o lint.`;
 
 /**

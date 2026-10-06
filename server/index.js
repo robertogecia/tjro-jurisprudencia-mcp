@@ -196,6 +196,8 @@ server.registerTool(
       const filtros = [];
       if (a.classe_judicial) filtros.push(`classe_judicial="${a.classe_judicial}"`);
       if (a.orgao_colegiado) filtros.push(`orgao_colegiado="${a.orgao_colegiado}"`);
+      if (/^[12]ª\s*C[âa]mara\s+C[íi]vel$/i.test(String(a.orgao_colegiado || "").trim()))
+        nota += `Nota: orgao_colegiado="${a.orgao_colegiado}" filtra pelo cadastro, que mostra a câmara ATUAL do processo: os julgados dessa câmara cujo relator foi realocado para a 3ª Câmara Cível estão cadastrados lá e ficam FORA desta página. Para a linha de um desembargador, busque por relator="…" sem câmara; para a posição da câmara, confira o fecho de cada acórdão.\n`;
       if (Array.isArray(a.excluir) && a.excluir.some((t) => String(t).trim()))
         filtros.push(`excluir=${JSON.stringify(a.excluir.filter((t) => String(t).trim()).slice(0, 8))}`);
       if (a.relator)
@@ -307,8 +309,10 @@ server.registerTool(
       "Comparação por palavra inteira, tolerante a caixa, acento e pontuação; mínimo de 4 palavras; `[...]` separa fragmentos que devem aparecer " +
       "em ordem, a no máximo 1.500 caracteres um do outro (não costura a ementa ao fim do voto). " +
       "✅ pode vir com ALERTA DE ATRIBUIÇÃO: TRANSCRIÇÃO (ementa do STJ/outro TJ copiada no voto — não é palavra do TJRO), VOTO DIVERGENTE (pode ser o " +
-      "vencido), ENTRE ASPAS (o tribunal citando alguém), ALEGAÇÃO DA PARTE, NEGAÇÃO (negativa logo antes do recorte). Trecho com alerta não entra na " +
-      "ficha como posição do órgão sem resolver a atribuição. É a mesma heurística que o recibo leva ao lint da peticao-rg. " +
+      "vencido), ENTRE ASPAS (o tribunal citando alguém), ALEGAÇÃO DA PARTE, NEGAÇÃO (negativa logo antes do recorte) e OBITER DICTUM? (\"ainda que assim não fosse\", " +
+      "\"a título de argumentação\": o resultado não dependeu da frase). Trecho com alerta não entra na ficha como posição do órgão sem resolver a atribuição. " +
+      "A nota POSIÇÃO NO JULGADO diz ONDE a frase está — seção da ementa do CNJ (caso em exame / questão / razões de decidir / dispositivo e tese), relatório, " +
+      "fundamentação ou dispositivo do voto, fecho — e é a evidência para preencher ratio_ou_dictum na ficha; decidir continua sendo de quem lê. É a mesma heurística que o recibo leva ao lint da peticao-rg. " +
       "Prefira id_documento (o id da peça citada); com só o número, confere em todos os documentos do processo já lidos.",
     inputSchema: {
       trecho: z.string().describe("O trecho exatamente como vai entre aspas; cortes com [...]."),
@@ -345,15 +349,19 @@ server.registerTool(
       "Use ANTES de gastar cota do JURIS (o filtro do portal conta volume em poucos minutos): se o acórdão que resolve o ponto já foi lido, está aqui, " +
       "com id, número, data, câmara do fecho e um trecho em volta do termo. NÃO substitui buscar_jurisprudencia_tjro: cobre só o que esta máquina já viu — " +
       "zero resultado aqui NUNCA é \"não localizado\". Termos: todas as palavras da consulta devem aparecer (palavra inteira, sem acento/caixa; `*` no fim = prefixo); " +
-      "`grupos` = sinônimos (OU dentro do grupo, E entre grupos), expressão com espaço = frase exata. Ordena por densidade dos termos e data.",
+      "`grupos` = sinônimos (OU dentro do grupo, E entre grupos), expressão com espaço = frase exata. Ordena por densidade dos termos e data. " +
+      "`nr_processo`, `id_documento` ou `relator` reencontram o que já foi lido, com ou sem termos.",
     inputSchema: {
       consulta: z.string().optional().describe("Palavras que devem TODAS aparecer. Ex.: \"licença-prêmio cedência\"."),
       grupos: z.array(z.array(z.string())).optional().describe('Sinônimos: [["cedência","cedido"],["licença-prêmio","licença prêmio"]].'),
       limite: z.number().int().min(1).max(RECIBOS_LIMITE_MAX).optional().describe(`Quantos mostrar (1 a ${RECIBOS_LIMITE_MAX}; padrão 10).`),
+      nr_processo: z.string().optional().describe("Só recibos deste processo (número CNJ, com ou sem máscara; os 7+ primeiros dígitos bastam). Reencontra um acórdão já lido sem precisar de termos."),
+      id_documento: z.string().optional().describe("Só o recibo com este id (id_processo_documento). Diz se o documento já foi lido nesta máquina."),
+      relator: z.string().optional().describe("Só recibos deste relator (parte do nome basta, sem acento/caixa): o que esta máquina já leu de um desembargador ou juiz. Para a linha dele no acervo, buscar_jurisprudencia_tjro com relator=."),
     },
     annotations: { title: "Buscar recibos locais do TJRO", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
-  async (a) => ({ content: [{ type: "text", text: buscarRecibos(a.consulta || "", a.grupos ?? null, a.limite ?? 10) }] })
+  async (a) => ({ content: [{ type: "text", text: buscarRecibos(a.consulta || "", a.grupos ?? null, a.limite ?? 10, undefined, { nrProcesso: a.nr_processo || "", idDocumento: a.id_documento || "", relator: a.relator || "" }) }] })
 );
 
 server.registerTool(

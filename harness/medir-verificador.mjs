@@ -176,6 +176,32 @@ if (fs.existsSync(arqAlertas)) {
   }
 }
 
+// ---------------------------------------------------------------- 4b. OBITER DICTUM? às cegas (v1.15.0)
+// gold-obiter.local.json: estratos "dispara" (logo depois de uma marca de obiter) e "calado" (pista genérica de hipótese
+// por perto, alerta calado). Positivo = o rotulador disse que o resultado NÃO dependeu da frase (obiter).
+const arqOb = path.join(aqui, "gold-obiter.local.json");
+if (fs.existsSync(arqOb)) {
+  const itens = JSON.parse(fs.readFileSync(arqOb, "utf8")).itens.filter((g) => g.positivo !== null);
+  const metade = (cod) => (Number(cod.slice(3)) % 2 ? "ajuste" : "validacao");
+  console.log("OBITER DICTUM? às cegas (ponderado por estrato):");
+  for (const parte of ["ajuste", "validacao", "total"]) {
+    let tp = 0, fp = 0, fn = 0, tn = 0, n = 0; const erros = [];
+    for (const g of itens.filter((x) => parte === "total" || metade(x.cod) === parte)) {
+      const r = porId.get(g.id);
+      if (!r) continue;
+      const c = conferirTrecho(r.texto, g.t, r.tipo);
+      if (!c.ok) continue;
+      n++;
+      const d = c.alertas.some((a) => a.startsWith("OBITER"));
+      if (g.positivo) d ? (tp += g.peso) : (fn += g.peso); else d ? (fp += g.peso) : (tn += g.peso);
+      if (d !== g.positivo) erros.push(`${g.positivo ? "PERDIDO" : "FALSO ALARME"} ${g.cod} [${g.r}/${g.estrato}]: ${g.t.slice(0, 80)}`);
+    }
+    const f = (a, b) => (b ? (100 * a / b).toFixed(0) + "%" : "—");
+    console.log(`  ${"OBITER DICTUM?".padEnd(18)} ${parte.padEnd(9)} n=${String(n).padStart(3)} · precisão ${f(tp, tp + fp)} · cobertura ${f(tp, tp + fn)} · falso alarme ${f(fp, fp + tn)}`);
+    if (args.includes("--erros") && parte === "total") for (const e of erros) console.log("     - " + e);
+  }
+}
+
 // ---------------------------------------------------------------- 5. custódia às cegas + 2ª rodada de alegação
 // gold-custodia2.local.json (v1.13.0): TRANSCRIÇÃO em três estratos (dispara / calado perto de gatilho / longe) e duas
 // definições de positivo — "outro julgado" (o que a custódia promete) e "qualquer transcrição" (inclui sentença, lei,
