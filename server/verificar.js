@@ -108,7 +108,13 @@ export function alegacaoDaParte(tn, ini0, fim = ini0 + 80, bruto = null) {
 // de oração entre ele e o trecho, e alcançando ao menos 3 palavras do trecho antes da 1ª quebra de oração dentro dele.
 const RE_NEG_OPERADOR = /(?<![a-z0-9])(?:nao|jamais|nunca|nem|descabe|descabid[oa]s?|incabive(?:l|is)|afasta-se|afasto|afastad[oa]s?|rejeita-se|rejeito|rejeitad[oa]s?|nego|negou|negar|nega-se|negam|improcede|julg(?:ou|o|ar|aram|ada|ado|ados|adas)\s+improcedentes?|inexist(?:e|em|ir|iu|indo)|carece|carecem|impossibilidade de|sem razao|sem razoes)(?![a-z0-9])/g;
 // v1.14.0: "não havendo/há/resta dúvida de que…" afirma, não nega (achado no porte ao STJ/TRT14)
-const RE_NEG_FALSA = /^\s*(?:obstante|so\b|apenas|somente|se\s+confunde|fosse\b|(?:havendo|ha|houve|resta|restam|restando|pairam?)\s+(?:qualquer\s+|mais\s+)?duvidas?)/;
+const RE_NEG_FALSA = /^\s*(?:obstante|so\b|apenas|somente|se\s+confunde|fosse\b|(?:havendo|ha|houve|resta|restam|restando|pairam?)\s+(?:qualquer\s+|mais\s+)?duvidas?|(?:e|era|foi|sao|seria)\s+(?:outr[oa]s?|diferente|divers[oa]s?)\b|se\s+(?:desconhece|ignora|olvida|nega|discute|questiona)\b|(?:se\s+)?pode\s+(?:deixar|olvidar|ignorar|negar)\b|deixa\s+de\b|ha\s+como\s+negar|ha\s+negar)/;
+// gabarito cego de 06/10/2026 (validação em 120 trechos novos: falso alarme 42% → 31%, cobertura 100% → 98%): negação a mais de 6
+// palavras já fechou a própria oração; "não utilizado pelo…" nega o particípio; "…, e não sobre…" recusa uma alternativa
+const NEGACAO_DIST_MAX = 6;
+const RE_NEG_PARTICIPIO = /^\s*(?:\w+mente\s+)?[a-z]+(?:ad|id)[oa]s?\b/;
+const RE_NEG_AUX = /^\s*(?:tenha|tem|ha|havia|foi|for|seja|sido|esta|estava)\b/;
+const RE_NEG_PREP = /^\s*(?:sobre|pel[oa]s?|para|por|com|contra|ante|perante|apenas|so|somente|mais|menos)\b/;
 const RE_QUEBRA_ORACAO = /[.;:]|,\s*(?:mas|e|ou|que|o que|de forma|de modo|sendo|alem|conforme|porque|pois|porquanto|embora|ainda|razao pela|motivo pelo|[a-z]+ndo)(?![a-z0-9])|\smas\s/;
 export const NEGACAO_JANELA = 80, NEGACAO_ALCANCE_MIN = 3;
 
@@ -124,6 +130,8 @@ export function negacaoAntes(tn, ini0, fim, bruto = null) {
   const ponte = jan.slice(op.index + op[0].length);
   if (/[.;:]/.test(ponte)) return false;
   if (ponte.includes(",") && ponte.trim().length > 15) return false;     // ", portanto, a" passa; oração nova não
+  if ((ponte.match(/[^ \t\n\r\f\v]+/g) || []).length > NEGACAO_DIST_MAX) return false;
+  if (op[0] === "nao" && (RE_NEG_PREP.test(ponte) || (RE_NEG_PARTICIPIO.test(ponte) && !RE_NEG_AUX.test(ponte)))) return false;
   const tr = tn.slice(ini0, fim);
   // trecho que começa pela conjunção "e" é oração nova; "é" (verbo) não — olha o caractere ORIGINAL, porque o norm1 dobra os dois
   // para "e" ("NÃO é devido" citado como "é devido…" passava sem alerta; achado no porte para o TRT14, 05/10/2026)
