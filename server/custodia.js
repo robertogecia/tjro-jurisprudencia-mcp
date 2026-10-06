@@ -31,7 +31,7 @@
  * lia o campo gravado enquanto o verificador recalculava na hora). Um teste fixa o hash das saídas por versão.
  * 1 = v1.7.16 (sem carimbo) · 2 = v1.10.1 ("Ementa ID" e lista de precedentes do relator) · 3 = v1.13.0 (transcrição
  * declarada, cabeçalho fora, unanimidade e 1ª pessoa na divergência; medida às cegas). */
-export const CUSTODIA_VERSAO = 3;
+export const CUSTODIA_VERSAO = 4;   // v4 (1.16.0): trechos_obiter
 
 const _cache = new Map();
 /** minúsculas, sem acento, aspas e travessões unificados — 1 unidade UTF-16 → 1 unidade. */
@@ -284,12 +284,13 @@ export function vozDaCasa(tn, bruto) {
     if (/rondonia/.test(tn.slice(m.index, m.index + 400))) fecho = m.index;
   if (fecho < 0) return { ini: tn.length, fecho: tn.length };
   let em = -1;
-  for (const m of bruto.slice(0, fecho).matchAll(/\bEMENTA\b/g)) em = m.index;
+  // 1.16.0: também "Ementa :" em caixa mista (achado na medição cega da POSIÇÃO: a ementa da casa virava fim do voto)
+  for (const m of bruto.slice(0, fecho).matchAll(/\bEMENTA\b|\bEmenta[ \t]*:/g)) em = m.index;
   if (em >= 0 && fecho - em < 20000) return { ini: em, fecho };
   // sem o rótulo EMENTA (formato da Res. CNJ 2023, que começa direto no cabeçalho em caixa alta): a ementa começa
   // logo depois do último voto — "É como voto." do relator ou "Acompanho…"/"De acordo." do último vogal
   let fimVotos = -1;
-  for (const m of tn.slice(0, fecho).matchAll(/\be (?:como|o) (?:voto|meu voto)\.|\bacompanho\b[^.]{0,120}\.|\bde acordo\./g))
+  for (const m of tn.slice(0, fecho).matchAll(/\be como (?:voto|meu voto)\b\.?|\be o (?:voto|meu voto)\.|\bacompanho\b[^.]{0,120}\.|\bde acordo\./g))
     fimVotos = m.index + m[0].length;
   return { ini: fimVotos >= 0 && fecho - fimVotos < 20000 ? fimVotos : fecho, fecho };
 }
@@ -370,6 +371,34 @@ export function aspasDoCorpo(texto, tn, ini, fim, transcritas) {
 }
 
 // --------------------------------------------------------------------- recibo ---
+// OBITER (1.16.0): marca de raciocínio contrafactual ou fundamento alternativo (medida às cegas: 86% no TJRO, 82% no STJ,
+// 100% no TJSE e no TRT14). Mora aqui porque o recibo leva os trechos sob ela; posicao.js e verificar.js importam daqui.
+export const RE_OBITER = /(?<![a-z0-9])(?:ainda que assim nao fosse|se assim nao fosse|(?:ainda|mesmo) que (?:se )?(?:admitisse(?:mos)?|superad[ao]s?|ultrapassad[ao]s?|afastad[ao]s?|entendesse(?:mos)?|considerasse(?:mos)?|fosse|houvesse|pudesse)|a titulo de (?:argumentacao|reforco|ilustracao|obiter dictum)|(?:apenas|somente|so) para argumentar|ad argumentandum(?: tantum)?|por amor ao debate|obiter dictum|caso se entendesse)(?![a-z0-9])/g;
+export const OBITER_BLOCO_MAX = 600;
+const RE_FIM_FRASE = /[.;!?]["”’)\]]?\s+(?=["“‘(\[]?[A-ZÀ-Ý0-9])/g;
+const ABREV_FIM = /(?:^|[^a-z0-9])(?:art|arts|n|no|nos|fl|fls|id|ids|des|desa|dr|dra|sr|sra|min|rel|inc|p|pp|pag|proc|cf|num|ex|res|sum|ed|v|vol|cap|al|ss)$/;
+/** [ini, fim) de cada trecho sob marca de obiter no corpo [corpo, fim): da marca até o fim da frase (no máximo
+ * OBITER_BLOCO_MAX caracteres), fora de transcrição e de citação entre aspas — lá a marca é de quem o tribunal cita. */
+export function faixasObiter(texto, tn, corpo, fim, transcritas, aspas) {
+  const out = [];
+  const dentro = (i, fx) => fx.some(([a, b]) => i >= a && i < b);
+  const re = new RegExp(RE_OBITER.source, "g");
+  re.lastIndex = corpo;
+  for (let m; (m = re.exec(tn)) && m.index < fim;) {
+    if (dentro(m.index, transcritas) || dentro(m.index, aspas)) continue;
+    if (out.length && m.index < out[out.length - 1][1]) continue;
+    let b = Math.min(fim, m.index + OBITER_BLOCO_MAX);
+    const rf = new RegExp(RE_FIM_FRASE.source, "g");
+    rf.lastIndex = m.index + m[0].length;
+    for (let f; (f = rf.exec(texto)) && f.index < b;) {
+      if (f[0][0] === "." && ABREV_FIM.test(tn.slice(Math.max(0, f.index - 8), f.index))) continue;
+      b = f.index + 1; break;
+    }
+    out.push([m.index, b]);
+  }
+  return out;
+}
+
 /** Posições [ini, fim) do que no `texto` não é palavra do TJRO, e onde começa a voz da casa.
  * É a mesma conta de camposAlheios, sem recortar — o verificador de citação e a linha de
  * custódia do inteiro teor leem daqui. `casaIni` = início da ementa da casa + fecho (ACÓRDÃO);
@@ -377,7 +406,7 @@ export function aspasDoCorpo(texto, tn, ini, fim, transcritas) {
 export function faixasAlheias(texto, tipo) {
   const t = String(tipo || "").trim().toUpperCase();
   const n = texto ? texto.length : 0;
-  if (!texto || t === "EMENTA") return { transcritas: [], divergente: null, casaIni: n, fecho: n, ementaDaCasa: t === "EMENTA", aspas: [] };
+  if (!texto || t === "EMENTA") return { transcritas: [], divergente: null, casaIni: n, fecho: n, ementaDaCasa: t === "EMENTA", aspas: [], obiter: [] };
   const tn = norm1(texto);
   const casa = /AC[ÓO]RD[ÃA]O/.test(t) ? vozDaCasa(tn, texto) : { ini: tn.length, fecho: tn.length };
   const fim = casa.ini;
@@ -400,12 +429,16 @@ export function faixasAlheias(texto, tipo) {
     const v = votoDoRelator(tn, texto, div[0]);
     div = v >= 0 ? [v, div[0]] : div;
   }
-  return { transcritas, divergente: div, casaIni: fim, fecho: casa.fecho, ementaDaCasa: false, aspas: aspasDoCorpo(texto, tn, corpo, fim, transcritas) };
+  const aspas = aspasDoCorpo(texto, tn, corpo, fim, transcritas);
+  // as aspas curtas (< ASPAS_MIN) também calam a marca: "ainda que assim não fosse" dentro de citação é de quem o tribunal cita
+  const todasAspas = trechosCitados(texto).filter(([a, b]) => a >= corpo && b <= fim);
+  return { transcritas, divergente: div, casaIni: fim, fecho: casa.fecho, ementaDaCasa: false, aspas,
+    obiter: faixasObiter(texto, tn, corpo, fim, transcritas, todasAspas) };
 }
 
 /** Campos de custódia do recibo: o que no `texto` não é palavra do TJRO. */
 export function camposAlheios(texto, tipo) {
-  const vazio = { trechos_transcritos: [], trecho_divergente: "", trechos_entre_aspas: [] };
+  const vazio = { trechos_transcritos: [], trecho_divergente: "", trechos_entre_aspas: [], trechos_obiter: [] };
   const t = String(tipo || "").trim().toUpperCase();
   if (!texto || t === "EMENTA") return vazio;   // a ementa é a voz da casa
   const f = faixasAlheias(texto, tipo);
@@ -416,6 +449,7 @@ export function camposAlheios(texto, tipo) {
     trechos_transcritos: f.transcritas.map(([a, b]) => texto.slice(a, b)),
     trecho_divergente: f.divergente ? texto.slice(f.divergente[0], f.divergente[1]) : "",
     trechos_entre_aspas: f.aspas.map(([a, b]) => texto.slice(a, b)),
+    trechos_obiter: (f.obiter || []).map(([a, b]) => texto.slice(a, b)),
     ...voz,
   };
 }

@@ -206,6 +206,9 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
   | NEGAÇÃO | ~68% | ~75% | ~7% |
   | OBITER DICTUM? ("ainda que assim não fosse", "a título de argumentação") | ~86% | ~8% | ~0% |
 
+  A nota POSIÇÃO NO JULGADO (onde a frase está) foi medida do mesmo jeito em 06/10/2026: acerta a parte do julgado em 94%
+  dos trechos de uma validação cega de 72 (STJ 81%, TJSE 99%).
+
   A faixa da ALEGAÇÃO vem de duas amostras (120 e 160 trechos). São avisos de cautela, não garantia: a ausência
   deles não prova que a frase é do tribunal. Os números antigos de TRANSCRIÇÃO e VOTO DIVERGENTE (97% e 100% de
   detecção) vinham de um gabarito rotulado por quem desenhou a regra e não mediam alarme falso; às cegas, o VOTO

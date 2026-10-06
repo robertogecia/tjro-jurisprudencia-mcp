@@ -2,6 +2,22 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.16.0 (06/10/2026): obiter no recibo, POSIÇÃO medida às cegas, harmonização com os irmãos
+
+- **O recibo leva `trechos_obiter`** (custódia v4): cada frase do voto sob marca de obiter, da marca ao fim da frase, fora de
+  transcrição e de aspas. O lint da `peticao-rg` avisa quando a ficha cita uma delas, e avisa mais duro se a ficha diz
+  `ratio_ou_dictum: "ratio"`. Os recibos antigos são recalculados sozinhos ao iniciar (sem rede).
+- **POSIÇÃO NO JULGADO medida às cegas pela primeira vez** (dois rotuladores, kappa 0,96-0,97): **94% numa validação de 72
+  trechos novos, sorteados depois dos ajustes** (90% na amostra de ajuste, antes deles); o único erro sistemático da validação
+  (a parte final da ementa avançando sobre o "ACÓRDÃO Vistos…") foi corrigido depois dela, então o número dela não o inclui. Ajustes vindos da medição: seções da
+  ementa em caixa mista ("IV. Dispositivo e tese") ou sem número romano no início da linha; ementa da casa escrita "Ementa :"
+  e "É como voto" sem ponto (a custódia achava que o voto ia até o fecho); acórdão sem cabeçalho RELATÓRIO; ementa sem rótulo
+  logo depois do voto; o fecho começa no "ACÓRDÃO Vistos…", não no "acordam"; "Resumo em linguagem simples" é parte final.
+  Nenhum número do gabarito cego dos alertas mudou.
+- **"Ainda que assim não fosse" não é NEGAÇÃO** do que vem depois: o "não" é da marca de obiter (achado no porte à OAB).
+- Mesma regra em todos os verificadores com MCP próprio (TJRO, STJ, TJSE, TRF1/TNU, TRT14, TCE-RO, OAB), `atribuicao13.js`
+  idêntico entre os Node. Python espelhado: paridade 50.464 casos, 0 divergentes.
+
 ## v1.15.1 (06/10/2026): obiter mais estreito, "sem razão" nega
 
 Correções depois de levar o OBITER DICTUM? aos irmãos (STJ, TRT14, TJSE, TRF1) e medi-lo lá às cegas:

@@ -3,10 +3,9 @@
 // raciocínio hipotético ou fundamento alternativo (obiter dictum). É um LOCALIZADOR, não um juiz: diz onde a frase está,
 // para o agente preencher `ratio_ou_dictum` da ficha com evidência; decidir se o julgado dependeu dela continua sendo de
 // quem lê o acórdão. Distinguishing não mora aqui: exige os fatos do caso, que o servidor nunca vê.
-import { norm1 } from "./custodia.js";
+import { norm1, RE_OBITER } from "./custodia.js";
+export { RE_OBITER };
 
-export const RE_SECAO_EMENTA = /\b(?:I{1,3}|IV|V)[ \t\n\r\f\v]*[.)-]?[ \t\n\r\f\v]*(CASO EM EXAME|QUEST(?:ÃO|ÕES) EM DISCUSS[ÃA]O|RAZ[ÕO]ES DE DECIDIR|DISPOSITIVOS? E TESES?|DISPOSITIVO)\b/g;
-export const RE_CAUDA_EMENTA = /\b(?:Dispositivos? relevantes? citados?|Jurisprud[êe]ncia relevante citada|Legisla[çc][ãa]o relevante citada)\b/g;
 // fórmulas que abrem o dispositivo do voto (as frequentes nos 826 recibos: "ante o exposto" 275, "diante do exposto" 107…);
 // "diante disso"/"assim sendo" ficam de fora — aparecem no meio da fundamentação
 export const RE_DISPOSITIVO = /(?<![a-z0-9])(?:ante o exposto|diante do exposto|pelo exposto|em face do exposto|por todo o exposto|posto isso|posto isto|isso posto|isto posto|por tais razoes|por essas razoes|por todas essas razoes|com essas consideracoes|com tais consideracoes|ex positis|forte nessas razoes)(?![a-z0-9])/g;
@@ -14,20 +13,30 @@ const RE_RESULTADO = /(?<![a-z0-9])(?:nego|dou|conheco|nao conheco|julgo|rejeito
 // marcas de obiter: "ainda que assim não fosse", "mesmo que se admitisse", "a título de argumentação", "de todo modo"…
 // "em tese" e "não é o caso dos autos" ficam de fora: o primeiro quase sempre é "em abstrato"; o segundo fecha a regra que o
 // voto acabou de APLICAR ("…só quando irrisórios ou exorbitantes, o que não é o caso dos autos")
-export const RE_OBITER = /(?<![a-z0-9])(?:ainda que assim nao fosse|se assim nao fosse|(?:ainda|mesmo) que (?:se )?(?:admitisse(?:mos)?|superad[ao]s?|ultrapassad[ao]s?|afastad[ao]s?|entendesse(?:mos)?|considerasse(?:mos)?|fosse|houvesse|pudesse)|a titulo de (?:argumentacao|reforco|ilustracao|obiter dictum)|(?:apenas|somente|so) para argumentar|ad argumentandum(?: tantum)?|por amor ao debate|obiter dictum|caso se entendesse)(?![a-z0-9])/g;
 
 /** Seções da ementa no intervalo [ini, fim) do texto: [{nome, a, b}] em ordem; vazio se não houver o modelo do CNJ. */
+const RE_SECAO_EMENTA_N1 = /(?<![a-z0-9])(?:(i{1,3}|iv|v)[ \t\n\r\f\v]*[.)-]?[ \t\n\r\f\v]*)?(caso em exame|quest(?:ao|oes) em discussao|razoes de decidir|dispositivos? e teses?|dispositivo)(?![a-z0-9])/g;
+const RE_CAUDA_EMENTA = /\b(?:Dispositivos? relevantes? citados?|Jurisprud[êe]ncia relevante citada|Legisla[çc][ãa]o relevante citada|Resumo em linguagem simples|RESUMO[ \t]*:)/;
+/** Seções da ementa do CNJ em [ini, fim) — espelho de _secoes_da_ementa (06/10/2026): número romano em qualquer caixa, ou nome
+ * abrindo a linha e fechando com ".", ":", quebra ou o item numerado. Busca sobre norm1 (1:1); a linha confere no bruto. */
 export function secoesDaEmenta(texto, ini, fim) {
-  const seg = texto.slice(ini, fim);
+  const seg = texto.slice(ini, fim), nt = norm1(seg);
   const marcas = [];
-  for (const m of seg.matchAll(RE_SECAO_EMENTA)) marcas.push({ nome: norm1(m[1]).replace(/^quest(?:ao|oes) em discussao$/, "questao em discussao").replace(/^dispositivos? e teses?$/, "dispositivo e tese"), a: ini + m.index, corpo: ini + m.index + m[0].length });
+  for (const m of nt.matchAll(RE_SECAO_EMENTA_N1)) {
+    const i2 = m.index + m[0].length - m[2].length;
+    if (!m[1]) {
+      const antes = seg.slice(0, i2).replace(/[ \t]+$/, "");
+      const depois = seg.slice(i2 + m[2].length, i2 + m[2].length + 4).replace(/^[ \t]+/, "");
+      const c = depois.slice(0, 1);
+      if (!(antes === "" || antes.endsWith("\n")) || !(c === "." || c === ":" || c === "\n" || (c !== "" && "0123456789".includes(c)))) continue;
+    }
+    const nome = m[2].replace(/^quest(?:ao|oes) em discussao$/, "questao em discussao").replace(/^dispositivos? e teses?$/, "dispositivo e tese");
+    if (marcas.length && marcas[marcas.length - 1].nome === nome && ini + m.index - marcas[marcas.length - 1].a < 40) continue;
+    marcas.push({ nome, a: ini + m.index });
+  }
   if (!marcas.length) return [];
   const cauda = seg.search(RE_CAUDA_EMENTA);
-  const out = [];
-  for (let i = 0; i < marcas.length; i++) {
-    const b = i + 1 < marcas.length ? marcas[i + 1].a : (cauda >= 0 && ini + cauda > marcas[i].a ? ini + cauda : fim);
-    out.push({ nome: marcas[i].nome, a: marcas[i].a, b });
-  }
+  const out = marcas.map((mk, i) => ({ nome: mk.nome, a: mk.a, b: i + 1 < marcas.length ? marcas[i + 1].a : (cauda >= 0 && ini + cauda > mk.a ? ini + cauda : fim) }));
   if (cauda >= 0 && ini + cauda > out[out.length - 1].a) out.push({ nome: "cauda", a: ini + cauda, b: fim });
   return out;
 }
@@ -38,7 +47,7 @@ const ROTULO = {
   "razoes de decidir": "ementa › III. RAZÕES DE DECIDIR — fundamento que a ementa apresenta como razão de decidir (candidato a ratio; confira no voto se o resultado dependeu dele)",
   "dispositivo e tese": "ementa › IV. DISPOSITIVO E TESE — resultado e tese enunciada",
   "dispositivo": "ementa › IV. DISPOSITIVO — resultado do julgamento",
-  "cauda": "ementa › lista de dispositivos/jurisprudência citados — referência, não tese",
+  "cauda": "ementa › parte final (dispositivos e jurisprudência citados, resumo) — referência, não tese",
 };
 
 const RE_FIM_VOTO = /\be (?:como|o) (?:voto|meu voto)\b/g;
@@ -83,6 +92,13 @@ export function posicaoNoJulgado(texto, tipo, ini0, fim, fx) {
   const n = texto.length;
   const meio = ini0 + Math.floor((fim - ini0) / 2);
   const emEmenta = t === "EMENTA" ? [0, n] : (/AC[ÓO]RD[ÃA]O/.test(t) && fx.casaIni < n ? [fx.casaIni, fx.fecho] : null);
+  // 1.16.0 (validação cega): o fecho começa no "ACÓRDÃO Vistos, relatados…", alguns caracteres antes do "acordam"
+  if (emEmenta && t !== "EMENTA") {
+    const cab = /\bAC[ÓO]RD[ÃA]O[ \t\n\r\f\v]+Vistos/g;
+    cab.lastIndex = Math.max(emEmenta[0], emEmenta[1] - 400);
+    const m = cab.exec(texto);
+    if (m && m.index < emEmenta[1]) { if (meio >= m.index) return "fecho (ata do julgamento): o que o colegiado proclamou"; emEmenta[1] = m.index; }
+  }
   if (emEmenta && meio >= emEmenta[0] && meio < emEmenta[1]) {
     const secs = secoesDaEmenta(texto, emEmenta[0], emEmenta[1]);
     const s = secs.find((x) => meio >= x.a && meio < x.b);
@@ -94,12 +110,22 @@ export function posicaoNoJulgado(texto, tipo, ini0, fim, fx) {
   const p = partesDoVoto(texto, tipo, fx);
   if (p.relIni > 0 && meio < p.relIni) return "cabeçalho da peça (autuação), antes do relatório";
   if (p.relIni >= 0 && (p.votoIni < 0 || meio < p.votoIni) && meio >= p.relIni) return "RELATÓRIO — narração do processo e das teses das partes, não decisão";
+  // 1.16.0 (medição cega): acórdão sem o cabeçalho RELATÓRIO — o que vem antes do voto é a narração
+  if (p.relIni < 0 && p.votoIni > 0 && meio < p.votoIni) return "antes do voto, sem cabeçalho RELATÓRIO — narração do processo, não decisão";
   if (p.votoIni < 0) return "";
   if (p.dispIni >= 0 && meio >= p.dispIni && meio < p.fimRelator) return "DISPOSITIVO do voto — é o que foi decidido, não a razão de decidir";
   if (meio >= p.votoIni && meio < p.fimRelator) {
     const d = p.dispIni >= 0 ? ` (o dispositivo começa ${p.dispIni - meio} caracteres adiante, em «${texto.slice(p.dispIni, p.dispIni + 60).replace(/[ \t\n\r\f\v]+/g, " ")}…»)` : " (dispositivo não localizado por fórmula)";
     return "fundamentação do voto do relator, antes do dispositivo" + d;
   }
-  if (meio >= p.fimRelator && meio < p.fimVoto) return "depois do voto do relator (voto de vogal, voto-vista ou declaração de voto) — veja quem assina e o fecho";
+  if (meio >= p.fimRelator && meio < p.fimVoto) {
+    // 1.16.0: ementa sem rótulo reconhecido logo depois do voto (a custódia não achou onde começa): as seções a denunciam
+    const secs = secoesDaEmenta(texto, p.fimRelator, p.fimVoto);
+    if (secs.length && meio >= secs[0].a - 900) {
+      const s = secs.find((x) => x.a <= meio && meio < x.b);
+      return s ? ROTULO[s.nome] || s.nome : "ementa › verbetes iniciais (título da ementa, antes das seções)";
+    }
+    return "depois do voto do relator (voto de vogal, voto-vista ou declaração de voto) — veja quem assina e o fecho";
+  }
   return "";
 }
