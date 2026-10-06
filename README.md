@@ -184,7 +184,13 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
   outros tribunais, e o documento ACÓRDÃO traz também o voto que perdeu. Uma frase copiada
   de lá está no texto, mas não é palavra do TJRO naquele processo. O verificador avisa:
   TRANSCRIÇÃO, VOTO DIVERGENTE, ENTRE ASPAS, ALEGAÇÃO DA PARTE (o relatório contando o que
-  o apelante sustenta) e NEGAÇÃO (um "não" logo antes do recorte). Ele lê primeiro o recibo
+  o apelante sustenta) e NEGAÇÃO (um "não" logo antes do recorte). O aviso de VOTO DIVERGENTE
+  traz a proclamação do fecho ("…nos termos do voto divergente, vencido o relator"), para
+  você ler quem venceu sem reabrir o acórdão. Desde a 1.15.0 a resposta também diz ONDE a
+  frase está (nota POSIÇÃO NO JULGADO: seção da ementa do CNJ, relatório, fundamentação ou
+  dispositivo do voto, fecho) e avisa OBITER DICTUM? quando ela vem sob marca de raciocínio
+  hipotético ou fundamento alternativo — é a evidência para dizer se a frase é ratio ou
+  dictum, não a decisão. Ele lê primeiro o recibo
   que `obter_inteiro_teor_tjro` gravou no seu computador; só vai ao portal se o documento
   nunca foi lido. Passe o `id_documento` da peça citada; com só o número, confere em todos
   os documentos do processo.
@@ -194,10 +200,11 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
   | Aviso | acerta quando avisa | pega dos casos reais | avisa à toa sobre frase limpa |
   |---|---|---|---|
   | TRANSCRIÇÃO (outro julgado, ou sentença/decisão que o relator anuncia copiar) | ~91% | ~84% | ~4% |
-  | VOTO DIVERGENTE | ~74% | ~89% | ~6% |
+  | VOTO DIVERGENTE | ~77% | ~89% | ~5% |
   | ENTRE ASPAS | ~100% | ~70% | ~0% |
   | ALEGAÇÃO DA PARTE | 71% a 90% | ~83% | 2% a 8% |
   | NEGAÇÃO | ~68% | ~75% | ~7% |
+  | OBITER DICTUM? ("ainda que assim não fosse", "a título de argumentação") | ~86% | ~12% | ~0% |
 
   A faixa da ALEGAÇÃO vem de duas amostras (120 e 160 trechos). São avisos de cautela, não garantia: a ausência
   deles não prova que a frase é do tribunal. Os números antigos de TRANSCRIÇÃO e VOTO DIVERGENTE (97% e 100% de
@@ -206,8 +213,10 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
 - **`buscar_recibos_tjro`** procura nos documentos que **esta máquina já leu**, sem tocar no
   portal. Serve para reencontrar o acórdão da semana passada antes de gastar cota do JURIS,
   que conta volume em poucos minutos. Mostra id, número, câmara do fecho, um trecho em
-  volta do termo e se o recibo tem custódia. Não é pesquisa no acervo do tribunal: zero
-  resultado aqui nunca é "não localizado".
+  volta do termo e se o recibo tem custódia. Com `nr_processo` (o início do número basta)
+  ou `id_documento` reencontra um acórdão já lido sem precisar de termos; `relator` lista o
+  que você já leu de um desembargador. Não é pesquisa no
+  acervo do tribunal: zero resultado aqui nunca é "não localizado".
 - **Linha de custódia no inteiro teor.** Cada ACÓRDÃO e VOTO abertos vêm com uma linha
   dizendo quantos trechos são de outros julgados (e que fatia do voto isso é), onde começa o
   voto que pode ser o vencido e onde começa a ementa da casa. É a mesma conta que vai para

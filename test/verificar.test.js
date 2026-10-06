@@ -201,3 +201,72 @@ test("ALEGAÇÃO DA PARTE (v1.13.0): verbo na cabeça do trecho, sujeito depois 
   assert.equal(aleg("RELATÓRIO Contrarrazões juntadas, pugnando pela manutenção da sentença, sob o argumento de que a informação prestada decorre de dever regulatório do banco.", "a informação prestada decorre de dever regulatório do banco"), true);
   assert.equal(aleg("RELATÓRIO Assevera que o agravo de instrumento não se voltou contra a autoridade da sentença, mas contra a interpretação ampliativa conferida à fase executiva.", "a autoridade da sentença, mas contra a interpretação ampliativa"), true);
 });
+
+// v1.14.0 — regras trazidas de volta do porte ao STJ/TRT14 (05-06/10/2026) e VOTO DIVERGENTE pela maioria do trecho
+test("v1.14.0: 'não havendo/resta dúvida de que' não é negação; 'ao contrário do que sustenta' é o tribunal refutando", () => {
+  assert.equal(neg("VOTO Não havendo dúvida de que a cobrança foi indevida, a restituição em dobro é devida nos termos do CDC.", "a cobrança foi indevida, a restituição em dobro"), false);
+  assert.equal(neg("VOTO Não resta dúvida de que o contrato foi assinado pelo próprio consumidor na agência.", "o contrato foi assinado pelo próprio consumidor"), false);
+  assert.equal(neg("VOTO Não há qualquer dúvida de que a instituição financeira responde objetivamente pelo defeito do serviço.", "a instituição financeira responde objetivamente pelo defeito"), false);
+  assert.equal(aleg("VOTO Ao contrário do que sustenta o apelante, a prova dos autos demonstra a contratação regular do empréstimo consignado.", "a prova dos autos demonstra a contratação regular do empréstimo"), false);
+  assert.equal(aleg("VOTO Diversamente do que alega a parte autora, o desconto decorre de contrato válido e assinado.", "o desconto decorre de contrato válido e assinado"), false);
+});
+
+test("v1.14.0: aspas retas pelo vizinho (abre/fecha), reta solta não embaralha o resto, reta fecha curva, « » contam", () => {
+  const t = 'VOTO O juízo decidiu: “a mora é do credor" e manteve. Depois: "art. 5º" e "art. 6º". Fim.';
+  assert.deepEqual(trechosCitados(t).map(([a, b]) => t.slice(a, b)), ['“a mora é do credor"', '"art. 5º"', '"art. 6º"']);
+  const solta = 'VOTO O termo 12" de tela não é citação. Depois a lei diz "art. 1º" e "art. 2º". Fim.';
+  assert.deepEqual(trechosCitados(solta).map(([a, b]) => solta.slice(a, b)), ['"art. 1º"', '"art. 2º"']);
+  const ang = "VOTO Dispõe a lei: «é vedada a cobrança» e assim decido.";
+  assert.deepEqual(trechosCitados(ang).map(([a, b]) => ang.slice(a, b)), ["«é vedada a cobrança»"]);
+});
+
+const SINT = "RELATÓRIO Trata-se de agravo de instrumento contra decisão que deferiu a tutela. Relatado. VOTO DESEMBARGADOR FULANO Conheço do agravo. A necessidade de dilação probatória inviabiliza a tutela de urgência requerida pela parte. Pelo exposto, nego provimento ao agravo. É como voto. DECLARAÇÃO DE VOTO JUIZ CONVOCADO BELTRANO Peço vênia ao eminente relator para divergir. A prova documental juntada demonstra a verossimilhança da alegação da parte agravante. Dou provimento ao agravo. EMENTA Agravo de instrumento. Tutela de urgência. Recurso provido. ACÓRDÃO Vistos, relatados e discutidos estes autos, acordam os Magistrados da 2ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, na conformidade da ata de julgamentos, em, RECURSO PROVIDO NOS TERMOS DO VOTO DIVERGENTE DO JUIZ CONVOCADO BELTRANO, POR MAIORIA, VENCIDO O RELATOR. Porto Velho, 14 de março de 2025.";
+test("v1.14.0: VOTO DIVERGENTE só com a MAIORIA do trecho na faixa, e o alerta traz a proclamação do fecho", () => {
+  const div = (x) => conferirTrecho(SINT, x, "ACÓRDÃO").alertas.find((a) => a.startsWith("VOTO DIVERGENTE")) || "";
+  const a = div("A necessidade de dilação probatória inviabiliza a tutela de urgência requerida");
+  assert.ok(a, "voto do relator vencido deveria disparar");
+  assert.match(a, /Fecho: «RECURSO PROVIDO NOS TERMOS DO VOTO DIVERGENTE DO JUIZ CONVOCADO BELTRANO, POR MAIORIA, VENCIDO O RELATOR\.»/);
+  assert.equal(div("É como voto. DECLARAÇÃO DE VOTO JUIZ CONVOCADO BELTRANO Peço vênia ao eminente relator"), "");   // só encosta na faixa
+  assert.equal(div("A prova documental juntada demonstra a verossimilhança da alegação da parte agravante"), "");     // voto que venceu
+  // o acórdão da fixture (relator vencido) continua disparando, agora com o fecho no alerta
+  const r = conferirTrecho(acordao.texto, "Pelo exposto, nego provimento ao agravo. É como voto.", acordao.tipo);
+  assert.match(r.alertas.find((x) => x.startsWith("VOTO DIVERGENTE")), / Fecho: «/);
+});
+
+// v1.15.0 — POSIÇÃO NO JULGADO (localizador) e OBITER DICTUM? (marca contrafactual na mesma frase)
+import { posicaoNoJulgado, obiterAntes } from "../server/verificar.js";
+import { faixasAlheias } from "../server/custodia.js";
+const CNJ = "RELATÓRIO Trata-se de apelação contra sentença que julgou improcedente o pedido. Relatado. VOTO DESEMBARGADOR FULANO Conheço do recurso. A instituição financeira responde objetivamente pelos danos causados por fraude de terceiro, nos termos da Súmula 479 do STJ. Ainda que assim não fosse, a ausência de prova da contratação já bastaria para afastar a cobrança. Ante o exposto, dou provimento ao recurso para declarar inexistente o débito. É como voto. EMENTA DIREITO DO CONSUMIDOR. APELAÇÃO. FRAUDE. RECURSO PROVIDO. I. CASO EM EXAME 1. Apelação contra sentença que julgou improcedente pedido de inexistência de débito. II. QUESTÃO EM DISCUSSÃO 2. Saber se a instituição financeira responde pela fraude praticada por terceiro. III. RAZÕES DE DECIDIR 3. A instituição financeira responde objetivamente pelos danos gerados por fortuito interno relativo a fraudes praticadas por terceiros. IV. DISPOSITIVO E TESE 4. Recurso provido. Tese: o banco responde pela fraude de terceiro. Dispositivos relevantes citados: CDC, art. 14. ACÓRDÃO Vistos, relatados e discutidos estes autos, acordam os Magistrados da 2ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, em, RECURSO PROVIDO NOS TERMOS DO VOTO DO RELATOR, À UNANIMIDADE. Porto Velho, 14 de março de 2025.";
+test("v1.15.0: POSIÇÃO NO JULGADO localiza relatório, fundamentação, dispositivo, seções da ementa do CNJ, cauda e fecho", () => {
+  const pos = (x, tipo = "ACÓRDÃO", txt = CNJ) => (conferirTrecho(txt, x, tipo).notas.find((n) => n.startsWith("POSIÇÃO NO JULGADO")) || "");
+  assert.match(pos("Trata-se de apelação contra sentença que julgou improcedente o pedido"), /RELATÓRIO — narração/);
+  assert.match(pos("A instituição financeira responde objetivamente pelos danos causados por fraude de terceiro, nos termos"), /fundamentação do voto do relator, antes do dispositivo \(o dispositivo começa \d+ caracteres adiante, em «Ante o exposto, dou provimento/);
+  assert.match(pos("dou provimento ao recurso para declarar inexistente o débito"), /DISPOSITIVO do voto/);
+  assert.match(pos("Apelação contra sentença que julgou improcedente pedido de inexistência de débito"), /ementa › I\. CASO EM EXAME/);
+  assert.match(pos("Saber se a instituição financeira responde pela fraude praticada por terceiro"), /ementa › II\. QUESTÃO EM DISCUSSÃO/);
+  assert.match(pos("A instituição financeira responde objetivamente pelos danos gerados por fortuito interno"), /ementa › III\. RAZÕES DE DECIDIR/);
+  assert.match(pos("Tese: o banco responde pela fraude de terceiro"), /ementa › IV\. DISPOSITIVO E TESE/);
+  assert.match(pos("Dispositivos relevantes citados: CDC, art. 14"), /ementa › lista de dispositivos/);
+  assert.match(pos("RECURSO PROVIDO NOS TERMOS DO VOTO DO RELATOR, À UNANIMIDADE"), /fecho \(ata do julgamento\)/);
+  // EMENTA solta no modelo antigo; VOTO solto; RELATÓRIO solto
+  assert.match(pos("Dano moral. Inscrição indevida. Recurso provido.", "EMENTA", "Apelação cível. Dano moral. Inscrição indevida. Recurso provido."), /ementa \(modelo antigo, sem seções\)/);
+  assert.match(pos("responde objetivamente pelos danos causados por fraude de terceiro", "VOTO", "VOTO A instituição financeira responde objetivamente pelos danos causados por fraude de terceiro. Pelo exposto, nego provimento ao recurso."), /fundamentação do voto do relator/);
+  assert.match(pos("o apelante sustenta a nulidade da sentença por cerceamento", "RELATÓRIO", "RELATÓRIO Em suas razões, o apelante sustenta a nulidade da sentença por cerceamento de defesa."), /RELATÓRIO — narração/);
+  // o acórdão da fixture (relator vencido): o trecho do relator vem como fundamentação, e depois do voto dele é "depois do voto do relator"
+  const fx = faixasAlheias(acordao.texto, acordao.tipo);
+  assert.ok(fx.divergente, "fixture sem divergência?");
+  assert.match(pos("Pelo exposto, nego provimento ao agravo. É como voto.", acordao.tipo, acordao.texto), /DISPOSITIVO do voto|fundamentação do voto do relator/);
+});
+test("v1.15.0: OBITER DICTUM? dispara com marca contrafactual na mesma frase; não dispara com concessiva presente, 'em tese', 'não é o caso dos autos' nem em frase anterior", () => {
+  const ob = (x, tipo = "ACÓRDÃO", txt = CNJ) => conferirTrecho(txt, x, tipo).alertas.find((a) => a.startsWith("OBITER DICTUM?")) || "";
+  assert.match(ob("a ausência de prova da contratação já bastaria para afastar a cobrança"), /vem sob «ainda que assim nao fosse»/);
+  assert.equal(ob("A instituição financeira responde objetivamente pelos danos causados por fraude de terceiro, nos termos"), "");
+  const v = (txt, x) => { const tn = norm1(txt), i = tn.indexOf(norm1(x)); assert.ok(i >= 0, x); return obiterAntes(tn, i, i + x.length, txt); };
+  assert.equal(v("VOTO Mesmo que se admitisse a ausência de notificação, tal circunstância não invalidaria o negócio jurídico.", "tal circunstância não invalidaria o negócio jurídico"), "mesmo que se admitisse");
+  assert.equal(v("VOTO Apenas para argumentar, ainda que superada a preclusão, não haveria cerceamento de defesa.", "não haveria cerceamento de defesa"), "ainda que superada");
+  assert.equal(v("VOTO De todo modo, a matéria é integralmente devolvida ao Tribunal e será examinada.", "a matéria é integralmente devolvida ao Tribunal"), "de todo modo");
+  assert.equal(v("VOTO Ainda que se admita que a apelada realizou a operação, isso não torna legítimo o saldo devedor.", "isso não torna legítimo o saldo devedor"), null);   // concessiva no presente: o tribunal enfrenta
+  assert.equal(v("VOTO O pedido é, em tese, cabível, mas a prova dos autos demonstra a regularidade da contratação.", "a prova dos autos demonstra a regularidade da contratação"), null);
+  assert.equal(v("VOTO A revisão só cabe quando o valor se mostrar irrisório ou exorbitante, o que não é o caso dos autos.", "o valor se mostrar irrisório ou exorbitante"), null);
+  assert.equal(v("VOTO Ainda que assim não fosse, a cobrança seria indevida. A sentença, portanto, deve ser mantida por seus próprios fundamentos.", "A sentença, portanto, deve ser mantida por seus próprios fundamentos"), null);   // frase seguinte
+});

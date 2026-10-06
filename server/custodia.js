@@ -318,20 +318,32 @@ function votoDoRelator(tn, bruto, ate) {
 // citação sem fechamento em 6.000 caracteres é descartada. O alerta sai quando a MAIORIA dos caracteres do trecho está
 // dentro de citação. Aspas logo depois de "tese fixada/firmada" são a tese do próprio tribunal e não contam.
 export const ASPAS_SPAN_MAX = 6000;
+const ABRE_RETA = new Set([..." \t\n\r\u00a0([{\u2014\u2013-:/"]);
+const FECHA_RETA = new Set([..." \t\n\r\u00a0.,;:)]}!?\u2014\u2013-/"]);
 export function trechosCitados(bruto) {
-  // pilha para as curvas (citação dentro de citação é comum: o voto cita a decisão, que cita a lei); a reta alterna
-  const out = [], duplas = [], simples = [];
-  let reta = -1;
-  for (let i = 0; i < bruto.length; i++) {
+  // v1.14.0 (regra trazida de volta do porte ao STJ/TRT14, 05/10/2026): curvas e retas numa pilha SÓ, porque o acórdão
+  // mistura as duas ("…no sentido de que "a mora…” — abre reta, fecha curva); a reta é abertura ou fechamento pelo
+  // vizinho (espaço/parêntese antes = abre; pontuação/espaço depois = fecha) em vez de alternar, e uma reta solta
+  // deixava de embaralhar o resto do documento; « » entram; abertura a mais de ASPAS_SPAN_MAX caracteres descarta a pilha.
+  const n = bruto.length, out = [], duplas = [], simples = [], angulares = [];
+  const fecha = (pilha, i) => {
+    if (pilha.length && i - pilha[pilha.length - 1] > ASPAS_SPAN_MAX) pilha.length = 0;
+    if (pilha.length) out.push([pilha.pop(), i + 1]);
+  };
+  for (let i = 0; i < n; i++) {
     const c = bruto[i];
     if (c === "\u201c") duplas.push(i);
-    else if (c === "\u201d") { if (duplas.length) { const a = duplas.pop(); if (i - a <= ASPAS_SPAN_MAX) out.push([a, i + 1]); } }
-    else if (c === "\u2018") simples.push(i);
-    else if (c === "\u2019") { if (simples.length) { const a = simples.pop(); if (i - a <= ASPAS_SPAN_MAX) out.push([a, i + 1]); } }
+    else if (c === "\u201d") fecha(duplas, i);
     else if (c === '"') {
-      if (reta < 0) reta = i;
-      else { if (i - reta <= ASPAS_SPAN_MAX) out.push([reta, i + 1]); reta = -1; }
-    }
+      const ant = i ? bruto[i - 1] : " ", prox = i + 1 < n ? bruto[i + 1] : " ";
+      const abre = ABRE_RETA.has(ant) && !FECHA_RETA.has(prox);
+      const fech = !ABRE_RETA.has(ant) && FECHA_RETA.has(prox);
+      if (abre || (!fech && !duplas.length)) duplas.push(i);
+      else if (duplas.length) fecha(duplas, i);
+    } else if (c === "\u2018") simples.push(i);
+    else if (c === "\u2019") { if (simples.length) fecha(simples, i); }
+    else if (c === "\u00ab") angulares.push(i);
+    else if (c === "\u00bb") fecha(angulares, i);
   }
   return out;
 }

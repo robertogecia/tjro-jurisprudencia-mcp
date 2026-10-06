@@ -4,3 +4,4 @@ node_modules/
 harness/_anonimizar.local.json
 harness/gold-alegacao.local.json
 harness/*.local.json
+harness/rotulagem-*/

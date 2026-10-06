@@ -86,13 +86,22 @@ const conta = (re, tn) => { if (!re) return 0; let n = 0; re.lastIndex = 0; whil
 
 export const RECIBOS_LIMITE_MAX = 20, GRUPOS_MAX = 6, TERMOS_POR_GRUPO_MAX = 12;
 
-export function buscarRecibos(consulta, grupos, limite = 10, pasta = dirRecibos()) {
+export function buscarRecibos(consulta, grupos, limite = 10, pasta = dirRecibos(), { nrProcesso = "", idDocumento = "", relator: relatorFiltro = "" } = {}) {
   const palavras = norm1(String(consulta || "")).split(/[^a-z0-9*]+/).filter((p) => p && !STOP.has(p.replace(/\*+$/, "")));
   const gs = Array.isArray(grupos) ? grupos.filter((g) => Array.isArray(g) && g.length).slice(0, GRUPOS_MAX)
     .map((g) => g.map((t) => String(t || "").trim()).filter(Boolean).slice(0, TERMOS_POR_GRUPO_MAX)).filter((g) => g.length) : [];
-  if (!palavras.length && !gs.length) return "BUSCA LOCAL NÃO REALIZADA — informe `consulta` (palavras) ou `grupos` (sinônimos).";
+  // v1.14.0: filtro por processo (prefixo de dígitos) ou por id do documento — reencontrar um acórdão já lido, com ou sem termos
+  const dig = soDigitos(nrProcesso), idDoc = String(idDocumento || "").trim();
+  if (idDoc && !/^\d{1,20}$/.test(idDoc)) return `BUSCA LOCAL NÃO REALIZADA — id_documento deve ser numérico (recebi «${idDoc.slice(0, 40)}»).`;
+  if (String(nrProcesso || "").trim() && dig.length < 7) return "BUSCA LOCAL NÃO REALIZADA — nr_processo precisa de pelo menos 7 dígitos (número CNJ, com ou sem máscara, ou o início dele).";
+  const relN = norm1(String(relatorFiltro || "")).replace(/[^a-z0-9]+/g, " ").trim();
+  if (!palavras.length && !gs.length && !dig && !idDoc && !relN) return "BUSCA LOCAL NÃO REALIZADA — informe `consulta` (palavras), `grupos` (sinônimos), `nr_processo`, `id_documento` ou `relator`.";
   const lim = Math.max(1, Math.min(Number(limite) || 10, RECIBOS_LIMITE_MAX));
-  const todos = listarRecibos(pasta);
+  let todos = listarRecibos(pasta);
+  const totalGeral = todos.length;
+  if (idDoc) todos = todos.filter((r) => String(r.id_documento) === idDoc);
+  if (dig) todos = todos.filter((r) => { const nd = soDigitos(r.nr_processo); return nd && (nd === dig || (dig.length < 20 && nd.startsWith(dig))); });
+  if (relN) todos = todos.filter((r) => norm1(String(r.relator_indice || extrairRelatorDoTexto(r.texto) || "")).replace(/[^a-z0-9]+/g, " ").includes(relN));
   const resP = palavras.map(regexTermo).filter(Boolean);
   const resG = gs.map((g) => g.map(regexTermo).filter(Boolean)).filter((g) => g.length);
   const achados = [];
@@ -107,9 +116,10 @@ export function buscarRecibos(consulta, grupos, limite = 10, pasta = dirRecibos(
     achados.push([peso, dataIso(r.data_julgamento), r]);
   }
   achados.sort((a, b) => (b[0] - a[0]) || (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0));
-  const termosMostrados = [...palavras, ...gs.flat()].join(", ");
+  const filtroTxt = [dig ? `processo ${dig.length === 20 ? cnj(dig) : dig + "…"}` : "", idDoc ? `id ${idDoc}` : "", relN ? `relator «${relatorFiltro.trim()}»` : ""].filter(Boolean).join(", ");
+  const termosMostrados = [...palavras, ...gs.flat()].join(", ") || "(sem termos)";
   const linhas = [
-    `**Recibos locais do TJRO — ${achados.length} de ${todos.length} documento(s) já lidos nesta máquina atendem a «${termosMostrados}» · ZERO requisição ao portal**`,
+    `**Recibos locais do TJRO — ${achados.length} de ${totalGeral} documento(s) já lidos nesta máquina atendem a «${termosMostrados}»${filtroTxt ? ` em ${filtroTxt}` : ""} · ZERO requisição ao portal**`,
     "⚠️ Isto NÃO é pesquisa no acervo do TJRO: só olha o que obter_inteiro_teor_tjro já trouxe para esta máquina. Zero aqui NUNCA é \"não localizado\" — para isso, buscar_jurisprudencia_tjro. Classe e câmara do índice só existem em recibos gravados a partir da v1.10.0; nos antigos, a câmara vem do fecho do texto.",
     "",
   ];

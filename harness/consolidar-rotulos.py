@@ -17,7 +17,7 @@ if "--adjudicacao" in sys.argv:
 resumo = json.load(open(os.path.join(pasta, "resumo.json")))
 # rótulo(s) POSITIVO(s) de cada conjunto; só entram os conjuntos cujo <nome>-chave.json existir na pasta
 TODOS = {"alegacao": ("parte",), "negacao": ("inverte",), "aspas": ("citacao",),
-         "transcricao": ("transcrito_julgado", "transcrito_outro"), "divergente": ("vencido",), "alegacao2": ("parte",)}
+         "transcricao": ("transcrito_julgado", "transcrito_outro"), "divergente": ("vencido",), "alegacao2": ("parte",), "obiter": ("obiter",)}
 POS = {k: v for k, v in TODOS.items() if os.path.exists(os.path.join(pasta, f"{k}-chave.json"))}
 GOLD = sys.argv[sys.argv.index("--gold") + 1] if "--gold" in sys.argv else "gold-alertas.local.json"
 

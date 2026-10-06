@@ -2,6 +2,53 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.15.0 (06/10/2026): onde a frase está no julgado, e se é obiter
+
+Pergunta do autor: valeria uma ferramenta de distinguishing, ratio decidendi e obiter dictum? Distinguishing não cabe no
+servidor (exige os fatos do caso, que ele nunca vê — mora no `mapa-de-caso`). Ratio × dictum cabe como LOCALIZADOR, não
+como juiz:
+
+- **Nota POSIÇÃO NO JULGADO** em `verificar_citacao_tjro`: seção da ementa do CNJ em que o trecho está (I. caso em exame
+  = resumo, II. questão em discussão = a pergunta, III. razões de decidir = candidato a ratio, IV. dispositivo e tese,
+  lista de dispositivos/jurisprudência citados), ou, no corpo, cabeçalho / RELATÓRIO / fundamentação do voto do relator
+  (com a distância até o dispositivo e a fórmula que o abre) / DISPOSITIVO do voto / depois do voto do relator (vogal,
+  voto-vista) / fecho. Ementa no modelo antigo é dita como tal. É a evidência para o campo `ratio_ou_dictum` da ficha;
+  decidir continua sendo de quem lê. Dois terços dos acórdãos locais já vêm no modelo seccionado do CNJ.
+- **Alerta OBITER DICTUM?**: marca de raciocínio contrafactual ou fundamento alternativo na MESMA frase do trecho
+  ("ainda que assim não fosse", "mesmo que se admitisse", "ainda que superada a preliminar", "a título de argumentação",
+  "apenas para argumentar", "de todo modo"…). Medido em gabarito CEGO e DUPLO novo (`harness/gold-obiter.local.json`,
+  114 janelas, dois rotuladores, kappa 0,92): **precisão 86%** nas duas metades, cobertura ~12% — a maior parte do obiter
+  real não tem marca nenhuma, e o alerta não promete achá-lo; promete não gritar à toa (falso alarme 0% nas janelas com
+  pista genérica). Concessiva no presente ("ainda que se admita X, …") foi EXCLUÍDA depois da medição: os rotuladores a
+  leram como o tribunal enfrentando X (precisão subia de 70% para 86%). "Em tese" e "não é o caso dos autos" ficam de fora
+  por desenho (o primeiro é "em abstrato"; o segundo fecha a regra que o voto acabou de aplicar).
+- **`buscar_recibos_tjro` ganha `relator`**: o que esta máquina já leu de um desembargador ou juiz, sem rede. A linha
+  dele no acervo continua sendo `buscar_jurisprudencia_tjro(relator=…)`, com o teto de leitura da jurimetria dirigida.
+
+Python espelhado (paridade 50.463 casos, 0 divergentes); 216 testes Node. Nada mudou nos outros avisos.
+
+## v1.14.0 (06/10/2026): o que os irmãos ensinaram volta para casa
+
+Três regras achadas no porte das heurísticas ao STJ e ao TRT14 (05-06/10/2026), remedidas no gabarito cego do TJRO
+(`harness/medir-verificador.mjs`, sem rede) — nada piorou:
+
+- **ENTRE ASPAS**: aspas curvas e retas numa pilha só (o acórdão abre com uma e fecha com a outra); a reta é abertura ou
+  fechamento pelo vizinho, não por alternância, e uma reta solta (`12" de tela`) deixa de embaralhar o resto do documento;
+  « » contam. Disparos em janelas da voz do tribunal: 4,0% → 3,3%; "transcrição ou aspas" na validação cega: 82% → 92%.
+- **NEGAÇÃO**: "não havendo/há/resta dúvida de que…" afirma, não nega.
+- **ALEGAÇÃO DA PARTE**: "ao contrário do que sustenta o apelante, …" é o tribunal refutando, não relatando.
+- **VOTO DIVERGENTE**: só com a MAIORIA do trecho dentro da faixa (trecho que só encosta na fronteira "…é como voto.
+  DECLARAÇÃO DE VOTO…" não é o vencido), e o alerta já traz a proclamação do fecho («RECURSO PROVIDO NOS TERMOS DO VOTO
+  DIVERGENTE…, VENCIDO O RELATOR»), para o agente ler quem venceu sem reabrir o acórdão. Precisão cega: 74% → 77% (validação
+  62% → 67%). O que resta de erro é acórdão em que o relator foi vencido só em parte (preliminar unânime, mérito por
+  maioria) ou com questão de ordem — regra nenhuma resolve, e por isso o alerta mostra o fecho.
+- **`buscar_recibos_tjro`** ganha `nr_processo` (prefixo de dígitos basta) e `id_documento`: reencontra um acórdão já lido
+  com ou sem termos, e diz se um id já passou por esta máquina.
+- **`buscar_jurisprudencia_tjro`** com `orgao_colegiado` = "1ª Câmara Cível" ou "2ª Câmara Cível" avisa que os julgados
+  dessa câmara cujo relator foi para a 3ª ficam fora da página, e sugere buscar pelo relator.
+
+Python (`servidor_tjro.py`) espelhado: paridade de custódia 50.463 casos, 0 divergentes.
+
 ## v1.13.4 (06/10/2026): diagnóstico fala com a identificação certa
 
 O diagnóstico de ritmo dizia a TODA instalação que "o filtro do TJRO está recusando as consultas desta extensão em si" e
