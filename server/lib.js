@@ -386,7 +386,7 @@ export function formatPanorama(data) {
   return (
     `\n**Panorama dos ${total} documentos que casaram (índice, não só esta página; zero consulta extra):**\n` +
     linhas.join("\n") +
-    "\n_Câmara e gabinete são os do cadastro do portal, que erra a câmara com frequência; " +
+    "\n_Câmara e gabinete são os do cadastro do portal, que mostra a câmara ATUAL do processo, não a que julgou (relatores realocados para a 3ª Câmara Cível levaram seus processos); " +
     "as datas de julgamento cobrem só o que o índice agrega. Serve para ver onde e quando o tema é julgado " +
     "e escolher filtros (orgao_colegiado, relator, classe_judicial, data), nunca como posição sobre a tese._"
   );
@@ -1608,7 +1608,7 @@ export function formatInteiro(data, nrProcesso) {
     if (org && orgaoDiverge(org.orgao, orgao(s)))
       avisos.push(
         `⚠️ Índice: ${orgao(s)} · ${org.origem === "fecho" ? 'fecho do acórdão ("acordam os Magistrados...")' : "cabeçalho desta peça"}: ` +
-          `${org.orgao} — prevalece o texto (o cadastro do portal já saiu errado; cite pela câmara que o acórdão declara).`
+          `${org.orgao} — prevalece o texto (o cadastro mostra a câmara atual do processo, não a que julgou; cite pela câmara que o acórdão declara).`
       );
     const relTexto = extrairRelatorDoTexto(corpo);
     if (relatorDiverge(relTexto, relator(s)))
@@ -1822,7 +1822,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.13.2";
+export const VERSAO = "1.13.3";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
@@ -2017,6 +2017,6 @@ export function orgaoMultiplo(orgao) {
   return (
     `orgao_colegiado aceita UM órgão só; "${orgao}" parece ter vários, e o portal devolveria 0 resultado (que não é "não localizado"). ` +
     "Faça uma busca por órgão, ou, melhor, busque sem filtro de órgão e confira a câmara no fecho de cada acórdão: " +
-    "o cadastro erra o número da câmara com frequência, e julgados úteis de outra família (Câmara Especial, Turma Recursal) ficam de fora com o filtro."
+    "o cadastro mostra a câmara ATUAL do processo (relatores realocados para a 3ª Câmara Cível levaram seus processos), não a que julgou, e julgados úteis de outra família (Câmara Especial, Turma Recursal) ficam de fora com o filtro."
   );
 }
