@@ -2,6 +2,12 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.13.2 (06/10/2026): marcador de espera nunca passa do teto de 1 h
+
+O teste "arquivo ilegível ou valores absurdos" falhou de forma intermitente na publicação da 1.13.1: o saneamento do estado
+usa o próprio relógio, que pode estar 1 ms à frente do `agora` da reserva, e o marcador saía `[espera_segundos=3601]` com a
+pausa já limitada a 1 h. O marcador agora é limitado ao teto. Nenhuma mudança de regra; a 1.13.1 funciona igual.
+
 ## v1.13.1 (05/10/2026): "é" não é a conjunção "e" na NEGAÇÃO
 
 O porte das regras para o MCP do TRT14 achou, no selftest de lá, um defeito que já existia aqui: a regra que tira do alcance

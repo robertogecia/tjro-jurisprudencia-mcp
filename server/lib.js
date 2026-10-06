@@ -932,7 +932,8 @@ export function reservarRequisicao(agora = Date.now(), opts = {}) {
           "prolongar o bloqueio, esta ferramenta está evitando novas tentativas por " +
           `mais ${fmtDuracao(e.bloqueadoAte - agora)}. Tente novamente depois disso. ` +
           "Enquanto isso, o portal juris.tjro.jus.br segue acessível no navegador. " +
-          `[espera_segundos=${Math.ceil((e.bloqueadoAte - agora) / 1000)} tipo=bloqueio_do_tribunal]`,
+          // teto: o saneamento usa o próprio Date.now(), que pode estar 1 ms à frente de `agora` (3601 s em vez de 3600)
+          `[espera_segundos=${Math.min(Math.ceil((e.bloqueadoAte - agora) / 1000), BACKOFF_MAXIMO_MS / 1000)} tipo=bloqueio_do_tribunal]`,
       };
     }
     const janelaMs = ESCADA_JANELA_MS[e.indiceJanela];
@@ -1821,7 +1822,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.13.1";
+export const VERSAO = "1.13.2";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
