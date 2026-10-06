@@ -14,7 +14,7 @@ const RE_RESULTADO = /(?<![a-z0-9])(?:nego|dou|conheco|nao conheco|julgo|rejeito
 // marcas de obiter: "ainda que assim não fosse", "mesmo que se admitisse", "a título de argumentação", "de todo modo"…
 // "em tese" e "não é o caso dos autos" ficam de fora: o primeiro quase sempre é "em abstrato"; o segundo fecha a regra que o
 // voto acabou de APLICAR ("…só quando irrisórios ou exorbitantes, o que não é o caso dos autos")
-export const RE_OBITER = /(?<![a-z0-9])(?:ainda que assim nao fosse|se assim nao fosse|(?:ainda|mesmo) que (?:se )?(?:admitisse(?:mos)?|superad[ao]s?|ultrapassad[ao]s?|afastad[ao]s?|entendesse(?:mos)?|considerasse(?:mos)?|fosse|houvesse|pudesse)|a titulo de (?:argumentacao|reforco|ilustracao|obiter dictum)|(?:apenas|somente|so) para argumentar|ad argumentandum(?: tantum)?|por amor ao debate|obiter dictum|caso se entendesse|de todo modo|de toda forma|de qualquer forma|de qualquer modo|em carater subsidiario)(?![a-z0-9])/g;
+export const RE_OBITER = /(?<![a-z0-9])(?:ainda que assim nao fosse|se assim nao fosse|(?:ainda|mesmo) que (?:se )?(?:admitisse(?:mos)?|superad[ao]s?|ultrapassad[ao]s?|afastad[ao]s?|entendesse(?:mos)?|considerasse(?:mos)?|fosse|houvesse|pudesse)|a titulo de (?:argumentacao|reforco|ilustracao|obiter dictum)|(?:apenas|somente|so) para argumentar|ad argumentandum(?: tantum)?|por amor ao debate|obiter dictum|caso se entendesse)(?![a-z0-9])/g;
 
 /** Seções da ementa no intervalo [ini, fim) do texto: [{nome, a, b}] em ordem; vazio se não houver o modelo do CNJ. */
 export function secoesDaEmenta(texto, ini, fim) {

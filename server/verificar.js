@@ -105,7 +105,7 @@ export function alegacaoDaParte(tn, ini0, fim = ini0 + 80, bruto = null) {
 // trecho; precisão de 35%). Agora conta o ALCANCE: um operador de negação ou rejeição (não, jamais, nem, "não há que se
 // falar", afasta-se, rejeito, julgou improcedente…; adjetivo solto não conta) a até 80 caracteres do trecho, sem quebra
 // de oração entre ele e o trecho, e alcançando ao menos 3 palavras do trecho antes da 1ª quebra de oração dentro dele.
-const RE_NEG_OPERADOR = /(?<![a-z0-9])(?:nao|jamais|nunca|nem|descabe|descabid[oa]s?|incabive(?:l|is)|afasta-se|afasto|afastad[oa]s?|rejeita-se|rejeito|rejeitad[oa]s?|nego|negou|negar|nega-se|negam|improcede|julg(?:ou|o|ar|aram|ada|ado|ados|adas)\s+improcedentes?|inexist(?:e|em|ir|iu|indo)|carece|carecem|impossibilidade de)(?![a-z0-9])/g;
+const RE_NEG_OPERADOR = /(?<![a-z0-9])(?:nao|jamais|nunca|nem|descabe|descabid[oa]s?|incabive(?:l|is)|afasta-se|afasto|afastad[oa]s?|rejeita-se|rejeito|rejeitad[oa]s?|nego|negou|negar|nega-se|negam|improcede|julg(?:ou|o|ar|aram|ada|ado|ados|adas)\s+improcedentes?|inexist(?:e|em|ir|iu|indo)|carece|carecem|impossibilidade de|sem razao|sem razoes)(?![a-z0-9])/g;
 // v1.14.0: "não havendo/há/resta dúvida de que…" afirma, não nega (achado no porte ao STJ/TRT14)
 const RE_NEG_FALSA = /^\s*(?:obstante|so\b|apenas|somente|se\s+confunde|(?:havendo|ha|houve|resta|restam|restando|pairam?)\s+(?:qualquer\s+|mais\s+)?duvidas?)/;
 const RE_QUEBRA_ORACAO = /[.;:]|,\s*(?:mas|e|ou|que|o que|de forma|de modo|sendo|alem|conforme|porque|pois|porquanto|embora|ainda|razao pela|motivo pelo|[a-z]+ndo)(?![a-z0-9])|\smas\s/;
@@ -206,7 +206,7 @@ export function conferirTrecho(texto, trecho, tipo) {
   // v1.15.0: onde o trecho está (seção da ementa, relatório/fundamentação/dispositivo do voto) e marca de obiter
   const posicao = posicaoNoJulgado(String(texto || ""), tipo, ini0, pos, fx);
   if (posicao) notas.push(`POSIÇÃO NO JULGADO: ${posicao}.`);
-  const ob = !emTranscricao && !naCasa && !fx.ementaDaCasa ? obiterAntes(tn, ini0, pos, String(texto || "")) : null;
+  const ob = !emTranscricao && !naCasa && !fx.ementaDaCasa && !alertas.some((a) => a.startsWith("ENTRE ASPAS")) ? obiterAntes(tn, ini0, pos, String(texto || "")) : null;   // frase alheia entre aspas não é obiter do tribunal
   if (ob)
     alertas.push(`OBITER DICTUM?: o trecho vem sob «${ob}» — raciocínio hipotético ou fundamento alternativo; o resultado do julgado não dependeu dele. Vale como reforço, não como ratio decidendi; cite dizendo que é obiter.`);
   const contexto = String(texto || "").slice(Math.max(0, ini0 - 120), pos + 120).replace(/\s+/g, " ").trim();

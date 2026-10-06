@@ -2,6 +2,19 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.15.1 (06/10/2026): obiter mais estreito, "sem razão" nega
+
+Correções depois de levar o OBITER DICTUM? aos irmãos (STJ, TRT14, TJSE, TRF1) e medi-lo lá às cegas:
+
+- **"De todo modo" / "de toda forma" / "de qualquer forma/modo" e "em caráter subsidiário" saíram das marcas de obiter.**
+  No TJRO abriam obiter 4 vezes em 5; no TRT14, fundamento principal 4 vezes em 5 ("em caráter subsidiário" é a
+  responsabilidade subsidiária do tomador). Combinado, cara ou coroa — e aviso que erra metade das vezes faz mal. Ficam só
+  as marcas contrafactuais ("ainda que assim não fosse", "mesmo que se admitisse", "ainda que superada", "a título de
+  argumentação", "apenas para argumentar"…). No gabarito cego do TJRO: precisão 86% (igual), cobertura 12% → 8%.
+- **OBITER não dispara em frase que já está ENTRE ASPAS**: ali a marca é de quem o tribunal cita, não do tribunal.
+- **"Sem razão" conta como operador de NEGAÇÃO** ("sem razão o apelante ao dizer que X" inverte X). No gabarito cego do TJRO
+  nada mudou (68/75/7); veio do selftest do TJSE.
+
 ## v1.15.0 (06/10/2026): onde a frase está no julgado, e se é obiter
 
 Pergunta do autor: valeria uma ferramenta de distinguishing, ratio decidendi e obiter dictum? Distinguishing não cabe no
