@@ -2,6 +2,12 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.13.4 (06/10/2026): diagnóstico fala com a identificação certa
+
+O diagnóstico de ritmo dizia a TODA instalação que "o filtro do TJRO está recusando as consultas desta extensão em si" e
+mandava pesquisar pelo site. Isso vale para a identificação honesta (a extensão pública). Com a identificação de navegador o
+texto agora diz para esperar a pausa e retomar com uma busca só, e aponta as causas prováveis de bloqueio com pouco tráfego.
+
 ## v1.13.3 (06/10/2026): por que o cadastro mostra a 3ª Câmara Cível
 
 O cadastro do portal não "erra" a câmara: mostra a câmara ATUAL do processo. Com a criação da 3ª Câmara Cível, relatores

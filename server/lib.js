@@ -1096,11 +1096,17 @@ export function diagnosticoRitmo(agora = Date.now()) {
       "A maioria dos bloqueios veio com pouquíssimo tráfego desta máquina — indício de que a " +
         "causa está fora do controle desta ferramenta (outro equipamento no mesmo IP, ou o " +
         "próprio portal apertando o filtro). Espaçar mais as consultas aqui tende a não resolver. " +
-        "Desde a v1.7.8, bloqueio assim não aperta mais o limite de ritmo. Em 22/09/2026 o autor " +
-        "confirmou que o filtro do TJRO está recusando as consultas desta extensão em si (pela forma " +
-        "como ela se identifica), e não a rede de quem usa: trocar de conexão não resolve. O caminho " +
-        "é pesquisar pelo site (juris.tjro.jus.br) e acompanhar as versões novas. Esta ferramenta não " +
-        "troca de IP nem se disfarça para contornar o filtro sem que você decida isso."
+        "Desde a v1.7.8, bloqueio assim não aperta mais o limite de ritmo. " +
+        // v1.13.4: a frase sobre a extensão barrada só vale para a identificação honesta — na build pessoal
+        // (identificação de navegador) ela mandava pesquisar pelo site sem motivo
+        (identidadeAtual === "honesta"
+          ? "Em 22/09/2026 o autor confirmou que o filtro do TJRO está recusando as consultas desta extensão em si (pela forma " +
+            "como ela se identifica), e não a rede de quem usa: trocar de conexão não resolve. O caminho " +
+            "é pesquisar pelo site (juris.tjro.jus.br) e acompanhar as versões novas. Esta ferramenta não " +
+            "troca de IP nem se disfarça para contornar o filtro sem que você decida isso."
+          : "Nesta instalação (identificação de navegador) o filtro não recusa a ferramenta em si: espere a pausa terminar " +
+            "e retome com uma busca só; se os bloqueios voltarem com pouco tráfego, a causa provável é outro equipamento na " +
+            "mesma rede ou o portal apertando o filtro — o site (juris.tjro.jus.br) segue como alternativa.")
     );
   } else if (media >= 5) {
     linhas.push(
@@ -1822,7 +1828,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.13.3";
+export const VERSAO = "1.13.4";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
