@@ -10,7 +10,8 @@ import { norm1, faixasAlheias, RE_VOZ_PROPRIA, trechosCitados, coberturaCitada, 
 export { trechosCitados, coberturaCitada, ASPAS_SPAN_MAX };
 import { recibo, cnj, dirRecibos } from "./lib.js";
 import { reciboPorId, recibosDoProcesso, soDigitos } from "./recibos.js";
-import { posicaoNoJulgado, RE_OBITER } from "./posicao.js";
+import { posicaoNoJulgado } from "./posicao.js";
+import { RE_OBITER } from "./custodia.js";
 export { posicaoNoJulgado };
 
 export const PISO_TRECHO_PALAVRAS = 4, PISO_TRECHO_CHARS = 25, VAO_MAXIMO = 1500;
@@ -107,7 +108,7 @@ export function alegacaoDaParte(tn, ini0, fim = ini0 + 80, bruto = null) {
 // de oração entre ele e o trecho, e alcançando ao menos 3 palavras do trecho antes da 1ª quebra de oração dentro dele.
 const RE_NEG_OPERADOR = /(?<![a-z0-9])(?:nao|jamais|nunca|nem|descabe|descabid[oa]s?|incabive(?:l|is)|afasta-se|afasto|afastad[oa]s?|rejeita-se|rejeito|rejeitad[oa]s?|nego|negou|negar|nega-se|negam|improcede|julg(?:ou|o|ar|aram|ada|ado|ados|adas)\s+improcedentes?|inexist(?:e|em|ir|iu|indo)|carece|carecem|impossibilidade de|sem razao|sem razoes)(?![a-z0-9])/g;
 // v1.14.0: "não havendo/há/resta dúvida de que…" afirma, não nega (achado no porte ao STJ/TRT14)
-const RE_NEG_FALSA = /^\s*(?:obstante|so\b|apenas|somente|se\s+confunde|(?:havendo|ha|houve|resta|restam|restando|pairam?)\s+(?:qualquer\s+|mais\s+)?duvidas?)/;
+const RE_NEG_FALSA = /^\s*(?:obstante|so\b|apenas|somente|se\s+confunde|fosse\b|(?:havendo|ha|houve|resta|restam|restando|pairam?)\s+(?:qualquer\s+|mais\s+)?duvidas?)/;
 const RE_QUEBRA_ORACAO = /[.;:]|,\s*(?:mas|e|ou|que|o que|de forma|de modo|sendo|alem|conforme|porque|pois|porquanto|embora|ainda|razao pela|motivo pelo|[a-z]+ndo)(?![a-z0-9])|\smas\s/;
 export const NEGACAO_JANELA = 80, NEGACAO_ALCANCE_MIN = 3;
 

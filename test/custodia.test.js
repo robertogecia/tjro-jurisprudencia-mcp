@@ -74,7 +74,7 @@ test("ACÓRDÃO por maioria com vogal vencido: o voto do vogal é o trecho_diver
 });
 
 test("EMENTA e VOTO VENCEDOR: sem campo alheio que acuse a voz da casa", () => {
-  assert.deepEqual(camposAlheios("Apelação cível. Recurso provido.", "EMENTA"), { trechos_transcritos: [], trecho_divergente: "", trechos_entre_aspas: [] });
+  assert.deepEqual(camposAlheios("Apelação cível. Recurso provido.", "EMENTA"), { trechos_transcritos: [], trecho_divergente: "", trechos_entre_aspas: [], trechos_obiter: [] });
   assert.equal(camposAlheios("Com a devida vênia, divirjo do relator. É como voto.", "VOTO VENCEDOR").trecho_divergente, "");
 });
 
@@ -96,7 +96,7 @@ test("faixasAlheias: posições batem com os recortes de camposAlheios", () => {
   assert.deepEqual(f.transcritas.map(([a, b]) => acordao.texto.slice(a, b)), c.trechos_transcritos);
   assert.equal(acordao.texto.slice(f.divergente[0], f.divergente[1]), c.trecho_divergente);
   assert.equal(acordao.texto.slice(f.casaIni), c.texto_voz_propria);
-  assert.deepEqual(faixasAlheias("Ementa. Recurso provido.", "EMENTA"), { transcritas: [], divergente: null, casaIni: 24, fecho: 24, ementaDaCasa: true, aspas: [] });
+  assert.deepEqual(faixasAlheias("Ementa. Recurso provido.", "EMENTA"), { transcritas: [], divergente: null, casaIni: 24, fecho: 24, ementaDaCasa: true, aspas: [], obiter: [] });
 });
 
 test("linhaCustodia: conta transcrições, aponta voto que pode ser o vencido e a voz da casa; null para EMENTA/RELATÓRIO", () => {
@@ -219,4 +219,15 @@ test("trechos_entre_aspas: citação longa do corpo vai para o recibo; termo des
   assert.equal(c.trechos_entre_aspas.length, 1);
   assert.match(c.trechos_entre_aspas[0], /^“o dano moral in re ipsa dispensa a prova/);
   assert.ok(c.trechos_transcritos.some((b) => b.includes("DANO MORAL CONFIGURADO")));
+});
+
+// 1.16.0 — o recibo leva os trechos sob marca de obiter, para o lint da peticao-rg avisar na peça
+test("camposAlheios: trechos_obiter da marca ao fim da frase; calado dentro de aspas e de transcrição", () => {
+  const t = "RELATÓRIO Apelação. Relatado. VOTO A instituição financeira responde objetivamente pela fraude de terceiro. " +
+    "Ainda que assim não fosse, a ausência de prova da contratação já bastaria para afastar a cobrança. " +
+    "Como ensina a doutrina: “ainda que assim não fosse, o fornecedor responderia pelo risco da atividade econômica que explora”. " +
+    "Ante o exposto, dou provimento ao recurso. É como voto.";
+  const c = camposAlheios(t, "VOTO");
+  assert.deepEqual(c.trechos_obiter, ["Ainda que assim não fosse, a ausência de prova da contratação já bastaria para afastar a cobrança."]);
+  assert.deepEqual(camposAlheios("VOTO Nego provimento ao recurso. É como voto.", "VOTO").trechos_obiter, []);
 });

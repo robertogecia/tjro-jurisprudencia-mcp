@@ -246,7 +246,7 @@ test("v1.15.0: POSIÇÃO NO JULGADO localiza relatório, fundamentação, dispos
   assert.match(pos("Saber se a instituição financeira responde pela fraude praticada por terceiro"), /ementa › II\. QUESTÃO EM DISCUSSÃO/);
   assert.match(pos("A instituição financeira responde objetivamente pelos danos gerados por fortuito interno"), /ementa › III\. RAZÕES DE DECIDIR/);
   assert.match(pos("Tese: o banco responde pela fraude de terceiro"), /ementa › IV\. DISPOSITIVO E TESE/);
-  assert.match(pos("Dispositivos relevantes citados: CDC, art. 14"), /ementa › lista de dispositivos/);
+  assert.match(pos("Dispositivos relevantes citados: CDC, art. 14"), /ementa › parte final/);
   assert.match(pos("RECURSO PROVIDO NOS TERMOS DO VOTO DO RELATOR, À UNANIMIDADE"), /fecho \(ata do julgamento\)/);
   // EMENTA solta no modelo antigo; VOTO solto; RELATÓRIO solto
   assert.match(pos("Dano moral. Inscrição indevida. Recurso provido.", "EMENTA", "Apelação cível. Dano moral. Inscrição indevida. Recurso provido."), /ementa \(modelo antigo, sem seções\)/);
