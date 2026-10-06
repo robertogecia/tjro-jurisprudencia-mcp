@@ -2,6 +2,15 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.13.1 (05/10/2026): "é" não é a conjunção "e" na NEGAÇÃO
+
+O porte das regras para o MCP do TRT14 achou, no selftest de lá, um defeito que já existia aqui: a regra que tira do alcance
+da negação o trecho que começa pela conjunção "e" também tirava o trecho que começa pelo verbo "é", porque o `norm1` dobra os
+dois para "e". "NÃO é devido o adicional", citado como "é devido o adicional…", passava sem aviso de NEGAÇÃO. Agora a regra
+olha o caractere original. Números do gabarito cego inalterados (NEGAÇÃO 68% de precisão, 75% de cobertura, 7% de alarme
+falso: o caso não aparecia na amostra). Teste novo em `test/verificar.test.js` e no selftest do Python; paridade de custódia
+50.463 casos, 0 divergentes.
+
 ## v1.13.0 (05/10/2026): a custódia medida às cegas, transcrição anunciada e aspas no recibo
 
 **Por quê.** Os números de TRANSCRIÇÃO e VOTO DIVERGENTE (97% e 100% de detecção) vinham de 53 trechos rotulados em

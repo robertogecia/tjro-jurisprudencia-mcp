@@ -106,7 +106,7 @@ const RE_QUEBRA_ORACAO = /[.;:]|,\s*(?:mas|e|ou|que|o que|de forma|de modo|sendo
 export const NEGACAO_JANELA = 80, NEGACAO_ALCANCE_MIN = 3;
 
 /** O trecho que começa em `ini0` (texto norm1) e termina em `fim` está sob o alcance de uma negação anterior? */
-export function negacaoAntes(tn, ini0, fim) {
+export function negacaoAntes(tn, ini0, fim, bruto = null) {
   const jan = tn.slice(Math.max(0, ini0 - NEGACAO_JANELA), ini0);
   let op = null;
   for (const m of jan.matchAll(RE_NEG_OPERADOR)) {
@@ -118,7 +118,9 @@ export function negacaoAntes(tn, ini0, fim) {
   if (/[.;:]/.test(ponte)) return false;
   if (ponte.includes(",") && ponte.trim().length > 15) return false;     // ", portanto, a" passa; oração nova não
   const tr = tn.slice(ini0, fim);
-  if (/^\s*e[\s,]/.test(tr)) return false;                               // trecho começa com nova oração coordenada
+  // trecho que começa pela conjunção "e" é oração nova; "é" (verbo) não — olha o caractere ORIGINAL, porque o norm1 dobra os dois
+  // para "e" ("NÃO é devido" citado como "é devido…" passava sem alerta; achado no porte para o TRT14, 05/10/2026)
+  if (/^\s*[eE][\s,]/.test(bruto !== null ? bruto.slice(ini0, fim) : tr)) return false;
   const q = tr.search(RE_QUEBRA_ORACAO);
   const alcance = (q < 0 ? tr : tr.slice(0, q)).trim().split(/\s+/).filter(Boolean).length;
   return alcance >= NEGACAO_ALCANCE_MIN;
@@ -170,7 +172,7 @@ export function conferirTrecho(texto, trecho, tipo) {
     if (alegacaoDaParte(tn, ini0, pos, String(texto || "")))
       alertas.push("ALEGAÇÃO DA PARTE: o texto relata o que uma parte (apelante, banco, Estado…) sustenta, alega ou requer logo antes do trecho — pode ser tese da parte, não decisão do tribunal. Confira no relatório/voto quem fala.");
   }
-  if (negacaoAntes(tn, ini0, pos))
+  if (negacaoAntes(tn, ini0, pos, String(texto || "")))
     alertas.push("NEGAÇÃO: há negativa logo antes do trecho — o recorte pode inverter o julgado. Não citar sem ler a frase inteira.");
   const contexto = String(texto || "").slice(Math.max(0, ini0 - 120), pos + 120).replace(/\s+/g, " ").trim();
   return { ok: true, alertas, notas, contexto, spans };

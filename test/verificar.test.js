@@ -143,7 +143,7 @@ test("conferirTrecho: o alerta ALEGAÇÃO DA PARTE sai com o texto novo e só fo
 // v1.12.0 — NEGAÇÃO por alcance e ENTRE ASPAS por pareamento, remedidas em gabarito CEGO e DUPLO (dois rotuladores
 // independentes; kappa 0,93 e 1,00). Exemplos sintéticos: o gabarito real fica fora do git.
 import { negacaoAntes, trechosCitados, coberturaCitada } from "../server/verificar.js";
-const neg = (texto, trecho) => { const tn = norm1(texto), i = tn.indexOf(norm1(trecho)); return negacaoAntes(tn, i, i + trecho.length); };
+const neg = (texto, trecho) => { const tn = norm1(texto), i = tn.indexOf(norm1(trecho)); return negacaoAntes(tn, i, i + trecho.length, texto); };
 
 test("NEGAÇÃO dispara quando a negação alcança o trecho: 'não há que se falar em', vírgula de adjunto, 'rejeita-se, portanto,'", () => {
   assert.equal(neg("VOTO Não há que se falar em dano moral indenizável pela simples cobrança indevida de tarifa bancária.", "dano moral indenizável pela simples cobrança indevida de tarifa"), true);
@@ -157,6 +157,8 @@ test("NEGAÇÃO não dispara: adjetivo solto, alcance de 1-2 palavras, oração 
   assert.equal(neg("VOTO Os embargos declaratórios não constituem sucedâneo recursal, de forma que eventual insatisfação deve ensejar o recurso cabível.", "recursal, de forma que eventual insatisfação deve ensejar"), false);
   assert.equal(neg("VOTO O juízo julgou improcedente o pedido, além de condenar a parte autora por litigância de má-fé processual.", "autora por litigância de má-fé processual"), false);
   assert.equal(neg("RELATÓRIO Argumentou que o agravo não foi conhecido e, nessa condição, não acarretaria prevenção do órgão.", "e, nessa condição, não acarretaria prevenção do órgão"), false);
+  // "é" (verbo) no começo do trecho não é a conjunção "e" (o norm1 dobra os dois): achado no porte para o TRT14, 05/10/2026
+  assert.equal(neg("VOTO Diante da prova pericial, NÃO é devido o adicional de insalubridade em grau máximo.", "é devido o adicional de insalubridade em grau máximo"), true);
   assert.equal(neg("VOTO Não obstante o esforço argumentativo da apelante, a prova dos autos demonstra a contratação regular do empréstimo.", "a prova dos autos demonstra a contratação regular do empréstimo"), false);
 });
 
