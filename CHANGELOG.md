@@ -2,6 +2,12 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.17.0 (06/10/2026): negação mais estreita e uma marca nova de obiter
+
+- NEGAÇÃO mais estreita: só avisa com a negação até 6 palavras antes do trecho; não avisa quando ela nega um particípio ("não utilizado pelo…") ou recusa uma alternativa ("…, e não sobre…"); "não é outro o entendimento", "não se desconhece" e "não se pode deixar de" afirmam. Gabarito cego e duplo: ajuste em 617 trechos já rotulados (TJSE, STJ, TRT14, OAB, TCE-RO), validação em 120 trechos NOVOS de cinco tribunais (concordância 114/120, 6 adjudicados): precisão 38% → 44%, falso alarme 42% → 31%, cobertura 100% → 98%. Continua o alerta mais fraco do bloco: é aviso para ler a frase, não veredito.
+- OBITER DICTUM? reconhece também "registre-se, por oportuno", "a título de registro" e "apenas para registro" (6 de 6 obiter às cegas). Outras marcas testadas ficaram de fora por imprecisas: "de passagem" 67%, "por cautela" 25%, "ainda que se entenda/admita" 30%.
+- Paridade Python×Node da custódia: 53.373 casos, 0 divergentes.
+
 ## v1.16.0 (06/10/2026): obiter no recibo, POSIÇÃO medida às cegas, harmonização com os irmãos
 
 - **O recibo leva `trechos_obiter`** (custódia v4): cada frase do voto sob marca de obiter, da marca ao fim da frase, fora de

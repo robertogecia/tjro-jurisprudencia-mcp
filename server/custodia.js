@@ -373,7 +373,7 @@ export function aspasDoCorpo(texto, tn, ini, fim, transcritas) {
 // --------------------------------------------------------------------- recibo ---
 // OBITER (1.16.0): marca de raciocínio contrafactual ou fundamento alternativo (medida às cegas: 86% no TJRO, 82% no STJ,
 // 100% no TJSE e no TRT14). Mora aqui porque o recibo leva os trechos sob ela; posicao.js e verificar.js importam daqui.
-export const RE_OBITER = /(?<![a-z0-9])(?:ainda que assim nao fosse|se assim nao fosse|(?:ainda|mesmo) que (?:se )?(?:admitisse(?:mos)?|superad[ao]s?|ultrapassad[ao]s?|afastad[ao]s?|entendesse(?:mos)?|considerasse(?:mos)?|fosse|houvesse|pudesse)|a titulo de (?:argumentacao|reforco|ilustracao|obiter dictum)|(?:apenas|somente|so) para argumentar|ad argumentandum(?: tantum)?|por amor ao debate|obiter dictum|caso se entendesse)(?![a-z0-9])/g;
+export const RE_OBITER = /(?<![a-z0-9])(?:ainda que assim nao fosse|se assim nao fosse|(?:ainda|mesmo) que (?:se )?(?:admitisse(?:mos)?|superad[ao]s?|ultrapassad[ao]s?|afastad[ao]s?|entendesse(?:mos)?|considerasse(?:mos)?|fosse|houvesse|pudesse)|a titulo de (?:argumentacao|reforco|ilustracao|obiter dictum)|(?:apenas|somente|so) para argumentar|ad argumentandum(?: tantum)?|por amor ao debate|obiter dictum|caso se entendesse|registre-se,? (?:por oportuno|de passagem)|a titulo de registro|apenas (?:para|a titulo de) registro)(?![a-z0-9])/g;
 export const OBITER_BLOCO_MAX = 600;
 const RE_FIM_FRASE = /[.;!?]["”’)\]]?\s+(?=["“‘(\[]?[A-ZÀ-Ý0-9])/g;
 const ABREV_FIM = /(?:^|[^a-z0-9])(?:art|arts|n|no|nos|fl|fls|id|ids|des|desa|dr|dra|sr|sra|min|rel|inc|p|pp|pag|proc|cf|num|ex|res|sum|ed|v|vol|cap|al|ss)$/;
