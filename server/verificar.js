@@ -141,6 +141,24 @@ export function negacaoAntes(tn, ini0, fim, bruto = null) {
   return alcance >= NEGACAO_ALCANCE_MIN;
 }
 
+// NEGAÇÃO forte × distante (07/10/2026, gabarito cego e duplo neg-val2: 120 trechos novos, ponderado): negação colada ao trecho (até 1
+// palavra antes) ou existencial ("não há/houve/existe …", até 5) — precisão 80%, falso alarme 6%; o resto da regra larga vira
+// "NEGAÇÃO (distante)?" para não perder cobertura
+const RE_NEG_EXISTENCIAL = /^[ \t\n\r\f\v]*(?:ha|houve|havia|existe|existem|existia)(?![a-z0-9])/;
+/** _negacao_proxima */
+export function negacaoProxima(tn, ini0) {
+  const jan = tn.slice(Math.max(0, ini0 - NEGACAO_JANELA), ini0);
+  let op = null;
+  for (const m of jan.matchAll(RE_NEG_OPERADOR)) {
+    if (m[0] === "nao" && RE_NEG_FALSA.test(jan.slice(m.index + 3))) continue;
+    op = m;
+  }
+  if (op === null) return false;
+  const ponte = jan.slice(op.index + op[0].length);
+  const n = (ponte.match(/[^ \t\n\r\f\v]+/g) || []).length;
+  return n <= 1 || (n <= 5 && RE_NEG_EXISTENCIAL.test(ponte));
+}
+
 
 // OBITER DICTUM? (v1.15.0): marca de raciocínio hipotético ou fundamento alternativo na MESMA frase do trecho, antes dele
 // ou na cabeça dele ("Ainda que se admitisse X, …", "De todo modo, Y"). Devolve a marca, ou null.
@@ -211,7 +229,8 @@ export function conferirTrecho(texto, trecho, tipo) {
       alertas.push("ALEGAÇÃO DA PARTE: o texto relata o que uma parte (apelante, banco, Estado…) sustenta, alega ou requer logo antes do trecho — pode ser tese da parte, não decisão do tribunal. Confira no relatório/voto quem fala.");
   }
   if (negacaoAntes(tn, ini0, pos, String(texto || "")))
-    alertas.push("NEGAÇÃO: há negativa logo antes do trecho — o recorte pode inverter o julgado. Não citar sem ler a frase inteira.");
+    alertas.push(negacaoProxima(tn, ini0) ? "NEGAÇÃO: há negativa logo antes do trecho — o recorte pode inverter o julgado. Não citar sem ler a frase inteira."
+      : "NEGAÇÃO (distante)?: há uma negativa algumas palavras antes do trecho, fora dele. Na maioria das vezes ela fecha a própria oração e não inverte o recorte (medido às cegas), mas leia a frase inteira antes de citar.");
   // v1.15.0: onde o trecho está (seção da ementa, relatório/fundamentação/dispositivo do voto) e marca de obiter
   const posicao = posicaoNoJulgado(String(texto || ""), tipo, ini0, pos, fx);
   if (posicao) notas.push(`POSIÇÃO NO JULGADO: ${posicao}.`);
