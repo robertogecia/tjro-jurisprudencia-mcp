@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.20.2 (08/10/2026): FATOS DO JULGADO avisa quando o trecho é o relatório
+
+- Medição cega em 30 acórdãos longos (2 rotuladores, 115 fatos): 113/115 de concordância, 3 fatos parciais. Achado: em um agravo regimental, o trecho do RELATÓRIO narrava as alegações do agravante e a ficha feita só dele inverteu o resultado (os dois rotuladores marcaram). A linha "FATOS DO JULGADO" passa a dizer, quando o trecho vem do relatório, que ele narra o pedido e as alegações, não o fundamento nem o resultado, e manda conferir o voto e o fecho. Python e Node em paridade.
+
 ## v1.20.1 (08/10/2026): OBITER DICTUM? em sentença
 
 - "Registre-se, por oportuno" e "registre-se, de passagem" deixam de disparar OBITER DICTUM? quando o julgado é SENTENÇA: ali é fórmula de cartório (medido: 2 disparos indevidos em sentenças típicas). Em acórdão a marca continua como antes. Python e Node em paridade.
