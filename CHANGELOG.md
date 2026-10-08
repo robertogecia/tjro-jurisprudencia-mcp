@@ -2,6 +2,12 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.23.0 (08/10/2026): votação também na linha da ementa; corte da proclamação corrigido
+
+- A linha da EMENTA na lista da busca passa a mostrar a votação do ACÓRDÃO do mesmo julgamento na página ("por maioria, do acórdão do mesmo julgamento"), pela mesma regra do órgão do fecho: casa por nº do processo + data; sem data não se presume; votações divergentes no mesmo julgamento: não arrisca.
+- Corrigido o ponto de parada da proclamação: um nome de cidade no meio dela ("MUNICÍPIO DE PORTO VELHO, POR UNANIMIDADE") cortava o texto antes de "por unanimidade". Agora só vale como assinatura quando vem com a data ("Porto Velho, 29 de…"). Reconferido nas duas amostras cegas: votação 184/184, divergente prevalecente 172/173. Python e Node em paridade (2.139 textos, 0 diferenças).
+- Medição cega nova de FATOS DO JULGADO em 24 acórdãos julgados POR MAIORIA (dois rotuladores, 74 fatos): 72/74 concordantes, nenhuma ficha invertida ou com omissão material; 2 fatos parciais nos dois rotuladores. Amostra pequena; não autoriza percentual para peça.
+
 ## v1.22.0 (08/10/2026): votação do fecho na lista da busca
 
 - Na lista da busca (modo compacto e completo), cada ACÓRDÃO passa a mostrar a votação declarada na proclamação do fecho: "unânime", "por maioria", "por maioria, voto divergente prevaleceu" e, quando o fecho cita, "com declaração de voto". Serve para ver de relance se o resultado é voto do relator ou de divergente, sem abrir o inteiro teor. Lê só a proclamação (depois de "em," / "a seguinte decisão:" / "taquigráficas," até a assinatura); não diz quem foi vencido e fica em branco quando não reconhece (ementa não tem fecho).
