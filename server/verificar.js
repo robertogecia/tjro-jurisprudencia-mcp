@@ -163,12 +163,15 @@ export function negacaoProxima(tn, ini0) {
 // OBITER DICTUM? (v1.15.0): marca de raciocínio hipotético ou fundamento alternativo na MESMA frase do trecho, antes dele
 // ou na cabeça dele ("Ainda que se admitisse X, …", "De todo modo, Y"). Devolve a marca, ou null.
 export const OBITER_JANELA = 400, OBITER_CABECA = 0.4;
-export function obiterAntes(tn, ini0, fim, bruto) {
+export function obiterAntes(tn, ini0, fim, bruto, sentenca = false) {
   const cabeca = ini0 + Math.floor((fim - ini0) * OBITER_CABECA);
   const piso = Math.max(0, ini0 - OBITER_JANELA);
   const frase0 = inicioDaFrase(bruto, tn, piso, cabeca);
   let m = null;
-  for (const x of tn.slice(frase0, cabeca).matchAll(RE_OBITER)) m = x;
+  for (const x of tn.slice(frase0, cabeca).matchAll(RE_OBITER)) {
+    if (sentenca && x[0].startsWith("registre-se")) continue;   // 08/10/2026: em sentença é fórmula de cartório, não aparte
+    m = x;
+  }
   return m ? m[0] : null;
 }
 
@@ -234,7 +237,7 @@ export function conferirTrecho(texto, trecho, tipo) {
   // v1.15.0: onde o trecho está (seção da ementa, relatório/fundamentação/dispositivo do voto) e marca de obiter
   const posicao = posicaoNoJulgado(String(texto || ""), tipo, ini0, pos, fx);
   if (posicao) notas.push(`POSIÇÃO NO JULGADO: ${posicao}.`);
-  const ob = !emTranscricao && !naCasa && !fx.ementaDaCasa && !alertas.some((a) => a.startsWith("ENTRE ASPAS")) ? obiterAntes(tn, ini0, pos, String(texto || "")) : null;   // frase alheia entre aspas não é obiter do tribunal
+  const ob = !emTranscricao && !naCasa && !fx.ementaDaCasa && !alertas.some((a) => a.startsWith("ENTRE ASPAS")) ? obiterAntes(tn, ini0, pos, String(texto || ""), String(tipo || "").trim().toUpperCase() === "SENTENÇA") : null;   // frase alheia entre aspas não é obiter do tribunal
   if (ob)
     alertas.push(`OBITER DICTUM?: o trecho vem sob «${ob}» — raciocínio hipotético ou fundamento alternativo; o resultado do julgado não dependeu dele. Vale como reforço, não como ratio decidendi; cite dizendo que é obiter.`);
   const contexto = String(texto || "").slice(Math.max(0, ini0 - 120), pos + 120).replace(/\s+/g, " ").trim();

@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.20.1 (08/10/2026): OBITER DICTUM? em sentença
+
+- "Registre-se, por oportuno" e "registre-se, de passagem" deixam de disparar OBITER DICTUM? quando o julgado é SENTENÇA: ali é fórmula de cartório (medido: 2 disparos indevidos em sentenças típicas). Em acórdão a marca continua como antes. Python e Node em paridade.
+
 ## v1.20.0 (08/10/2026): fatos do julgado, em trecho literal
 
 - `obter_inteiro_teor_tjro` passa a trazer, em cada ementa, acórdão ou relatório, a linha "📌 FATOS DO JULGADO" com o trecho LITERAL em que o próprio julgado resume os fatos: a seção "I. CASO EM EXAME" da ementa do CNJ ou, sem ela, o RELATÓRIO até o VOTO (até 1.200 caracteres, com "[…]" quando corta). Não resume nem reescreve: serve de âncora para o campo `fatos_relevantes` da ficha de precedente e para o distinguishing no mapa de caso. Sem seção reconhecível, não emite nada. Em 707 peças dos recibos locais emitiu em 630 (89%); paridade Python×Node: 707 peças, 0 diferenças. Cobertura medida; a fidelidade do trecho ainda não passou por gabarito cego.

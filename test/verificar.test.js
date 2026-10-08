@@ -292,3 +292,12 @@ test("fatosDoJulgado: caso em exame da ementa e relatório do acórdão, literai
   assert.equal(fatosDoJulgado("Sem seção nenhuma aqui.", "EMENTA"), null);
   assert.equal(fatosDoJulgado(e, "SENTENÇA"), null);
 });
+
+test("obiterAntes: 'Registre-se, por oportuno' é fórmula de cartório em sentença, não obiter", async () => {
+  const { obiterAntes } = await import("../server/verificar.js");
+  const { norm1 } = await import("../server/custodia.js");
+  const t = "Julgo procedente o pedido. Registre-se, por oportuno, que o autor comprovou o pagamento integral da dívida e a quitação.";
+  const tn = norm1(t), i = tn.indexOf("o autor comprovou");
+  assert.ok(obiterAntes(tn, i, i + 30, t, false));
+  assert.equal(obiterAntes(tn, i, i + 30, t, true), null);
+});
