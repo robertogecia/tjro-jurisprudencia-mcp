@@ -280,3 +280,15 @@ test("08/10/2026: POSIÇÃO NA SENTENÇA de 1º grau localiza cabeçalho, relat�
   assert.match(pos("condenar o requerido a restituir o valor descontado"), /DISPOSITIVO da sentença/);
   assert.match(pos("7 de outubro de 2026 . Ana Mortari"), /assinatura e expedientes/);
 });
+
+test("fatosDoJulgado: caso em exame da ementa e relatório do acórdão, literais", async () => {
+  const { fatosDoJulgado } = await import("../server/posicao.js");
+  const e = "EMENTA DIREITO CIVIL. I. CASO EM EXAME 1. Apelação contra sentença que julgou improcedente pedido de inexistência de débito. II. QUESTÃO EM DISCUSSÃO 2. Saber se responde. III. RAZÕES DE DECIDIR 3. Responde.";
+  const r = fatosDoJulgado(e, "EMENTA");
+  assert.equal(r.onde, "ementa › caso em exame");
+  assert.equal(r.texto, "1. Apelação contra sentença que julgou improcedente pedido de inexistência de débito.");
+  const a = fatosDoJulgado("RELATÓRIO O autor alega que contratou e não recebeu o produto, pedindo restituição, e a sentença julgou improcedente o pedido. VOTO Conheço.", "ACÓRDÃO");
+  assert.equal(a.onde, "relatório do acórdão");
+  assert.equal(fatosDoJulgado("Sem seção nenhuma aqui.", "EMENTA"), null);
+  assert.equal(fatosDoJulgado(e, "SENTENÇA"), null);
+});

@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.20.0 (08/10/2026): fatos do julgado, em trecho literal
+
+- `obter_inteiro_teor_tjro` passa a trazer, em cada ementa, acórdão ou relatório, a linha "📌 FATOS DO JULGADO" com o trecho LITERAL em que o próprio julgado resume os fatos: a seção "I. CASO EM EXAME" da ementa do CNJ ou, sem ela, o RELATÓRIO até o VOTO (até 1.200 caracteres, com "[…]" quando corta). Não resume nem reescreve: serve de âncora para o campo `fatos_relevantes` da ficha de precedente e para o distinguishing no mapa de caso. Sem seção reconhecível, não emite nada. Em 707 peças dos recibos locais emitiu em 630 (89%); paridade Python×Node: 707 peças, 0 diferenças. Cobertura medida; a fidelidade do trecho ainda não passou por gabarito cego.
+
 ## v1.19.0 (08/10/2026): posição na SENTENÇA de 1º grau
 
 - **POSIÇÃO NO JULGADO também para sentenças.** `verificar_citacao_tjro` em documento do tipo SENTENÇA diz se a frase está no cabeçalho (autuação, partes, advogados), no relatório, na fundamentação, no dispositivo ou na assinatura/expedientes. Antes devolvia vazio. Como o texto da sentença vem numa linha só, o localizador se guia por marcas no meio do texto ("Vistos", "Dispensado o relatório", "É o relatório", "Fundamento e decido", "Ante o exposto, julgo…", a data por extenso da assinatura). Medido às cegas (dois rotuladores, 60/60 concordes) em 60 trechos de 100 sentenças que não entraram no ajuste: **89% ponderado pela população, 56 de 60 sem ponderar**; erros nas fronteiras (relatório que termina antes de "É o relatório", cláusula "SERVE A PRESENTE" colada ao arquivamento). Nas rodadas de ajuste (sentenças que usei para acertar as marcas) deu 81% e 92%.
