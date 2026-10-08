@@ -1805,3 +1805,12 @@ test("votacaoDoFecho: unânime, maioria, divergente que venceu e declaração de
   assert.equal(votacaoDoFecho(f("RECURSO DESPROVIDO, À UNANIMIDADE, COM DECLARAÇÃO DE VOTO DO DES. Y.")), "unânime, com declaração de voto");
   assert.equal(votacaoDoFecho("Sem fecho aqui, só o voto."), "");
 });
+
+test("formatBusca (compacto): votação do fecho no acórdão e emprestada à ementa do mesmo julgamento", () => {
+  const fecho = (p) => `RELATÓRIO x. acordam os Magistrados da 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, na conformidade da ata de julgamentos e das notas taquigráficas, em, ${p} Porto Velho, 14 de Julho de 2026 Relator Des. FULANO RELATOR`;
+  const mk = (tipo, texto, id) => ({ _source: { tipo, nr_processo: "7000001-00.2026.8.22.0001", dtjulgamento: "2026-07-14", dtjulgamento_str: "14/07/2026", ds_classe_judicial: "APELAÇÃO CÍVEL", ds_orgao_julgador_colegiado: "1ª Câmara Cível", nome_relator_acordao: "FULANO", ds_modelo_documento: texto, id_processo_documento: id } });
+  const data = { hits: { total: { value: 2 }, hits: [mk("ACÓRDÃO", fecho("RECURSO PROVIDO, POR MAIORIA. VENCIDO O DES. X."), 1), mk("EMENTA", "Ementa: DIREITO CIVIL. RECURSO PROVIDO.", 2)] } };
+  const out = formatBusca(data, "x", ["ACÓRDÃO", "EMENTA"], "recentes", 1, 10, [], "", false, "", { modo: "compacto" });
+  assert.match(out, /ACÓRDÃO[^\n]*\(por maioria\)/);
+  assert.match(out, /EMENTA[^\n]*\(por maioria, do acórdão do mesmo julgamento\)/);
+});

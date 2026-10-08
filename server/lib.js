@@ -183,7 +183,7 @@ export const citacao = (s, orgaoDoFecho = null) => {
 export const fold = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
 
 const RE_ACORDAM = /acordam\s+os\s+magistrados/gi;
-const RE_PROCL = /(?:\bem,|decis[ãa]o:|taquigr[áa]ficas,)\s*["\u201c]?\s*(.*?)(?=\s*["\u201d]?\s*(?:Dou f[eé]|Porto Velho|Ji-Paran[aá]|Cacoal|Vilhena|Ariquemes|Guajar[aá]|Rolim|Jaru|Ouro Preto|$)|(?<=\d{4})\s+(?:Desembargador|Juiz)a?\b)/is;
+const RE_PROCL = /(?:\bem,|decis[ãa]o:|taquigr[áa]ficas,)\s*["\u201c]?\s*(.*?)(?=\s*["\u201d]?\s*(?:Dou f[eé]|(?:Porto Velho|Ji-Paran[aá]|Cacoal|Vilhena|Ariquemes|Guajar[aá]-Mirim|Rolim de Moura|Jaru|Ouro Preto do Oeste),?\s*(?:\/\s*RO,?\s*)?\d{1,2}\b|$)|(?<=\d{4})\s+(?:Desembargador|Juiz)a?\b)/is;
 /** Votação declarada na proclamação do FECHO do acórdão (espelho de _votacao_do_fecho, 08/10/2026): "unânime", "por maioria",
  * "por maioria, voto divergente prevaleceu" e/ou "com declaração de voto"; "" quando não reconhece (nunca chuta). */
 export function votacaoDoFecho(texto) {
@@ -204,11 +204,6 @@ export function votacaoDoFecho(texto) {
   if (/DECLARACAO DE VOTO/.test(p)) v += ", com declaração de voto";
   return v;
 }
-const votSufixo = (texto, s, antes = " (", depois = ")") => {
-  if ((s.tipo || "") !== "ACÓRDÃO") return "";
-  const v = votacaoDoFecho(texto);
-  return v ? `${antes}${v}${depois}` : "";
-};
 
 // Id único da decisão no portal. O NÚMERO do processo não identifica um julgado:
 // sob o mesmo número convivem o acórdão original, os embargos, os segundos
@@ -1401,6 +1396,24 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   let houveCorte = false;
   const quandoDe = (s) => s.dtjulgamento_str || dataBr(s.dtjulgamento) || "?";
 
+  // Votação do fecho: o ACÓRDÃO tem a sua; a EMENTA (sem fecho) empresta a do acórdão do MESMO julgamento na página (nº + data;
+  // sem data não se presume; votações divergentes no mesmo julgamento: não arrisca) — mesma regra do órgão do fecho.
+  const votacoes = hits.map((h, i) => ((h._source || {}).tipo === "ACÓRDÃO" ? votacaoDoFecho(textos[i]) : ""));
+  const votDoJulgamento = new Map();
+  hits.forEach((_h, i) => {
+    if (!votacoes[i] || !chaveJulg(i) || chaveProc(i).startsWith("#")) return;
+    const k = `${chaveProc(i)}|${chaveJulg(i)}`;
+    votDoJulgamento.set(k, !votDoJulgamento.has(k) || votDoJulgamento.get(k) === votacoes[i] ? votacoes[i] : null);
+  });
+  const votSufixoI = (i, antes = " (", depois = ")") => {
+    if (votacoes[i]) return `${antes}${votacoes[i]}${depois}`;
+    if (((hits[i]._source || {}).tipo || "") === "EMENTA" && chaveJulg(i) && !chaveProc(i).startsWith("#")) {
+      const v = votDoJulgamento.get(`${chaveProc(i)}|${chaveJulg(i)}`);
+      if (v) return `${antes}${v}, do acórdão do mesmo julgamento${depois}`;
+    }
+    return "";
+  };
+
   if (compacto) {
     // Uma linha por documento: serve para varrer 100–250 resultados e escolher o
     // que abrir; o modo completo (com trecho) é para os poucos que interessam.
@@ -1412,7 +1425,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       const org = doFecho && orgaoDiverge(doFecho, orgao(s)) ? `${doFecho} (fecho; índice: ${orgao(s)})` : orgao(s);
       out.push(
         `${inicio + i}. ${s.tipo || "?"} · ${s.ds_classe_judicial || "—"} · ${org} · ${quandoDe(s)} · ${relator(s)} · ` +
-          `${r ? ROTULOS_RESULTADO[r] : "sem resultado identificável"}${votSufixo(textos[i], s)} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}`
+          `${r ? ROTULOS_RESULTADO[r] : "sem resultado identificável"}${votSufixoI(i)} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}`
       );
     });
     out.push("_Resultado declarado é extraído do fim do texto (dispositivo) e não é posição sobre a tese; ementa e acórdão do mesmo julgado aparecem em linhas separadas. \"(unânime / por maioria / voto divergente prevaleceu)\" vem da proclamação do fecho do ACÓRDÃO (medido às cegas, ~99%); ausência não prova unanimidade e \"com declaração de voto\" não é exaustivo. Abra o inteiro teor antes de citar._");
@@ -1443,7 +1456,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       corrige
         ? `- Órgão: ${corrige} (${s.grau_jurisdicao}º grau) — ⚠️ declarado no fecho do acórdão; o índice diz ${orgao(s)}`
         : `- Órgão: ${orgao(s)} (${s.grau_jurisdicao}º grau)`,
-      `- Julgado em: ${s.dtjulgamento_str || s.dtjulgamento || "—"}${votSufixo(textos[i], s, " · Votação no fecho: ", "")}${assunto}`,
+      `- Julgado em: ${s.dtjulgamento_str || s.dtjulgamento || "—"}${votSufixoI(i, " · Votação no fecho: ", "")}${assunto}`,
       `- Citação: ${citacao(s, corrige)}`,
       `- Inteiro teor: ${link(s)}`,
     ];
@@ -1860,7 +1873,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.22.0";
+export const VERSAO = "1.23.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
