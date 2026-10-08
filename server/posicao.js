@@ -86,11 +86,59 @@ export function partesDoVoto(texto, tipo, fx) {
   return { relIni, votoIni, fimRelator, dispIni, fimVoto };
 }
 
+// ---- POSIÇÃO NA SENTENÇA de 1º grau (08/10/2026; espelho de _posicao_sentenca; gabarito cego e duplo em sentenças do JURIS) ----
+const ROT_CAB = "cabeçalho da sentença (autuação, partes, advogados) — não é texto decisório";
+const ROT_REL = "RELATÓRIO da sentença — narração do processo e das teses das partes, não decisão";
+const ROT_FUN = "fundamentação da sentença — razões do juiz";
+const ROT_DIS = "DISPOSITIVO da sentença — é o que foi decidido, não a razão de decidir";
+const ROT_ASS = "assinatura e expedientes da sentença (data, juiz, cláusula de cumprimento) — não é texto decisório";
+const RE_INICIO_CORPO_SENT = /(?<![a-z0-9])(?:vistos|dispens\w*[ \t\n\r\f\v]+(?:o[ \t\n\r\f\v]+)?relatorio|dispensad\w*[ \t\n\r\f\v]+o[ \t\n\r\f\v]+relatorio|trata-se|tratam-se|cuida-se|cuidam-se|relatorio|s[ \t\n\r\f\v]?e[ \t\n\r\f\v]?n[ \t\n\r\f\v]?t[ \t\n\r\f\v]?e[ \t\n\r\f\v]?n[ \t\n\r\f\v]?c[ \t\n\r\f\v]?a)(?![a-z0-9])/;
+const RE_FUNDAMENTO_SENT = /(?<![a-z0-9])(?:fundamento[ \t\n\r\f\v]+e[ \t\n\r\f\v]+decido|fundamento[ \t\n\r\f\v]+e[ \t\n\r\f\v]+passo|fundamentacao|passo[ \t\n\r\f\v]+a[ \t\n\r\f\v]+decidir|passo[ \t\n\r\f\v]+a[ \t\n\r\f\v]+fundamentar|e[ \t\n\r\f\v]+o[ \t\n\r\f\v]+(?:[a-z]+[ \t\n\r\f\v]+)?relatorio|relatorio[ \t\n\r\f\v]+dispensado|dispensad[oa][ \t\n\r\f\v]+o[ \t\n\r\f\v]+relatorio|dispenso[ \t\n\r\f\v]+o[ \t\n\r\f\v]+relatorio|dispensa-se[ \t\n\r\f\v]+o[ \t\n\r\f\v]+relatorio)(?![a-z0-9])/g;
+const RE_DISPOSITIVO_SENT = /(?<![a-z0-9])(?:dispositivo|ante[ \t\n\r\f\v]+o[ \t\n\r\f\v]+exposto|ante[ \t\n\r\f\v]+do[ \t\n\r\f\v]+exposto|diante[ \t\n\r\f\v]+do[ \t\n\r\f\v]+exposto|isso[ \t\n\r\f\v]+posto|posto[ \t\n\r\f\v]+isso|pelo[ \t\n\r\f\v]+exposto|em[ \t\n\r\f\v]+face[ \t\n\r\f\v]+do[ \t\n\r\f\v]+exposto|por[ \t\n\r\f\v]+todo[ \t\n\r\f\v]+o[ \t\n\r\f\v]+exposto|ante[ \t\n\r\f\v]+tais[ \t\n\r\f\v]+fundamentos|ante[ \t\n\r\f\v]+o[ \t\n\r\f\v]+contexto|ex[ \t\n\r\f\v]+positis|assim[ \t\n\r\f\v]+sendo|desse[ \t\n\r\f\v]+modo|dessa[ \t\n\r\f\v]+forma|em[ \t\n\r\f\v]+consequencia)(?![a-z0-9])/g;
+const RE_VERBO_DECISORIO_SENT = /(?<![a-z0-9])(?:julgo|julgar|condeno|declaro|extingo|homologo|defiro|indefiro|acolho|rejeito|determino|resolvo|concedo|nego|decreto|absolvo|dou[ \t\n\r\f\v]+provimento|confirmo|torno|revogo|reconheco|decido)(?![a-z0-9])/g;
+const RE_DATA_SENT = /(?<![a-z0-9])\d{1,2}[ \t\n\r\f\v]+de[ \t\n\r\f\v]+(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)[ \t\n\r\f\v]+de[ \t\n\r\f\v]+(?:19|20)\d\d(?![a-z0-9])/g;
+
+/** Primeiro casamento de `re` (flag g) em tn[ini, fim) — como re.search(tn, ini, fim) do Python (fim corta a cadeia). */
+function buscaEm(re, tn, ini, fim) { re.lastIndex = ini; const m = re.exec(fim < tn.length ? tn.slice(0, fim) : tn); return m; }
+export function posicaoSentenca(texto, tn, meio) {
+  const n = tn.length;
+  if (n === 0) return "";
+  const corpo = new RegExp(RE_INICIO_CORPO_SENT.source, "g");
+  const mc = buscaEm(corpo, tn, 0, Math.min(n, 6000));
+  const cab = mc ? mc.index : Math.min(n, 1200);
+  let disp = -1;
+  const rd = new RegExp(RE_DISPOSITIVO_SENT.source, "g"); rd.lastIndex = cab;
+  for (let x; (x = rd.exec(tn)) !== null;) {
+    const v = new RegExp(RE_VERBO_DECISORIO_SENT.source, "g");
+    if (buscaEm(v, tn, x.index, Math.min(n, x.index + x[0].length + 400))) disp = x.index;
+  }
+  let ass = -1;
+  const rt = new RegExp(RE_DATA_SENT.source, "g"); rt.lastIndex = Math.max(cab, n - 900);
+  for (let x; (x = rt.exec(tn)) !== null;) ass = x.index;
+  if (ass >= 0) {
+    const a0 = Math.max(0, ass - 70);
+    const j = tn.slice(a0, ass).lastIndexOf(". ");
+    ass = j >= 0 ? a0 + j + 2 : ass;
+    if (disp >= 0 && ass <= disp) ass = -1;
+  }
+  const limite = disp >= 0 ? disp : (ass >= 0 ? ass : n);
+  const rf = new RegExp(RE_FUNDAMENTO_SENT.source, "g"); rf.lastIndex = cab;
+  const mf = rf.exec(limite < n ? tn.slice(0, limite) : tn);
+  const fund = mf ? mf.index : -1;
+  if (meio < cab) return ROT_CAB;
+  if (ass >= 0 && meio >= ass) return ROT_ASS;
+  if (disp >= 0 && meio >= disp) return ROT_DIS;
+  if (fund >= 0) return meio < fund ? ROT_REL : ROT_FUN;
+  return ROT_FUN;
+}
+
+
 /** Nota "POSIÇÃO NO JULGADO" para o trecho [ini0, fim) do `texto` (tipo dado; `fx` = faixasAlheias), ou "". */
 export function posicaoNoJulgado(texto, tipo, ini0, fim, fx) {
   const t = String(tipo || "").trim().toUpperCase();
   const n = texto.length;
   const meio = ini0 + Math.floor((fim - ini0) / 2);
+  if (t === "SENTENÇA") return posicaoSentenca(texto, norm1(texto), meio);   // 08/10/2026: sentença de 1º grau não tem ementa nem voto
   const emEmenta = t === "EMENTA" ? [0, n] : (/AC[ÓO]RD[ÃA]O/.test(t) && fx.casaIni < n ? [fx.casaIni, fx.fecho] : null);
   // 1.16.0 (validação cega): o fecho começa no "ACÓRDÃO Vistos, relatados…", alguns caracteres antes do "acordam"
   if (emEmenta && t !== "EMENTA") {
