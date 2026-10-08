@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.21.1 (08/10/2026): descrição do filtro relator
+
+- A descrição de `relator` na ferramenta passa a dizer que, com tipo=["SENTENÇA"], filtra o nome do juiz (v1.21), e avisa que o relator do índice pode ser o relator para o acórdão ou outro nome no fecho, então o papel do magistrado se confere no fecho. Só texto; sem mudança de comportamento.
+
 ## v1.21.0 (08/10/2026): relator= funciona em SENTENÇA (nome do juiz)
 
 - Com tipo=["SENTENÇA"], o filtro `relator` passa a casar o NOME DO JUIZ (campo ds_nome.raw do índice; nas sentenças nome_relator_* vêm vazios e o filtro devolvia sempre zero). Medido ao vivo: "DENISE PIPINO FIGUEIREDO" + cartão consignado/RMC = 164 sentenças, todas dela. Com outros tipos ou tipos misturados, nada muda. Serve para ler como um juiz decide um assunto (e comparar com o que ele decide hoje como relator, se subiu a desembargador). Grafia exata, como no índice; é amostra do índice, não o universo.
