@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.21.0 (08/10/2026): relator= funciona em SENTENÇA (nome do juiz)
+
+- Com tipo=["SENTENÇA"], o filtro `relator` passa a casar o NOME DO JUIZ (campo ds_nome.raw do índice; nas sentenças nome_relator_* vêm vazios e o filtro devolvia sempre zero). Medido ao vivo: "DENISE PIPINO FIGUEIREDO" + cartão consignado/RMC = 164 sentenças, todas dela. Com outros tipos ou tipos misturados, nada muda. Serve para ler como um juiz decide um assunto (e comparar com o que ele decide hoje como relator, se subiu a desembargador). Grafia exata, como no índice; é amostra do índice, não o universo.
+
 ## v1.20.2 (08/10/2026): FATOS DO JULGADO avisa quando o trecho é o relatório
 
 - Medição cega em 30 acórdãos longos (2 rotuladores, 115 fatos): 113/115 de concordância, 3 fatos parciais. Achado: em um agravo regimental, o trecho do RELATÓRIO narrava as alegações do agravante e a ficha feita só dele inverteu o resultado (os dois rotuladores marcaram). A linha "FATOS DO JULGADO" passa a dizer, quando o trecho vem do relatório, que ele narra o pedido e as alegações, não o fundamento nem o resultado, e manda conferir o voto e o fecho. Python e Node em paridade.

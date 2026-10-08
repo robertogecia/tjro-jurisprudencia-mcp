@@ -203,7 +203,7 @@ server.registerTool(
       if (a.relator)
         filtros.push(
           `relator="${a.relator}" (grafia e maiúsculas EXATAS como no índice — não há padrão único de caixa; ` +
-            'confira o campo "Relator(a)" de um resultado sem filtro antes de repetir; só vale para tipo ACÓRDÃO)'
+            'confira o campo "Relator(a)" de um resultado sem filtro antes de repetir; para tipo=["SENTENÇA"] é o NOME DO JUIZ; nos demais tipos, só ACÓRDÃO carrega relator)'
         );
       if (a.assunto)
         filtros.push(

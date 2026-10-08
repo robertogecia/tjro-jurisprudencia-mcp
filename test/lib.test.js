@@ -1783,3 +1783,15 @@ test("resultadoDe lê só o FECHO quando ele existe; embargos 'providos/não pro
   // Fecho de embargos numa apelação: a classe do índice não ajuda, o fecho decide.
   assert.equal(rotuloDoConjunto(resultadoDe(hist + "acordam os Magistrados, em, EMBARGOS DE DECLARAÇÃO REJEITADOS, À UNANIMIDADE."), "APELAÇÃO CÍVEL"), "REJEITADO");
 });
+
+test("buildBuscaBody: relator em SENTENÇA filtra pelo nome do juiz (ds_nome.raw); em ACÓRDÃO continua nome_relator_acordao", () => {
+  const base = { consulta: "", grupos: [["rmc"]], pagina: 1, porPagina: 5, ordenacao: "recentes" };
+  const s = buildBuscaBody({ ...base, tipo: ["SENTENÇA"], relator: "FULANO DE TAL" });
+  assert.equal(s.fields["ds_nome.raw"], "FULANO DE TAL");
+  assert.equal(s.fields["nome_relator_acordao.raw"], undefined);
+  const a = buildBuscaBody({ ...base, tipo: ["ACÓRDÃO"], relator: "FULANO DE TAL" });
+  assert.equal(a.fields["nome_relator_acordao.raw"], "FULANO DE TAL");
+  assert.equal(a.fields["ds_nome.raw"], undefined);
+  const m = buildBuscaBody({ ...base, tipo: ["SENTENÇA", "ACÓRDÃO"], relator: "FULANO DE TAL" });
+  assert.equal(m.fields["nome_relator_acordao.raw"], "FULANO DE TAL");
+});
