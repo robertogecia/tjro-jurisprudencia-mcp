@@ -41,6 +41,30 @@ export function secoesDaEmenta(texto, ini, fim) {
   return out;
 }
 
+export const FATOS_MAX = 1200;
+/** Trecho LITERAL em que o próprio julgado resume os fatos (espelho de _fatos_do_julgado, 08/10/2026): "I. CASO EM EXAME" da
+ * ementa do CNJ, ou o RELATÓRIO do acórdão até o VOTO. Nunca resume; sem seção reconhecível devolve null. */
+export function fatosDoJulgado(corpo, tipo) {
+  const t = String(tipo || "").toUpperCase();
+  if (!corpo || !["EMENTA", "ACÓRDÃO", "ACORDAO", "RELATÓRIO", "RELATORIO"].includes(t)) return null;
+  for (const sec of secoesDaEmenta(corpo, 0, corpo.length)) {
+    if (sec.nome !== "caso em exame") continue;
+    const m = /^\s*(?:[IVXivx]{1,3}\s*[.)-]?\s*)?caso em exame\s*[.:]?\s*/i.exec(corpo.slice(sec.a, sec.b));
+    const txt = corpo.slice(sec.a + (m ? m[0].length : 0), sec.b).trim();
+    return { onde: "ementa › caso em exame", texto: txt.slice(0, FATOS_MAX) };
+  }
+  const mr = /\bRELAT[ÓO]RIO\b/.exec(corpo.slice(0, 4000));
+  if (mr) {
+    const ini = mr.index + mr[0].length;
+    const mv = /\bVOTO\b/g; mv.lastIndex = ini;
+    const v = mv.exec(corpo);
+    const fim = v ? v.index : Math.min(corpo.length, ini + FATOS_MAX);
+    const txt = corpo.slice(ini, fim).replace(/^[ \t\n:.-]+|[ \t\n:.-]+$/g, "");
+    if (txt.length > 40) return { onde: "relatório do acórdão", texto: txt.slice(0, FATOS_MAX) };
+  }
+  return null;
+}
+
 const ROTULO = {
   "caso em exame": "ementa › I. CASO EM EXAME — resumo do caso, não tese",
   "questao em discussao": "ementa › II. QUESTÃO EM DISCUSSÃO — a pergunta posta, não a resposta",
