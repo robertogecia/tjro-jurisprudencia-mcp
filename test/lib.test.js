@@ -11,6 +11,7 @@ import {
   ehTurmaRecursal,
   orgaoMultiplo,
   buildBuscaBody,
+  votacaoDoFecho,
   buildInteiroBody,
   link,
   citacao,
@@ -1794,4 +1795,13 @@ test("buildBuscaBody: relator em SENTENÇA filtra pelo nome do juiz (ds_nome.raw
   assert.equal(a.fields["ds_nome.raw"], undefined);
   const m = buildBuscaBody({ ...base, tipo: ["SENTENÇA", "ACÓRDÃO"], relator: "FULANO DE TAL" });
   assert.equal(m.fields["nome_relator_acordao.raw"], "FULANO DE TAL");
+});
+
+test("votacaoDoFecho: unânime, maioria, divergente que venceu e declaração de voto (fecho)", () => {
+  const f = (p) => `acordam os Magistrados da 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, na conformidade da ata de julgamentos e das notas taquigráficas, em, ${p} Porto Velho, 14 de Julho de 2026 Relator Des. FULANO RELATOR`;
+  assert.equal(votacaoDoFecho(f("RECURSO PROVIDO NOS TERMOS DO VOTO DO RELATOR, À UNANIMIDADE.")), "unânime");
+  assert.equal(votacaoDoFecho(f("RECURSO PROVIDO, POR MAIORIA. VENCIDO O DES. BELTRANO.")), "por maioria");
+  assert.equal(votacaoDoFecho(f("PRELIMINARES REJEITADAS, POR UNANIMIDADE. NO MÉRITO, RECURSO PROVIDO NOS TERMOS DO VOTO DIVERGENTE DO JUIZ JORGE GURGEL, POR MAIORIA, VENCIDOS O RELATOR E O DES. X. LAVRARÁ O ACÓRDÃO O JUIZ JORGE GURGEL.")), "por maioria, voto divergente prevaleceu");
+  assert.equal(votacaoDoFecho(f("RECURSO DESPROVIDO, À UNANIMIDADE, COM DECLARAÇÃO DE VOTO DO DES. Y.")), "unânime, com declaração de voto");
+  assert.equal(votacaoDoFecho("Sem fecho aqui, só o voto."), "");
 });

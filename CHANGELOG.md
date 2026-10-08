@@ -2,6 +2,11 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.22.0 (08/10/2026): votação do fecho na lista da busca
+
+- Na lista da busca (modo compacto e completo), cada ACÓRDÃO passa a mostrar a votação declarada na proclamação do fecho: "unânime", "por maioria", "por maioria, voto divergente prevaleceu" e, quando o fecho cita, "com declaração de voto". Serve para ver de relance se o resultado é voto do relator ou de divergente, sem abrir o inteiro teor. Lê só a proclamação (depois de "em," / "a seguinte decisão:" / "taquigráficas," até a assinatura); não diz quem foi vencido e fica em branco quando não reconhece (ementa não tem fecho).
+- Medido às cegas (dois rotuladores, 193 fechos em duas amostras; a 1ª serviu de ajuste, a 2ª de validação): votação 183/183, divergente prevalecente 171/172, declaração de voto afirmada 27/27. A validação 2 achou um defeito de corte (o nome "JUIZ …" do voto divergente cortava a proclamação) e foi corrigido. Limite: a ausência de "com declaração de voto" não prova que não houve (omitiu 7 de 72 na 1ª passagem), e em 9 de 193 fechos a função não reconheceu a proclamação. Python e Node em paridade (2.095 textos, 0 diferenças).
+
 ## v1.21.1 (08/10/2026): descrição do filtro relator
 
 - A descrição de `relator` na ferramenta passa a dizer que, com tipo=["SENTENÇA"], filtra o nome do juiz (v1.21), e avisa que o relator do índice pode ser o relator para o acórdão ou outro nome no fecho, então o papel do magistrado se confere no fecho. Só texto; sem mudança de comportamento.
