@@ -75,8 +75,10 @@ server.registerTool(
       "uma tese antes de sortear ministro/câmara): filtro SERVER-SIDE exato sobre o relator do acórdão — grafia e " +
       "maiúsculas IGUAIS ao índice (confirmado por teste: este campo NÃO tem padrão único de caixa — o mesmo índice " +
       "guarda relatores em Title Case e outros em CAIXA ALTA; se vier zero, rode sem o filtro, copie o texto exato " +
-      "do campo \"Relator(a)\" de um resultado e repita). Só funciona com tipo incluindo ACÓRDÃO — em EMENTA esse " +
-      "campo costuma vir vazio no índice. Quando a página trouxer 3 ou mais resultados, o rodapé soma quantos " +
+      "do campo \"Relator(a)\" de um resultado e repita). Em ACÓRDÃO filtra o relator do acórdão (em EMENTA esse " +
+      "campo costuma vir vazio no índice); com tipo=[\"SENTENÇA\"] (só esse tipo) filtra o NOME DO JUIZ da sentença de 1º grau (v1.21). " +
+      "ATENÇÃO: o relator do índice pode ser o relator PARA O ACÓRDÃO (voto divergente vencedor) ou ter outro nome no fecho; " +
+      "para saber se o voto era do magistrado, leia o fecho (\"nos termos do voto do relator / divergente do …\", \"vencido …\", \"declaração de voto\"). Quando a página trouxer 3 ou mais resultados, o rodapé soma quantos " +
       "declaram cada resultado (provido / parcialmente provido / desprovido / acolhido / rejeitado) NESTA página, uma vez por julgamento " +
       "(nº do processo + data — ementa e acórdão do mesmo julgado não contam em dobro) e, com 10+ julgamentos, a quebra por relator, " +
       "órgão e ano: é indício para escolher o que ler, nunca conclusão sobre a tese (recurso provido por outro fundamento também conta como provido). " +
