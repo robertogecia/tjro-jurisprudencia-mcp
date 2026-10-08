@@ -2,6 +2,12 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.19.0 (08/10/2026): posição na SENTENÇA de 1º grau
+
+- **POSIÇÃO NO JULGADO também para sentenças.** `verificar_citacao_tjro` em documento do tipo SENTENÇA diz se a frase está no cabeçalho (autuação, partes, advogados), no relatório, na fundamentação, no dispositivo ou na assinatura/expedientes. Antes devolvia vazio. Como o texto da sentença vem numa linha só, o localizador se guia por marcas no meio do texto ("Vistos", "Dispensado o relatório", "É o relatório", "Fundamento e decido", "Ante o exposto, julgo…", a data por extenso da assinatura). Medido às cegas (dois rotuladores, 60/60 concordes) em 60 trechos de 100 sentenças que não entraram no ajuste: **89% ponderado pela população, 56 de 60 sem ponderar**; erros nas fronteiras (relatório que termina antes de "É o relatório", cláusula "SERVE A PRESENTE" colada ao arquivamento). Nas rodadas de ajuste (sentenças que usei para acertar as marcas) deu 81% e 92%.
+- Sentença continua não sendo precedente (o aviso já existia). Avisos de atribuição em sentenças, medidos às cegas em 136 trechos de sentenças comuns: TRANSCRIÇÃO 87% de precisão, ALEGAÇÃO DA PARTE 88%, NEGAÇÃO forte 69%; o conjunto ENTRE ASPAS + TRANSCRIÇÃO + ALEGAÇÃO acusa voz alheia com 88% de precisão e 77% de cobertura. Limite conhecido: ementa colada DEPOIS da citação ("(Processo n…, TJ/RO) DIREITO DO CONSUMIDOR…") e decisão do STJ colada sem aspas não são reconhecidas como transcrição.
+- Paridade Python×Node: custódia, 74.298 casos, 0 divergentes; posição em sentença, 11.191 casos em 300 sentenças, 0 divergentes.
+
 ## v1.18.0 (07/10/2026): negação em dois níveis
 
 - NEGAÇÃO em dois níveis. Continua "NEGAÇÃO:" quando a negação está colada ao trecho (até uma palavra antes) ou é existencial ("não há/houve/existe …", até cinco palavras). O resto que a regra anterior pegava sai como "NEGAÇÃO (distante)?", dizendo que em geral ela fecha a própria oração e não inverte o recorte. Gabarito cego e duplo em 120 trechos NOVOS de cinco tribunais (TJRO, TJSE, STJ, TCE-RO e TED-OAB; concordância 108/120, 12 adjudicados pela definição escrita), ponderado pela população: o alerta forte acerta 80% (falso alarme 6%); a regra anterior, sozinha, acertava 50% (falso alarme 33%) nesta amostra. Somados, os dois níveis avisam nos mesmos 72% das negações reais; o forte sozinho pega 53%.

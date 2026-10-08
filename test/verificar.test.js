@@ -270,3 +270,13 @@ test("v1.15.0: OBITER DICTUM? dispara com marca contrafactual na mesma frase; n�
   assert.equal(v("VOTO A revisão só cabe quando o valor se mostrar irrisório ou exorbitante, o que não é o caso dos autos.", "o valor se mostrar irrisório ou exorbitante"), null);
   assert.equal(v("VOTO Ainda que assim não fosse, a cobrança seria indevida. A sentença, portanto, deve ser mantida por seus próprios fundamentos.", "A sentença, portanto, deve ser mantida por seus próprios fundamentos"), null);   // frase seguinte
 });
+
+test("08/10/2026: POSIÇÃO NA SENTENÇA de 1º grau localiza cabeçalho, relatório, fundamentação, dispositivo e assinatura", () => {
+  const SENT = 'PODER JUDICIÁRIO DO ESTADO DE RONDÔNIA Porto Velho - 5ª Vara Cível Processo nº 7000000-00.2026.8.22.0001 Classe: Procedimento Comum Cível REQUERENTE: FULANO DE TAL ADVOGADO DO REQUERENTE: BELTRANO, OAB nº RO1234 REQUERIDO: BANCO X S/A SENTENÇA Vistos. Trata-se de ação de repetição de indébito ajuizada por Fulano de Tal contra o Banco X, alegando descontos indevidos em sua conta. O requerido contestou sustentando a regularidade da contratação. É o relatório. Fundamento e decido. A instituição financeira responde objetivamente pelos danos causados por fraude de terceiro, nos termos da Súmula 479 do STJ, e não comprovou a contratação do serviço pela parte autora. Ante o exposto, JULGO PROCEDENTE o pedido para condenar o requerido a restituir o valor descontado, em dobro, com juros e correção monetária desde o desembolso. Publique-se. Registre-se. Intimem-se. Porto Velho/RO, quarta-feira, 7 de outubro de 2026 . Ana Mortari Juíza de Direito';
+  const pos = (x) => (conferirTrecho(SENT, x, "SENTENÇA").notas.find((n) => n.startsWith("POSIÇÃO NO JULGADO")) || "");
+  assert.match(pos("REQUERIDO: BANCO X S/A SENTENÇA"), /cabeçalho da sentença/);
+  assert.match(pos("contestou sustentando a regularidade da contratação"), /RELATÓRIO da sentença/);
+  assert.match(pos("responde objetivamente pelos danos causados por fraude de terceiro"), /fundamentação da sentença/);
+  assert.match(pos("condenar o requerido a restituir o valor descontado"), /DISPOSITIVO da sentença/);
+  assert.match(pos("7 de outubro de 2026 . Ana Mortari"), /assinatura e expedientes/);
+});
