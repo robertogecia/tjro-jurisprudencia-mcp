@@ -563,7 +563,8 @@ export function buildBuscaBody(o) {
   // testado saiu em Title Case (outro relator da MESMA amostra estava em CAIXA
   // ALTA) — forçar maiúscula quebraria exatamente o caso que funcionou. Grafia
   // e acentuação exigidas são as do índice; ver aviso de zero-resultado.
-  if (o.relator) fields["nome_relator_acordao.raw"] = o.relator;
+  // 08/10/2026: em SENTENÇA (1º grau) o juiz vive em ds_nome.raw (nome_relator_* vêm vazios); só vale quando TODOS os tipos pedidos são SENTENÇA.
+  if (o.relator) fields[o.tipo.length && o.tipo.every((t) => String(t).toUpperCase() === "SENTENÇA") ? "ds_nome.raw" : "nome_relator_acordao.raw"] = o.relator;
   // Assunto CNJ (Tabela Processual Unificada): filtro SERVER-SIDE confirmado em
   // 10/09/2026 — com "Inclusão Indevida em Cadastro de Inadimplentes", todos os
   // resultados vieram desse assunto. Mas é RUIDOSO por construção (Manual das
@@ -1831,7 +1832,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.20.2";
+export const VERSAO = "1.21.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
