@@ -182,6 +182,34 @@ export const citacao = (s, orgaoDoFecho = null) => {
 
 export const fold = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
 
+const RE_ACORDAM = /acordam\s+os\s+magistrados/gi;
+const RE_PROCL = /(?:\bem,|decis[ãa]o:|taquigr[áa]ficas,)\s*["\u201c]?\s*(.*?)(?=\s*["\u201d]?\s*(?:Dou f[eé]|Porto Velho|Ji-Paran[aá]|Cacoal|Vilhena|Ariquemes|Guajar[aá]|Rolim|Jaru|Ouro Preto|$)|(?<=\d{4})\s+(?:Desembargador|Juiz)a?\b)/is;
+/** Votação declarada na proclamação do FECHO do acórdão (espelho de _votacao_do_fecho, 08/10/2026): "unânime", "por maioria",
+ * "por maioria, voto divergente prevaleceu" e/ou "com declaração de voto"; "" quando não reconhece (nunca chuta). */
+export function votacaoDoFecho(texto) {
+  const t = String(texto || "");
+  let ult = -1;
+  for (const m of t.matchAll(RE_ACORDAM)) ult = m.index;
+  if (ult < 0) return "";
+  const cauda = t.slice(ult, ult + 2200).replace(/[ \t\n\r\f\v]+/g, " ");
+  const m = RE_PROCL.exec(cauda);
+  if (!m) return "";
+  const p = fold(m[1].slice(0, 900)).toUpperCase();
+  let v;
+  if (/\bMAIORIA\b|\bVENCID[OA]S?\b/.test(p)) {
+    const diverg = /VOTO DIVERGENTE|VOTO-VISTA DIVERGENTE|\bDIVERGENCIA\b|LAVRARA O ACORDAO|VENCID[OA]S? (?:A|O|AS|OS) RELATOR/.test(p) && !/VENCIDO[^.]{0,40}DIVERGENTE/.test(p);
+    v = diverg ? "por maioria, voto divergente prevaleceu" : "por maioria";
+  } else if (/UNANIMIDADE|\bUNANIME\b|\bUNANIMEMENTE\b/.test(p)) v = "unânime";
+  else return "";
+  if (/DECLARACAO DE VOTO/.test(p)) v += ", com declaração de voto";
+  return v;
+}
+const votSufixo = (texto, s, antes = " (", depois = ")") => {
+  if ((s.tipo || "") !== "ACÓRDÃO") return "";
+  const v = votacaoDoFecho(texto);
+  return v ? `${antes}${v}${depois}` : "";
+};
+
 // Id único da decisão no portal. O NÚMERO do processo não identifica um julgado:
 // sob o mesmo número convivem o acórdão original, os embargos, os segundos
 // embargos e, em julgamento por maioria, às vezes o voto vencido como documento
@@ -1384,10 +1412,10 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       const org = doFecho && orgaoDiverge(doFecho, orgao(s)) ? `${doFecho} (fecho; índice: ${orgao(s)})` : orgao(s);
       out.push(
         `${inicio + i}. ${s.tipo || "?"} · ${s.ds_classe_judicial || "—"} · ${org} · ${quandoDe(s)} · ${relator(s)} · ` +
-          `${r ? ROTULOS_RESULTADO[r] : "sem resultado identificável"} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}`
+          `${r ? ROTULOS_RESULTADO[r] : "sem resultado identificável"}${votSufixo(textos[i], s)} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}`
       );
     });
-    out.push("_Resultado declarado é extraído do fim do texto (dispositivo) e não é posição sobre a tese; ementa e acórdão do mesmo julgado aparecem em linhas separadas. Abra o inteiro teor antes de citar._");
+    out.push("_Resultado declarado é extraído do fim do texto (dispositivo) e não é posição sobre a tese; ementa e acórdão do mesmo julgado aparecem em linhas separadas. \"(unânime / por maioria / voto divergente prevaleceu)\" vem da proclamação do fecho do ACÓRDÃO (medido às cegas, ~99%); ausência não prova unanimidade e \"com declaração de voto\" não é exaustivo. Abra o inteiro teor antes de citar._");
   }
 
   if (!compacto) hits.forEach((h, i) => {
@@ -1415,7 +1443,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       corrige
         ? `- Órgão: ${corrige} (${s.grau_jurisdicao}º grau) — ⚠️ declarado no fecho do acórdão; o índice diz ${orgao(s)}`
         : `- Órgão: ${orgao(s)} (${s.grau_jurisdicao}º grau)`,
-      `- Julgado em: ${s.dtjulgamento_str || s.dtjulgamento || "—"}${assunto}`,
+      `- Julgado em: ${s.dtjulgamento_str || s.dtjulgamento || "—"}${votSufixo(textos[i], s, " · Votação no fecho: ", "")}${assunto}`,
       `- Citação: ${citacao(s, corrige)}`,
       `- Inteiro teor: ${link(s)}`,
     ];
@@ -1832,7 +1860,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.21.1";
+export const VERSAO = "1.22.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
