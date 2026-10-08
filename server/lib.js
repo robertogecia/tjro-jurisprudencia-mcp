@@ -1632,7 +1632,7 @@ export function formatInteiro(data, nrProcesso) {
     const cust = linhaCustodia(corpo, s.tipo);
     if (cust) avisos.push(cust);
     const fatos = fatosDoJulgado(corpo, s.tipo);
-    if (fatos) avisos.push(`📌 FATOS DO JULGADO (trecho literal, ${fatos.onde}; não é resumo meu): "${fatos.texto.replace(/[ \t\n\r\f\v]+/g, " ")}${fatos.texto.length >= FATOS_MAX ? " […]" : ""}"`);
+    if (fatos) avisos.push(`📌 FATOS DO JULGADO (trecho literal, ${fatos.onde}; não é resumo meu): "${fatos.texto.replace(/[ \t\n\r\f\v]+/g, " ")}${fatos.texto.length >= FATOS_MAX ? " […]" : ""}"${fatos.onde.startsWith("relatório") ? " ⚠️ É o relatório: narra o pedido e as alegações das partes, NÃO o fundamento nem o resultado; confira os dois no voto e no fecho." : ""}`);
     let texto = corpo || "(documento sem texto)";
     const teto = Math.min(tetoPeca, ORCAMENTO_INTEIRO - usado);
     if (texto.length > teto) {
@@ -1831,7 +1831,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.20.1";
+export const VERSAO = "1.20.2";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
