@@ -1820,3 +1820,43 @@ test("formatInteiro: ACÓRDÃO traz a linha de votação do fecho", () => {
   const data = { hits: { total: { value: 1 }, hits: [{ _source: { tipo: "ACÓRDÃO", nr_processo: "7000001-00.2026.8.22.0001", dtjulgamento: "2026-07-14", dtjulgamento_str: "14/07/2026", ds_classe_judicial: "APELAÇÃO CÍVEL", ds_orgao_julgador_colegiado: "1ª Câmara Cível", nome_relator_acordao: "FULANO", ds_modelo_documento: fecho, id_processo_documento: 1 } }] } };
   assert.match(formatInteiro(data, "70000010020268220001"), /Votação no fecho: por maioria/);
 });
+
+test("linhaDoTempo: uma consulta por ano, conta por julgamento e espera o limitador", async () => {
+  const { linhaDoTempo } = await import("../server/linhadotempo.js");
+  const fecho = (p) => `acordam os Magistrados da 1ª Câmara, em, ${p} Porto Velho, 14 de Julho de 2026 Des. X RELATOR`;
+  const mk = (nr, texto) => ({ _source: { tipo: "ACÓRDÃO", nr_processo: nr, dtjulgamento: "2026-07-14", dtjulgamento_str: "14/07/2026", ds_classe_judicial: "APELAÇÃO CÍVEL", ds_modelo_documento: texto } });
+  let chamadas = 0, esperas = 0;
+  const postFalso = async (corpo) => {
+    chamadas++;
+    if (chamadas === 1) throw new Error("Muitas consultas [espera_segundos=2 tipo=limite_de_ritmo]");
+    return { hits: { total: { value: 7 }, hits: [mk("7000001-00.2026.8.22.0001", fecho("RECURSO PROVIDO, À UNANIMIDADE.")), mk("7000002-00.2026.8.22.0001", fecho("RECURSO NÃO PROVIDO, À UNANIMIDADE."))] } };
+  };
+  const out = await linhaDoTempo({ grupos: [["rmc"]], anoInicio: 2025, anoFim: 2026, porPagina: 20 }, postFalso, async () => { esperas++; });
+  assert.equal(esperas, 1);
+  assert.equal(chamadas, 3);
+  assert.match(out, /\| 2025 \| 7 \| 2 \| 1 \| 0 \| 1 \| 0 \| 0 \| 0 \|/);
+  assert.match(out, /nunca prova de superação/);
+});
+
+test("citacoesDe: lista só outros julgados que contêm o número, com janela e sinal fraco de afastamento", async () => {
+  const { citacoesDe, janelasDeCitacao, sinalAfastamento } = await import("../server/linhadotempo.js");
+  const num = "7007798-56.2023.8.22.0014";
+  const mk = (nr, texto, id) => ({ _source: { tipo: "ACÓRDÃO", nr_processo: nr, dtjulgamento_str: "02/09/2026", ds_orgao_julgador_colegiado: "1ª Câmara Cível", nome_relator_acordao: "FULANO", ds_modelo_documento: texto, id_processo_documento: id } });
+  const postFalso = async () => ({ hits: { total: { value: 3 }, hits: [mk("70077985620238220014", `proprio ${num}`, 1), mk("7000001-00.2026.8.22.0001", `Nesse sentido, AC ${num}, Rel. X.`, 2), mk("7000002-00.2026.8.22.0001", `O precedente (${num}) não se aplica ao caso, hipótese diversa.`, 3)] } });
+  const out = await citacoesDe("70077985620238220014", 10, postFalso);
+  assert.match(out, /citam 7007798-56\.2023\.8\.22\.0014/);
+  assert.match(out, /2 nos 3 acórdãos/);
+  assert.match(out, /id 3 · ⚠️ sinal lexical de afastamento \(fraco\)/);
+  assert.doesNotMatch(out, /id 2 · ⚠️/);
+  assert.equal(janelasDeCitacao("x " + num + " y", num, 5, 5).length, 1);
+  assert.equal(sinalAfastamento("conforme precedente, nesse sentido"), false);
+  assert.match(await citacoesDe("123", 10, postFalso), /20 dígitos/);
+});
+
+test("postComEspera: não espera bloqueio do tribunal nem espera longa (devolve o erro na hora)", async () => {
+  const { postComEspera } = await import("../server/linhadotempo.js");
+  let esperas = 0;
+  await assert.rejects(postComEspera({}, 8, async () => { throw new Error("bloqueou [espera_segundos=595 tipo=bloqueio_do_tribunal]"); }, async () => { esperas++; }), /bloqueio_do_tribunal/);
+  await assert.rejects(postComEspera({}, 8, async () => { throw new Error("limite [espera_segundos=120 tipo=limite_de_ritmo]"); }, async () => { esperas++; }), /espera_segundos=120/);
+  assert.equal(esperas, 0);
+});
