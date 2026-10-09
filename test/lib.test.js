@@ -1814,3 +1814,9 @@ test("formatBusca (compacto): votação do fecho no acórdão e emprestada à em
   assert.match(out, /ACÓRDÃO[^\n]*\(por maioria\)/);
   assert.match(out, /EMENTA[^\n]*\(por maioria, do acórdão do mesmo julgamento\)/);
 });
+
+test("formatInteiro: ACÓRDÃO traz a linha de votação do fecho", () => {
+  const fecho = "RELATÓRIO x. acordam os Magistrados da 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, na conformidade da ata de julgamentos e das notas taquigráficas, em, RECURSO PROVIDO, POR MAIORIA. VENCIDO O DES. X. Porto Velho, 14 de Julho de 2026 Relator Des. FULANO RELATOR";
+  const data = { hits: { total: { value: 1 }, hits: [{ _source: { tipo: "ACÓRDÃO", nr_processo: "7000001-00.2026.8.22.0001", dtjulgamento: "2026-07-14", dtjulgamento_str: "14/07/2026", ds_classe_judicial: "APELAÇÃO CÍVEL", ds_orgao_julgador_colegiado: "1ª Câmara Cível", nome_relator_acordao: "FULANO", ds_modelo_documento: fecho, id_processo_documento: 1 } }] } };
+  assert.match(formatInteiro(data, "70000010020268220001"), /Votação no fecho: por maioria/);
+});

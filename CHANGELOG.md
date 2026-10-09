@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.24.0 (09/10/2026): votação do fecho no inteiro teor
+
+- `obter_inteiro_teor_tjro` mostra, em cada ACÓRDÃO, a linha "🗳️ Votação no fecho" (unânime / por maioria / voto divergente prevaleceu / com declaração de voto), a mesma função da lista da busca (medida às cegas, ~99%), com o aviso de que ela não diz quem foi vencido. Python e Node em paridade; teste novo.
+
 ## v1.23.0 (08/10/2026): votação também na linha da ementa; corte da proclamação corrigido
 
 - A linha da EMENTA na lista da busca passa a mostrar a votação do ACÓRDÃO do mesmo julgamento na página ("por maioria, do acórdão do mesmo julgamento"), pela mesma regra do órgão do fecho: casa por nº do processo + data; sem data não se presume; votações divergentes no mesmo julgamento: não arrisca.

@@ -1667,6 +1667,10 @@ export function formatInteiro(data, nrProcesso) {
     // "Favorável a quem": só no ACÓRDÃO (a ementa não tem partes nem fecho) e só
     // aqui, no inteiro teor — o cabeçalho da busca não traz partes legíveis.
     if (s.tipo === "ACÓRDÃO") {
+      const vf = votacaoDoFecho(corpo);
+      if (vf) avisos.push(`🗳️ Votação no fecho: ${vf}. (Lida da proclamação; não diz quem foi vencido: confira o fecho antes de citar como posição do órgão.)`);
+    }
+    if (s.tipo === "ACÓRDÃO") {
       const lado = linhaFavoravel(corpo, rotuloDoConjunto(resultadoDe(corpo), s.ds_classe_judicial));
       if (lado) avisos.push(lado);
     }
@@ -1873,7 +1877,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.23.0";
+export const VERSAO = "1.24.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
