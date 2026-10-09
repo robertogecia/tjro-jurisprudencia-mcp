@@ -40,6 +40,7 @@ import {
 } from "./lib.js";
 import { consultarProcesso, formatProcesso, ErroProcesso } from "./processo.js";
 import { ordenarPorSimilaridade, notaSimilares } from "./similares.js";
+import { linhaDoTempo, citacoesDe } from "./linhadotempo.js";
 import { baixarAtualizacao, textoAtualizacao, ErroAtualizacao } from "./atualizar.js";
 import {
   buscarNormas,
@@ -364,6 +365,61 @@ server.registerTool(
     annotations: { title: "Buscar recibos locais do TJRO", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   async (a) => ({ content: [{ type: "text", text: buscarRecibos(a.consulta || "", a.grupos ?? null, a.limite ?? 10, undefined, { nrProcesso: a.nr_processo || "", idDocumento: a.id_documento || "", relator: a.relator || "" }) }] })
+);
+
+server.registerTool(
+  "linha_do_tempo_tjro",
+  {
+    title: "Linha do tempo por ano de uma tese no TJRO",
+    description:
+      "Como o RESULTADO declarado dos acórdãos de uma tese muda ano a ano: uma consulta por ano (até 9 anos), trazendo uma amostra dos acórdãos mais recentes de cada ano " +
+      "e contando, por JULGAMENTO (nº + data), provido / parcialmente provido / desprovido / acolhido / rejeitado / sem resultado. Use `grupos` (sinônimos) e, se quiser, `relator`, " +
+      "`orgao_colegiado` e `classe_judicial` (grafia exata do índice). É AMOSTRA por ano, não o universo, e resultado declarado não é posição sobre a tese. " +
+      "Mudança de proporção entre anos é sinal para LER os julgados dos dois períodos, nunca prova de superação (câmara, relator e precedente novo se misturam). " +
+      "Custa até 9 consultas ao portal (a ferramenta espera o limitador de ritmo; se parar, devolve [PESQUISA INCOMPLETA], nunca zero).",
+    inputSchema: {
+      consulta: z.string().optional().describe("Termos livres (opcional se usar grupos)."),
+      grupos: z.array(z.array(z.string())).optional().describe('Sinônimos: [["cartão de crédito consignado","RMC"],["dano moral"]] (OU dentro do grupo, E entre grupos).'),
+      orgao_colegiado: z.string().optional().describe('Câmara/turma em Formato de Título (ex.: "1ª Câmara Cível").'),
+      relator: z.string().optional().describe("Relator do acórdão, grafia EXATA do índice."),
+      classe_judicial: z.string().optional().describe('Em CAIXA ALTA (ex.: "APELAÇÃO CÍVEL").'),
+      ano_inicio: z.number().int().min(2010).optional().describe("Primeiro ano (padrão: 3 anos atrás)."),
+      ano_fim: z.number().int().optional().describe("Último ano (padrão: o atual)."),
+      por_pagina: z.number().int().min(20).max(150).optional().describe("Tamanho da amostra por ano (20 a 150; padrão 80)."),
+    },
+    annotations: { title: "Linha do tempo por ano (TJRO)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  async (a) => {
+    try {
+      const fim = a.ano_fim ?? new Date().getFullYear();
+      return { content: [{ type: "text", text: await comAvisos(await linhaDoTempo({ consulta: a.consulta, grupos: a.grupos, orgaoColegiado: a.orgao_colegiado, relator: a.relator, classeJudicial: a.classe_judicial, anoInicio: a.ano_inicio ?? fim - 3, anoFim: fim, porPagina: a.por_pagina ?? 80 })) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
+    }
+  }
+);
+
+server.registerTool(
+  "julgados_que_citam_tjro",
+  {
+    title: "Julgados do TJRO que citam um acórdão",
+    description:
+      "Lista os acórdãos do TJRO que CITAM um julgado pelo número do processo (CNJ completo), com o trecho em volta da citação. LEITURA ASSISTIDA: serve para ver como o precedente é tratado depois dele. " +
+      "NÃO detecta superação (em 486 citações reais medidas às cegas, nenhuma declarou o citado superado: 51% seguem, 44% só mencionam, 3% afastam); o sinal \"afastamento\" é lexical e fraco (acerta ~62%). " +
+      "Cobre os 50 acórdãos mais recentes que contêm o número com máscara; zero NÃO prova que ninguém o aplicou. Superação vinculante (IRDR/IAC/súmula) se confere no catálogo do NUGEPNAC e no BNP.",
+    inputSchema: {
+      nr_processo: z.string().describe("Número CNJ completo do julgado citado (20 dígitos), com ou sem máscara."),
+      limite: z.number().int().min(1).max(50).optional().describe("Quantos mostrar (1 a 50; padrão 10)."),
+    },
+    annotations: { title: "Julgados que citam este (TJRO)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  async (a) => {
+    try {
+      return { content: [{ type: "text", text: await comAvisos(await citacoesDe(a.nr_processo, a.limite ?? 10)) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
+    }
+  }
 );
 
 server.registerTool(

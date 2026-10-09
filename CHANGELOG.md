@@ -2,6 +2,12 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.25.0 (09/10/2026): `linha_do_tempo_tjro` e `julgados_que_citam_tjro`
+
+- **`linha_do_tempo_tjro`**: o resultado declarado (provido / parcial / desprovido / acolhido / rejeitado) dos acórdãos de uma tese, ano a ano, com uma consulta por ano (até 9) e amostra dos acórdãos mais recentes de cada ano; contagem por julgamento (nº + data). É amostra, e mudança de proporção é sinal para ler, nunca prova de superação. Espera o limitador de ritmo só em rajada curta (até 75 s); bloqueio do tribunal ou espera longa devolve `[PESQUISA INCOMPLETA]` na hora (nunca "zero", nunca trava a ferramenta por minutos).
+- **`julgados_que_citam_tjro`**: acórdãos que citam um julgado pelo número CNJ, com o trecho em volta e um sinal lexical FRACO de afastamento. Leitura assistida. **Não detecta superação:** em 486 citações reais, medidas às cegas por dois rotuladores (478/486 concordantes), 51% seguem o citado, 44% só mencionam, 3% o afastam e nenhuma o declarou superado; o sinal de afastamento acertou 8 de 13 e pegou 8 de 16. Um detector de superação foi tentado e descartado por falta de casos para validar.
+- Python e Node em paridade (sinal de afastamento idêntico nas 486 janelas); testes novos.
+
 ## v1.24.0 (09/10/2026): votação do fecho no inteiro teor
 
 - `obter_inteiro_teor_tjro` mostra, em cada ACÓRDÃO, a linha "🗳️ Votação no fecho" (unânime / por maioria / voto divergente prevaleceu / com declaração de voto), a mesma função da lista da busca (medida às cegas, ~99%), com o aviso de que ela não diz quem foi vencido. Python e Node em paridade; teste novo.
