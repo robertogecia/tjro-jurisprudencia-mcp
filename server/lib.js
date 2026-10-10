@@ -1877,7 +1877,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.25.0";
+export const VERSAO = "1.26.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
@@ -1970,6 +1970,16 @@ export function tipoDoErro(mensagem) {
 // Erros que o próprio usuário resolve esperando não merecem relato.
 const SEM_RELATO = new Set(["limite_de_ritmo"]);
 
+/** Estado resumido do limitador para o diário de erros: nível e consultas no último minuto (nunca lança). */
+export function estadoLimitadorResumo(agora = Date.now()) {
+  try {
+    const e = comTrava(() => lerEstado());
+    return { nivel: e.indiceJanela + 1, de: ESCADA_JANELA_MS.length, ultimoMinuto: (e.requisicoes || []).filter((t) => agora - t <= 60_000).length, bloqueios: (e.incidentes || []).length };
+  } catch {
+    return null;
+  }
+}
+
 export function linkRelato(tipo, agora = Date.now(), plataforma = process.platform) {
   let estado = "";
   try {
@@ -2048,6 +2058,8 @@ export async function comAjudaNoErro(mensagem, opcoes = {}) {
       `_Há uma versão mais nova desta extensão (v${nova}; a instalada é a v${VERSAO}), e ela pode já ` +
         `corrigir este problema._ Baixe em: ${RELEASES_PAGINA}`
     );
+  if (!SEM_RELATO.has(tipo))
+    partes.push("_Este erro foi anotado no diário local da extensão (só dados técnicos: ferramenta, tipo, versão, sem texto de busca nem número de processo). `diagnostico_erros_tjro` resume o histórico e gera um relatório para análise._");
   if (!SEM_RELATO.has(tipo))
     partes.push(
       `_Se o problema continuar${nova ? " depois de atualizar" : ""}, dá para relatá-lo ao autor por este ` +

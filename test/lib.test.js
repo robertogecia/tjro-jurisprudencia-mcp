@@ -1860,3 +1860,50 @@ test("postComEspera: não espera bloqueio do tribunal nem espera longa (devolve 
   await assert.rejects(postComEspera({}, 8, async () => { throw new Error("limite [espera_segundos=120 tipo=limite_de_ritmo]"); }, async () => { esperas++; }), /espera_segundos=120/);
   assert.equal(esperas, 0);
 });
+
+test("diário de erros: sanitiza (sem nº de processo, sem texto de busca), descreve parâmetros sem conteúdo e resume", async () => {
+  const E = await import("../server/erros.js");
+  const os = await import("node:os"), path = await import("node:path"), fs = await import("node:fs");
+  const f = path.join(os.tmpdir(), `erros-${Date.now()}.jsonl`);
+  E._definirArquivoParaTeste(f);
+  const s = E.sanitizar('falhou no processo 7007798-56.2023.8.22.0014 com "dano moral cartão Maria Silva" e o 70077985620238220014 em https://x.tjro.jus.br/p?q=segredo&id=1');
+  assert.doesNotMatch(s, /7007798|Maria|segredo|dano moral/);
+  const d = E.descreverArgs({ consulta: "dano moral Maria Silva", grupos: [["a", "b"], ["c"]], relator: "FULANO DE TAL", tipo: ["ACÓRDÃO"], por_pagina: 80, nr_processo: "70077985620238220014" });
+  assert.equal(d.consulta, "<texto: 22 car.>");
+  assert.equal(d.grupos, "2 grupo(s), 3 termo(s)");
+  assert.equal(d.relator, "<texto: 13 car.>");
+  assert.deepEqual(d.tipo, ["ACÓRDÃO"]);
+  assert.equal(d.por_pagina, 80);
+  assert.doesNotMatch(JSON.stringify(d), /Maria|FULANO|7007798/);
+  E.registrarErro({ ferramenta: "buscar_jurisprudencia_tjro", texto: "HTTP 500 no processo 7007798-56.2023.8.22.0014", args: { consulta: "x segredo" }, ms: 120 });
+  E.registrarErro({ ferramenta: "buscar_jurisprudencia_tjro", erro: new Error("tempo esgotado após 45s"), args: {}, ms: 45000 });
+  const ent = E.lerErros(30);
+  assert.equal(ent.length, 2);
+  assert.equal(ent[0].tipo, "http_500"); assert.equal(ent[0].http, "500");
+  assert.doesNotMatch(JSON.stringify(ent), /7007798|segredo/);
+  const r = E.resumirErros(ent);
+  assert.match(r, /http_500/); assert.match(r, /timeout/); assert.match(r, /quem corrige/);
+  assert.match(E.relatorioParaAnalise(ent), /sem texto de busca/);
+  assert.match(E.resumirErros([]), /Nenhum erro registrado/);
+  fs.unlinkSync(f);
+});
+
+test("comDiario: anota exceção, isError e [PESQUISA INCOMPLETA]; ignora limite_de_ritmo; nunca quebra a ferramenta", async () => {
+  const E = await import("../server/erros.js");
+  const os = await import("node:os"), path = await import("node:path"), fs = await import("node:fs");
+  const f = path.join(os.tmpdir(), `erros2-${Date.now()}.jsonl`);
+  E._definirArquivoParaTeste(f);
+  const reg = {};
+  const server = { registerTool: (n, c, h) => { reg[n] = h; } };
+  E.comDiario(server);
+  server.registerTool("a", {}, async () => ({ content: [{ type: "text", text: "Erro ao consultar o TJRO: HTTP 502" }], isError: true }));
+  server.registerTool("b", {}, async () => { throw new Error("ECONNRESET"); });
+  server.registerTool("c", {}, async () => ({ content: [{ type: "text", text: "⚠️ [PESQUISA INCOMPLETA] parou no ano 2024" }] }));
+  server.registerTool("d", {}, async () => ({ content: [{ type: "text", text: "Muito rápido [espera_segundos=5 tipo=limite_de_ritmo]" }], isError: true }));
+  server.registerTool("e", {}, async () => ({ content: [{ type: "text", text: "tudo certo" }] }));
+  await reg.a({}); await assert.rejects(reg.b({}), /ECONNRESET/); await reg.c({}); await reg.d({}); await reg.e({});
+  const ent = E.lerErros(1);
+  assert.deepEqual(ent.map((x) => x.ferramenta), ["a", "b", "c"]);
+  assert.equal(ent[2].parcial, true);
+  fs.unlinkSync(f);
+});
