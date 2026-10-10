@@ -41,6 +41,7 @@ import {
 import { consultarProcesso, formatProcesso, ErroProcesso } from "./processo.js";
 import { ordenarPorSimilaridade, notaSimilares } from "./similares.js";
 import { linhaDoTempo, citacoesDe } from "./linhadotempo.js";
+import { comDiario, lerErros, resumirErros, relatorioParaAnalise } from "./erros.js";
 import { baixarAtualizacao, textoAtualizacao, ErroAtualizacao } from "./atualizar.js";
 import {
   buscarNormas,
@@ -58,6 +59,7 @@ import {
 
 // --------------------------------------------------------------- MCP server -
 const server = new McpServer({ name: "Jurisprudência TJRO", version: VERSAO });
+comDiario(server); // diário local de erros: anota falhas de TODAS as ferramentas (só dado técnico)
 iniciarChecagemVersao();
 
 server.registerTool(
@@ -419,6 +421,30 @@ server.registerTool(
     } catch (e) {
       return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
     }
+  }
+);
+
+server.registerTool(
+  "diagnostico_erros_tjro",
+  {
+    title: "Diário de erros da extensão TJRO (diagnóstico para correção)",
+    description:
+      "Resume o diário LOCAL de erros desta extensão: falhas de qualquer ferramenta (HTTP 4xx/5xx, timeout, bloqueio do portal, rede, exceção, [PESQUISA NÃO REALIZADA/INCOMPLETA]), agrupadas por tipo e ferramenta, " +
+      "com causa provável, o que fazer e QUEM corrige (usuário, portal ou autor). Com relatorio=true, devolve um relatório técnico pronto para colar em issue ou entregar ao desenvolvedor. " +
+      "PRIVACIDADE: o diário NUNCA guarda texto de busca, grupos, nomes de relator/parte nem número de processo (só ferramenta, tipo, versão, sistema, estado do limitador e o tamanho/presença dos parâmetros). " +
+      "Zero registros não prova que nada falhou: só as falhas desta máquina, desde que o diário existe. Não faz consulta ao portal.",
+    inputSchema: {
+      dias: z.number().int().min(1).max(365).optional().describe("Janela em dias (padrão 30)."),
+      limite: z.number().int().min(1).max(50).optional().describe("Quantos padrões de erro mostrar (padrão 15)."),
+      relatorio: z.boolean().optional().describe("true = inclui o relatório técnico sanitizado para análise/correção."),
+    },
+    annotations: { title: "Diário de erros (TJRO)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async (a) => {
+    const ent = lerErros(a.dias ?? 30);
+    const partes = [resumirErros(ent, a.limite ?? 15)];
+    if (a.relatorio && ent.length) partes.push(relatorioParaAnalise(ent, 20));
+    return { content: [{ type: "text", text: partes.join("\n\n") }] };
   }
 );
 

@@ -2,6 +2,12 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.26.0 (10/10/2026): diário de erros e `diagnostico_erros_tjro`
+
+- **Diário local de erros** (`~/.tjro-jurisprudencia-erros.jsonl`, 500 linhas, modo 600): toda falha de QUALQUER ferramenta (exceção, `isError`, HTTP 4xx/5xx, timeout, bloqueio, rede, `[PESQUISA NÃO REALIZADA]`/`[PESQUISA INCOMPLETA]`) é anotada com data, versão, sistema, ferramenta, tipo, HTTP, duração, estado do limitador e os PARÂMETROS descritos sem conteúdo (presença/tamanho; valor só de enumerações). **Nunca grava texto de busca, grupos, nome de relator/parte nem número de processo**; a mensagem é sanitizada. O registro nunca quebra a ferramenta. `limite_de_ritmo` não é anotado (é esperado). Python e Node escrevem no mesmo arquivo e formato.
+- **`diagnostico_erros_tjro`** (`dias`, `limite`, `relatorio`): resume o diário por tipo e ferramenta, com causa provável, o que fazer e QUEM corrige (usuário, portal ou autor); com `relatorio=true` devolve relatório técnico sanitizado, pronto para issue ou para entregar ao desenvolvedor. Não consulta o portal.
+- A mensagem de erro agora avisa que o erro foi anotado e aponta a ferramenta. Testes novos (privacidade, resumo, wrapper); selftest do Python cobre o diário.
+
 ## v1.25.0 (09/10/2026): `linha_do_tempo_tjro` e `julgados_que_citam_tjro`
 
 - **`linha_do_tempo_tjro`**: o resultado declarado (provido / parcial / desprovido / acolhido / rejeitado) dos acórdãos de uma tese, ano a ano, com uma consulta por ano (até 9) e amostra dos acórdãos mais recentes de cada ano; contagem por julgamento (nº + data). É amostra, e mudança de proporção é sinal para ler, nunca prova de superação. Espera o limitador de ritmo só em rajada curta (até 75 s); bloqueio do tribunal ou espera longa devolve `[PESQUISA INCOMPLETA]` na hora (nunca "zero", nunca trava a ferramenta por minutos).
