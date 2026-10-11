@@ -10,7 +10,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { camposAlheios, linhaCustodia, CUSTODIA_VERSAO } from "./custodia.js";
 import { linhaFavoravel } from "./partes.js";
-import { fatosDoJulgado, FATOS_MAX, RE_ALEGACAO } from "./posicao.js";
+import { fatosDoJulgado, FATOS_MAX, FATOS_MAX_SENT, RE_ALEGACAO } from "./posicao.js";
 
 export const SITE = "https://juris.tjro.jus.br";
 export const API = "https://juris-back.tjro.jus.br";
@@ -1678,7 +1678,15 @@ export function formatInteiro(data, nrProcesso) {
     const cust = linhaCustodia(corpo, s.tipo);
     if (cust) avisos.push(cust);
     const fatos = fatosDoJulgado(corpo, s.tipo);
-    if (fatos) avisos.push(`📌 FATOS DO JULGADO (trecho literal, ${fatos.onde}; não é resumo meu): "${fatos.texto.replace(/[ \t\n\r\f\v]+/g, " ")}${fatos.texto.length >= FATOS_MAX ? " […]" : ""}"${fatos.onde.startsWith("relatório") ? " ⚠️ É o relatório: narra o pedido e as alegações das partes, NÃO o fundamento nem o resultado; confira os dois no voto e no fecho." : RE_ALEGACAO.test(fatos.texto) ? " ⚠️ O trecho contém alegação da parte (sustentou/alega/afirma): é o que a parte diz, não fato reconhecido pelo julgado; não o transforme em fato na ficha." : ""}`);
+    if (fatos && fatos.onde.startsWith("sem relatório formal")) {
+      avisos.push(`📌 FATOS DO JULGADO: sentença ${fatos.onde}; a narrativa dos fatos vem logo no início do texto abaixo e emenda na fundamentação sem marco; leia-a lá (não transcrevo porque o corte automático seria incerto).`);
+    } else if (fatos) {
+      const sent = fatos.onde.includes("sentença"); const teto = sent ? FATOS_MAX_SENT : FATOS_MAX;
+      const aviso = sent ? " ⚠️ É o relatório da sentença: pedido, alegações e andamento, NÃO o fundamento nem o resultado; confira os dois na fundamentação e no dispositivo." + (fatos.texto.length >= FATOS_MAX_SENT ? " (corte no teto: continua no texto abaixo)" : "")
+        : fatos.onde.startsWith("relatório do") ? " ⚠️ É o relatório: narra o pedido e as alegações das partes, NÃO o fundamento nem o resultado; confira os dois no voto e no fecho."
+        : RE_ALEGACAO.test(fatos.texto) ? " ⚠️ O trecho contém alegação da parte (sustentou/alega/afirma): é o que a parte diz, não fato reconhecido pelo julgado; não o transforme em fato na ficha." : "";
+      avisos.push(`📌 FATOS DO JULGADO (trecho literal, ${fatos.onde}; não é resumo meu): "${fatos.texto.replace(/[ \t\n\r\f\v]+/g, " ")}${fatos.texto.length >= teto ? " […]" : ""}"${aviso}`);
+    }
     let texto = corpo || "(documento sem texto)";
     const teto = Math.min(tetoPeca, ORCAMENTO_INTEIRO - usado);
     if (texto.length > teto) {
@@ -1877,7 +1885,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.26.2";
+export const VERSAO = "1.27.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

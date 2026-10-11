@@ -41,6 +41,36 @@ export function secoesDaEmenta(texto, ini, fim) {
   return out;
 }
 
+
+/** 11/10/2026: fatos da SENTENÇA (espelho de _fatos_da_sentenca). Relatório formal ou, nos Juizados, a narrativa que o substitui. */
+export const FATOS_MAX_SENT = 2000;
+const RE_SENT_CAB = /S\s?E\s?N\s?T\s?E\s?N\s?[ÇC]\s?A|\bSENTEN[ÇC]A\b|\bVistos\b/i;
+const RE_SENT_REL = /(?:\bRELAT[ÓO]RIO\b|(?:^|\n)\s*(?:[IVX]+|\d)\s*[-–.)]\s*Relat[óo]rio\b)\s*[:.\-–]?\s*/;
+const RE_SENT_DISP = /relat[óo]rio\s+(?:formal\s+)?(?:é\s+|foi\s+)?dis\s?pensad[oa]|dispensad[oa]\s+o\s+relat[óo]rio(?:\s+formal)?|sem\s+relat[óo]rio/i;
+const RE_SENT_ABRE = /\b(?:Trata-se|Tr\s?ata-se|Cuida-se|Versam os autos|Registra-se|[A-ZÀ-Ú][A-Za-zÀ-ú\.,\s]{3,90}?(?<![A-Za-zÀ-ú])(?:ajuiz(?:ou|aram)|ingress(?:ou|aram)|prop[ôo]s|propuseram|requer(?:em)?|sustent(?:a|am|ou|aram)|aleg(?:a|am|ou|aram)|narr(?:a|am|ou|aram)|aduz(?:em|iu|iram)?|afirm(?:a|am|ou|aram)|pretend(?:e|em)|relat(?:a|am|ou|aram))(?![A-Za-zÀ-ú]))/g;
+/** relatório formal: termina só em marcador formal (conectivo de raciocínio aparece ao narrar as teses das partes) */
+const RE_SENT_FIM_FORMAL = /(?:é\s+o\s+(?:breve\s+|sucinto\s+|necessário\s+)?relat[óo]rio|é\s+a\s+s[íi]ntese|\brelatados\b|\bPois\s+bem\b|passo\s+a\s+decidir|\bDecido\b|Fundamento\s+e\s+decido|\bFUNDAMENTA[ÇC][ÃA]O\b|\bDO\s+M[ÉE]RITO\b|(?:^|\n)\s*(?:II|2)\s*[-–.)]|\bjulgo\b)/gi;
+const RE_SENT_FIM = /(?:é\s+o\s+(?:breve\s+|sucinto\s+|necessário\s+)?relat[óo]rio|é\s+a\s+s[íi]ntese|\brelatados\b|\bPois\s+bem\b|passo\s+a\s+decidir|\bDecido\b|Fundamento\s+e\s+decido|\bFUNDAMENTA[ÇC][ÃA]O\b|\bDO\s+M[ÉE]RITO\b|\bPreliminarmente\b|\bDe\s+in[íi]cio\b|O\s+processo\s+comporta|Presentes\s+(?:as|os)\s+(?:condi|pressupost)|julgamento\s+antecipado|\brejeito\b|\bacolho\b|\bjulgo\b|\bdefiro\b|\bindefiro\b|(?<=[.;:!?]\s)(?:Portanto|Assim|Logo|Consequentemente|Nesse\s+sentido|Neste\s+sentido|A\s+prop[óo]sito|Veja-se|De\s+igual\s+modo|Igualmente|Com\s+efeito|Destarte|Desse\s+modo|Ademais|Ora|É\s+que|Imp[õo]e-se|N[ãa]o\s+prospera|Configurad[oa]|Nul[oa]\b|Entendo|Verifica-se|Constata-se|Conclui-se|Restou|N[ãa]o\s+h[áa]\b|H[áa]\s+de|Merece|N[ãa]o\s+merece|N[ãa]o\s+assiste|Assiste\s+raz[ãa]o|Inoportuna|Agora,|Em\s+que\s+pese|Contudo|Todavia|Entretanto|No\s+entanto|Ocorre\s+que|Quanto\s+ao\s+m[ée]rito|No\s+m[ée]rito|Analisando|Da\s+an[áa]lise|Compulsando|Em\s+an[áa]lise))/gi;
+function buscaDesde(re, t, ini, fim) { re.lastIndex = ini; const m = re.exec(t.slice(0, fim)); return m; }
+export function fatosDaSentenca(t) {
+  const mc = RE_SENT_CAB.exec(t.slice(0, 3000)); const base = mc ? mc.index + mc[0].length : 0;
+  const cab = t.slice(base, base + 3500);
+  const mr = RE_SENT_REL.exec(cab); const md = RE_SENT_DISP.exec(cab);
+  let ini, onde;
+  if (mr && !(md && md.index < mr.index + mr[0].length + 120)) { ini = base + mr.index + mr[0].length; onde = "relatório da sentença"; }
+  else {
+    const start = base + (md ? md.index + md[0].length : 0);
+    const ma = buscaDesde(RE_SENT_ABRE, t, start, start + 600);
+    if (!ma) return null;
+    // Sem relatório formal o corte é heurístico (validação cega 11/10/2026: 10 de 25 completos, 3 vazaram fundamento): só aponta, não transcreve.
+    return { onde: "sem relatório formal" + (md ? " (dispensado, art. 38 da Lei 9.099)" : ""), texto: "" };
+  }
+  const mf = buscaDesde(onde === "relatório da sentença" ? RE_SENT_FIM_FORMAL : RE_SENT_FIM, t, ini + 60, Math.min(t.length, ini + 9000));
+  const fim = mf ? mf.index : ini + FATOS_MAX_SENT;
+  const txt = t.slice(ini, fim).replace(/^[ \t\n:.\-–]+|[ \t\n:.\-–]+$/g, "");
+  return txt.length > 40 ? { onde, texto: txt.slice(0, FATOS_MAX_SENT) } : null;
+}
+
 export const FATOS_MAX = 1200;
 /** Resíduo de Word colado no começo de alguns relatórios ("15.00 800x600 Normal 0 21 false false false PT-BR X-NONE X-NONE MicrosoftInternetExplorer4"). */
 const RE_LIXO_WORD = /^\s*(?:\d+(?:\.\d+)?\s+\d+x\d+\s+)?(?:Normal\s+)?(?:\d+\s+){0,3}(?:(?:false|true)\s+){1,3}(?:[A-Z]{2}-[A-Z]{2}\s+|X-NONE\s+){1,3}(?:MicrosoftInternetExplorer\d\s+)?/;
@@ -49,6 +79,7 @@ export const RE_ALEGACAO = /\b(?:(?:agravante|agravad[oa]s?|apelante|apelad[oa]s
  * ementa do CNJ, ou o RELATÓRIO do acórdão até o VOTO. Nunca resume; sem seção reconhecível devolve null. */
 export function fatosDoJulgado(corpo, tipo) {
   const t = String(tipo || "").toUpperCase();
+  if (corpo && (t === "SENTENÇA" || t === "SENTENCA")) return fatosDaSentenca(corpo);
   if (!corpo || !["EMENTA", "ACÓRDÃO", "ACORDAO", "RELATÓRIO", "RELATORIO"].includes(t)) return null;
   for (const sec of secoesDaEmenta(corpo, 0, corpo.length)) {
     if (sec.nome !== "caso em exame") continue;

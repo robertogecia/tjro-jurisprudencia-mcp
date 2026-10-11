@@ -2,6 +2,13 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.27.0 (11/10/2026): FATOS DO JULGADO também na SENTENÇA
+
+- `obter_inteiro_teor_tjro` de SENTENÇA passa a trazer a linha 📌 FATOS DO JULGADO com o **relatório da sentença** literal (título "RELATÓRIO"/"I – Relatório" até "É o relatório", "Decido", "FUNDAMENTAÇÃO" ou o dispositivo; teto de 2000 caracteres, corte declarado). Validação cega independente (2 rotuladores Sonnet, 15 sentenças de vara cível, amostra nova): 14 de 15 "é o relatório inteiro", 0 vazamentos de fundamentação.
+- Sentença de Juizado (art. 38 da Lei 9.099, relatório dispensado) ou sem relatório formal: a linha só APONTA que a narrativa está no início do texto e não transcreve. Motivo medido: o corte automático dessa narrativa saiu completo em 10 de 25 e vazou fundamentação em 3 de 25 na mesma validação, então transcrever enganaria.
+- Texto indexado que já começa na análise (sem narrativa) não ganha a linha.
+- Python e Node idênticos nas 99 sentenças de teste; 3 testes novos.
+
 ## v1.26.2 (11/10/2026): aviso de alegação com mais cobertura
 
 - O aviso "alegação da parte" passa a reconhecer o gênero (apelado, agravada), a ordem inversa ("sustenta a autora"), "alegava", "alegando/sustentando/afirmando", "alegação", "narra", "defende" e "insurge". Fora ficaram "pleiteia/pleiteando" (pedido da parte, não fato contestável) e "alegado" solto, que geravam falso aviso. Em 95 trechos com consenso de dois rotuladores cegos (50 alegações reais): 40 marcados, 0 falsos, 10 perdidos (cobertura 80%, contra 58% da v1.26.1). A regra final foi ajustada olhando os falsos avisos da mesma amostra, então o número é indicativo, não validação independente.

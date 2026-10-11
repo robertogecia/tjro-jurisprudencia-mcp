@@ -1917,3 +1917,17 @@ test("RE_ALEGACAO reconhece alegação da parte", () => {
   assert.ok(_reAleg.test("O agravante sustentou que a agravada se habilitou"));
   assert.ok(!_reAleg.test("A sentença julgou procedente o pedido"));
 });
+
+import { fatosDaSentenca as _fds } from "../server/posicao.js";
+test("fatosDaSentenca: relatório formal termina em 'É o relatório'", () => {
+  const r = _fds("PODER JUDICIÁRIO S E N T E N Ç A I – RELATÓRIO Trata-se de ação declaratória ajuizada por FULANO em face de BANCO. Alega que não contratou. Contudo, o réu contestou. É o relatório. Decido. Julgo procedente.");
+  assert.equal(r.onde, "relatório da sentença");
+  assert.ok(r.texto.startsWith("Trata-se de ação") && r.texto.includes("Contudo") && !r.texto.includes("Decido"));
+});
+test("fatosDaSentenca: Juizado com relatório dispensado só aponta, sem trecho", () => {
+  const r = _fds("Vistos. Relatório dispensado nos termos do art. 38 da Lei 9.099/95. Trata-se de ação de indenização ajuizada por FULANA em face de LATAM, narrando que o voo atrasou doze horas e perdeu a conexão. Pois bem. A falha é evidente. Julgo procedente.");
+  assert.ok(r.onde.includes("art. 38") && r.texto === "");
+});
+test("fatosDaSentenca: texto que começa na análise devolve null", () => {
+  assert.equal(_fds("Vistos. A recuperação judicial não impede o prosseguimento. De igual modo, a alegação de que o crédito está habilitado não afasta o interesse. Julgo procedente."), null);
+});
