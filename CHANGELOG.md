@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.26.2 (11/10/2026): aviso de alegação com mais cobertura
+
+- O aviso "alegação da parte" passa a reconhecer o gênero (apelado, agravada), a ordem inversa ("sustenta a autora"), "alegava", "alegando/sustentando/afirmando", "alegação", "narra", "defende" e "insurge". Fora ficaram "pleiteia/pleiteando" (pedido da parte, não fato contestável) e "alegado" solto, que geravam falso aviso. Em 95 trechos com consenso de dois rotuladores cegos (50 alegações reais): 40 marcados, 0 falsos, 10 perdidos (cobertura 80%, contra 58% da v1.26.1). A regra final foi ajustada olhando os falsos avisos da mesma amostra, então o número é indicativo, não validação independente.
+
 ## v1.26.1 (11/10/2026): FATOS DO JULGADO mais limpo e com aviso de alegação
 
 - Resíduo de Word colado no começo do relatório ("15.00 800x600 Normal 0 21 false false false PT-BR X-NONE X-NONE MicrosoftInternetExplorer4") deixa de entrar no trecho literal de fatos.
