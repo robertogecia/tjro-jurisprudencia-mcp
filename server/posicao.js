@@ -42,6 +42,9 @@ export function secoesDaEmenta(texto, ini, fim) {
 }
 
 export const FATOS_MAX = 1200;
+/** Resíduo de Word colado no começo de alguns relatórios ("15.00 800x600 Normal 0 21 false false false PT-BR X-NONE X-NONE MicrosoftInternetExplorer4"). */
+const RE_LIXO_WORD = /^\s*(?:\d+(?:\.\d+)?\s+\d+x\d+\s+)?(?:Normal\s+)?(?:\d+\s+){0,3}(?:(?:false|true)\s+){1,3}(?:[A-Z]{2}-[A-Z]{2}\s+|X-NONE\s+){1,3}(?:MicrosoftInternetExplorer\d\s+)?/;
+export const RE_ALEGACAO = /\b(?:agravante|agravada?|apelante|apelada?|recorrente|recorrida?|embargante|embargada?|autor[a]?|r[ée]u|requerente|requerida?|parte|banco|impetrante|exequente|executada?)\W+(?:\w+\W+){0,2}?(?:sustent|alega|aleg[oó]u|aduz|afirm)\w*/i;
 /** Trecho LITERAL em que o próprio julgado resume os fatos (espelho de _fatos_do_julgado, 08/10/2026): "I. CASO EM EXAME" da
  * ementa do CNJ, ou o RELATÓRIO do acórdão até o VOTO. Nunca resume; sem seção reconhecível devolve null. */
 export function fatosDoJulgado(corpo, tipo) {
@@ -59,7 +62,7 @@ export function fatosDoJulgado(corpo, tipo) {
     const mv = /\bVOTO\b/g; mv.lastIndex = ini;
     const v = mv.exec(corpo);
     const fim = v ? v.index : Math.min(corpo.length, ini + FATOS_MAX);
-    const txt = corpo.slice(ini, fim).replace(/^[ \t\n:.-]+|[ \t\n:.-]+$/g, "");
+    const txt = corpo.slice(ini, fim).replace(/^[ \t\n:.-]+|[ \t\n:.-]+$/g, "").replace(RE_LIXO_WORD, "").trim();
     if (txt.length > 40) return { onde: "relatório do acórdão", texto: txt.slice(0, FATOS_MAX) };
   }
   return null;

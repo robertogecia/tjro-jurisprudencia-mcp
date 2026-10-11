@@ -1907,3 +1907,13 @@ test("comDiario: anota exceção, isError e [PESQUISA INCOMPLETA]; ignora limite
   assert.equal(ent[2].parcial, true);
   fs.unlinkSync(f);
 });
+
+import { fatosDoJulgado as _fdj, RE_ALEGACAO as _reAleg } from "../server/posicao.js";
+test("fatosDoJulgado remove resíduo de Word no início do relatório", () => {
+  const r = _fdj("RELATÓRIO 15.00 800x600 Normal 0 21 false false false PT-BR X-NONE X-NONE MicrosoftInternetExplorer4 Trata-se de Agravo Regimental interposto pelo Município em face da decisão. VOTO x", "ACÓRDÃO");
+  assert.ok(r.texto.startsWith("Trata-se de Agravo"));
+});
+test("RE_ALEGACAO reconhece alegação da parte", () => {
+  assert.ok(_reAleg.test("O agravante sustentou que a agravada se habilitou"));
+  assert.ok(!_reAleg.test("A sentença julgou procedente o pedido"));
+});

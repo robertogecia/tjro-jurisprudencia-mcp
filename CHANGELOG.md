@@ -2,6 +2,11 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.26.1 (11/10/2026): FATOS DO JULGADO mais limpo e com aviso de alegação
+
+- Resíduo de Word colado no começo do relatório ("15.00 800x600 Normal 0 21 false false false PT-BR X-NONE X-NONE MicrosoftInternetExplorer4") deixa de entrar no trecho literal de fatos.
+- Quando o trecho de fatos traz uma parte como sujeito de "sustenta/alega/afirma/aduz", a linha ganha o aviso de que aquilo é alegação da parte, não fato reconhecido pelo julgado (achado da conferência humana de 10/10/2026: a ficha tratava como fato o que o agravante sustentou). Sinaliza cerca de 19% dos trechos em 278 acórdãos de amostra. Python e Node idênticos; 2 testes novos.
+
 ## v1.26.0 (10/10/2026): diário de erros e `diagnostico_erros_tjro`
 
 - **Diário local de erros** (`~/.tjro-jurisprudencia-erros.jsonl`, 500 linhas, modo 600): toda falha de QUALQUER ferramenta (exceção, `isError`, HTTP 4xx/5xx, timeout, bloqueio, rede, `[PESQUISA NÃO REALIZADA]`/`[PESQUISA INCOMPLETA]`) é anotada com data, versão, sistema, ferramenta, tipo, HTTP, duração, estado do limitador e os PARÂMETROS descritos sem conteúdo (presença/tamanho; valor só de enumerações). **Nunca grava texto de busca, grupos, nome de relator/parte nem número de processo**; a mensagem é sanitizada. O registro nunca quebra a ferramenta. `limite_de_ritmo` não é anotado (é esperado). Python e Node escrevem no mesmo arquivo e formato.
