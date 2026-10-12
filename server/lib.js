@@ -137,6 +137,20 @@ export const limpar = (texto, limite = 800) => {
   return t;
 };
 
+/** Trecho de até `limite` caracteres que MOSTRA o primeiro termo destacado («...») do portal (espelho de _trecho_centrado;
+ * medido em 15.089 resultados: o corte simples escondia todos os termos em 7%). */
+export const trechoCentrado = (bruto, limite = 800) => {
+  const t = limpar(bruto, 0);
+  const i = t.indexOf("«");
+  if (i < 0 || i + 40 <= limite) return limpar(bruto, limite);
+  let ini = Math.max(0, i - 200);
+  const sp = t.indexOf(" ", ini);
+  if (ini && sp >= 0 && sp < i) ini = sp + 1;
+  const cauda = t.slice(ini);
+  const corte = cauda.length <= limite ? cauda : cauda.slice(0, limite).replace(/\s+\S*$/, "") + "…";
+  return "…" + corte;
+};
+
 // Chaves nulas ficam FORA da URL: o portal redireciona para a home se receber o
 // texto literal "None"/"null". %20 (e não "+") para espaço, imune a mudança de
 // parser no frontend.
@@ -1435,8 +1449,8 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
     const s = h._source || {};
     const hl = (h.highlight || {}).ds_modelo_documento;
     const inteiro = limpar(hl ? hl[0] : s.ds_modelo_documento || "", 0);
-    const trecho = limpar(hl ? hl[0] : s.ds_modelo_documento || "", 800);
-    if (inteiro.length > trecho.length) houveCorte = true;
+    const trecho = trechoCentrado(hl ? hl[0] : s.ds_modelo_documento || "", 800);
+    if (inteiro.length > trecho.length - (trecho.startsWith("…") ? 1 : 0)) houveCorte = true;
     const t = s.tipo || "documento";
     let rotulo;
     if (t === "EMENTA") rotulo = "Ementa (trecho)";
@@ -1885,7 +1899,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.27.0";
+export const VERSAO = "1.27.1";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

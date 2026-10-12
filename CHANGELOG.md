@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.27.1 (12/10/2026): o trecho da busca mostra o termo que casou
+
+- Em `buscar_jurisprudencia_tjro` o trecho exibido era os primeiros 800 caracteres do fragmento destacado pelo portal (que tem até 3.000). Medido em 15.089 resultados do cache local: em **7,1% (1.070)** nenhum termo destacado aparecia no trecho, porque o primeiro «termo» ficava depois do caractere 800. Agora, quando o primeiro termo cai fora da janela, o trecho é recentrado 200 caracteres antes dele (começa em fronteira de palavra, marcado com "…"). Resultado: termo visível em **100%** (antes 92,9%), nenhum trecho passa de 801 caracteres. Python e Node idênticos (300/300 pares); 2 testes novos. Métrica objetiva (presença do termo), então sem rotulagem.
+
 ## v1.27.0 (11/10/2026): FATOS DO JULGADO também na SENTENÇA
 
 - `obter_inteiro_teor_tjro` de SENTENÇA passa a trazer a linha 📌 FATOS DO JULGADO com o **relatório da sentença** literal (título "RELATÓRIO"/"I – Relatório" até "É o relatório", "Decido", "FUNDAMENTAÇÃO" ou o dispositivo; teto de 2000 caracteres, corte declarado). Validação cega independente (2 rotuladores Sonnet, 15 sentenças de vara cível, amostra nova): 14 de 15 "é o relatório inteiro", 0 vazamentos de fundamentação.

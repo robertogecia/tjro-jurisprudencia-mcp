@@ -1931,3 +1931,15 @@ test("fatosDaSentenca: Juizado com relatório dispensado só aponta, sem trecho"
 test("fatosDaSentenca: texto que começa na análise devolve null", () => {
   assert.equal(_fds("Vistos. A recuperação judicial não impede o prosseguimento. De igual modo, a alegação de que o crédito está habilitado não afasta o interesse. Julgo procedente."), null);
 });
+
+import { trechoCentrado as _tc } from "../server/lib.js";
+test("trechoCentrado mostra o termo destacado mesmo quando ele está depois dos 800 primeiros caracteres", () => {
+  const longo = "palavra ".repeat(300) + "«negativação» indevida " + "fim ".repeat(300);
+  const r = _tc(longo, 800);
+  assert.ok(r.includes("«negativação»") && r.startsWith("…") && r.length <= 802);
+});
+test("trechoCentrado mantém o início quando o termo já cabe nos 800 primeiros caracteres", () => {
+  const curto = "Ementa: «dano moral» configurado. " + "x ".repeat(600);
+  const r = _tc(curto, 800);
+  assert.ok(r.startsWith("Ementa:") && r.includes("«dano moral»") && !r.startsWith("…"));
+});
