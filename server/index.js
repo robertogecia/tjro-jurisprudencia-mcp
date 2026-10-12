@@ -584,9 +584,11 @@ server.registerTool(
       "para liberar) e o histórico de bloqueios com o que estava acontecendo em cada um. " +
       "USE ISTO antes de concluir que 'o portal está fora do ar' — o sintoma é parecido, mas a " +
       "causa e a solução são outras. Não faz nenhuma requisição ao TJRO.",
-    inputSchema: {},
+    inputSchema: {
+      relatorio: z.boolean().optional().describe("true = acrescenta o RELATÓRIO DE BLOQUEIOS: o que disparou cada bloqueio (intervalo, rajada, outros processos, resposta do portal), a taxa de bloqueio por faixa de intervalo e uma recomendação de ritmo baseada nos dados. Não altera nenhum parâmetro."),
+    },
   },
-  async () => ({ content: [{ type: "text", text: diagnosticoRitmo() }] })
+  async ({ relatorio }) => ({ content: [{ type: "text", text: diagnosticoRitmo(Date.now(), { relatorio: !!relatorio }) }] })
 );
 
 const transport = new StdioServerTransport();

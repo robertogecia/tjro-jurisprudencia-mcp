@@ -2,6 +2,13 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.28.0 (12/10/2026): relatório de bloqueios do portal
+
+- **Livro-razão de requisições** (`~/.tjro-jurisprudencia-ritmo.jsonl`, modo 600, últimas 3.000; Node e Python escrevem no mesmo arquivo e formato): cada requisição ao portal anota instante, origem (node/py, pid), identificação, operação (busca/inteiro_teor) e desfecho (ok, bloqueio, desafio, corrompida, http, rede). **Nunca guarda texto de busca, parte, relator nem número de processo.** Sob o test runner o livro-razão fica desligado, para teste nunca gravar no arquivo real.
+- **Cada incidente de bloqueio agora leva o contexto do gatilho:** intervalo desde a requisição anterior, quantas consultas em 30 s / 60 s / 5 min / 24 h, quantos processos usavam o portal ao mesmo tempo, as 12 requisições anteriores (segundos antes, origem, desfecho) e a resposta do portal (status, tipo, servidor, retry-after, tamanho e assinatura de 80 caracteres da página de bloqueio).
+- **`diagnostico_ritmo_tjro(relatorio=true)`**: taxa de bloqueio por faixa de intervalo (< 5 s, 5–6, 6–7, 7–10, 10–30, ≥ 30 s), maior rajada em 60 s sem bloqueio, veredito de cada incidente (abaixo do espaçamento mínimo, rajada, vários processos, pouco tráfego = gatilho fora do ritmo, verificação de navegador) e recomendação baseada nos dados. **Nenhum parâmetro é alterado automaticamente**: com menos de 100 requisições registradas o relatório manda manter o ritmo atual. Por que existe: em 12/10/2026 uma sonda a 4,3 s de intervalo levou bloqueio na 6ª consulta, coerente com a calibração de 23/09 (5 s bloqueia, 7 s é o mínimo), mas esse tipo de conclusão precisa de dados contínuos, não de sonda.
+- Python e Node produzem texto idêntico para o mesmo livro-razão; 9 testes novos (inclui fim a fim: `post()` com bloqueio falso grava o livro-razão sem texto de busca e o incidente leva a sequência e a resposta do portal).
+
 ## v1.27.1 (12/10/2026): o trecho da busca mostra o termo que casou
 
 - Em `buscar_jurisprudencia_tjro` o trecho exibido era os primeiros 800 caracteres do fragmento destacado pelo portal (que tem até 3.000). Medido em 15.089 resultados do cache local: em **7,1% (1.070)** nenhum termo destacado aparecia no trecho, porque o primeiro «termo» ficava depois do caractere 800. Agora, quando o primeiro termo cai fora da janela, o trecho é recentrado 200 caracteres antes dele (começa em fronteira de palavra, marcado com "…"). Resultado: termo visível em **100%** (antes 92,9%), nenhum trecho passa de 801 caracteres. Python e Node idênticos (300/300 pares); 2 testes novos. Métrica objetiva (presença do termo), então sem rotulagem.

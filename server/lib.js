@@ -11,6 +11,7 @@ import crypto from "node:crypto";
 import { camposAlheios, linhaCustodia, CUSTODIA_VERSAO } from "./custodia.js";
 import { linhaFavoravel } from "./partes.js";
 import { fatosDoJulgado, FATOS_MAX, FATOS_MAX_SENT, RE_ALEGACAO } from "./posicao.js";
+import { anotarRequisicao, lerRitmo, contextoDoBloqueio, analisarBloqueios, formatarRelatorio } from "./bloqueios.js";
 
 export const SITE = "https://juris.tjro.jus.br";
 export const API = "https://juris-back.tjro.jus.br";
@@ -1038,6 +1039,8 @@ export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?", o
       operacao,
       tipo, // "desafio_navegador" | "robotizacao" | "status_NNN" — o diagnóstico separa os dois
       identidade: identidadeAtual, // v1.11.0: "honesta" | "navegador"
+      // v1.28.0: o que estava acontecendo (sequência anterior do livro-razão, rajada, outros processos, resposta do portal)
+      contexto: contextoDoBloqueio(lerRitmo(), opts.t0 ?? agora, ESPACAMENTO_MIN_MS, opts.resposta ?? null),
 
       nivel: e.indiceJanela,
       janelaS: Math.round(ESCADA_JANELA_MS[e.indiceJanela] / 1000),
@@ -1061,7 +1064,17 @@ export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?", o
 // qualquer sessão (ou o próprio usuário) consiga responder "por que parou?" sem
 // abrir arquivo nenhum — e para não repetir o diagnóstico errado de "portal
 // fora do ar" quando na verdade é bloqueio por automação.
-export function diagnosticoRitmo(agora = Date.now()) {
+export function relatorioDeBloqueios(agora = Date.now()) {
+  const bruto = comTrava(() => lerEstadoBruto());
+  const e = visaoDoEstado(bruto);
+  return formatarRelatorio(
+    analisarBloqueios({ ritmo: lerRitmo(), incidentes: e.incidentes || [], espacamentoMinMs: ESPACAMENTO_MIN_MS, janelaMax: JANELA_MAX_REQS, agora }),
+    agora
+  );
+}
+
+export function diagnosticoRitmo(agora = Date.now(), opts = {}) {
+  if (opts.relatorio) return diagnosticoRitmo(agora) + "\n\n" + relatorioDeBloqueios(agora);
   const bruto = comTrava(() => lerEstadoBruto());
   const e = visaoDoEstado(bruto);
   const janelaMs = ESCADA_JANELA_MS[e.indiceJanela];
@@ -1262,6 +1275,9 @@ export async function post(body, fetchImpl = fetch) {
   }
 
   let r;
+  const t0 = Date.now();
+  const opPost = (body?.fields || {}).nr_processo && !(body?.fields || {}).query ? "inteiro_teor" : "busca";
+  const livro = (res, status = null) => anotarRequisicao({ t: t0, impl: "node", id: identidadeAtual, op: opPost, res, status, durMs: Date.now() - t0 });
   try {
     r = await fetchImpl(ENDPOINT, {
       method: "POST",
@@ -1280,7 +1296,12 @@ export async function post(body, fetchImpl = fetch) {
       registrarBloqueioDetectado(Date.now(), campos.nr_processo && !campos.query ? "inteiro_teor" : "busca", {
         subirEscada: false,
         tipo: "resposta_corrompida",
+        t0,
+        resposta: { status: null, ctype: null, server: null, retryAfter: null, bytes: null, assinatura: "cabeçalho defeituoso (byte NUL em Connection)" },
       });
+      livro("corrompida");
+    } else {
+      livro("rede");
     }
     throw e;
   }
@@ -1313,13 +1334,26 @@ export async function post(body, fetchImpl = fetch) {
       subirEscada: ehBloqueio && !ehDesafio && consultasRecentes() >= MIN_REQS_PARA_ESCADA,
       tipo: ehDesafio ? "desafio_navegador" : ehBloqueio ? "robotizacao" : "status_" + r.status,
       esperaMinimaMs: retryAfterMs,
+      t0,
+      resposta: {
+        status: r.status,
+        ctype: ctype.slice(0, 40),
+        server: (r.headers.get("server") || "").slice(0, 40) || null,
+        retryAfter: r.headers.get("retry-after") || null,
+        bytes: texto ? texto.length : null,
+        assinatura: (texto || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80),
+      },
     });
+    livro(ehDesafio ? "desafio" : "bloqueio", r.status);
+  } else if (!r.ok) {
+    livro("http", r.status);
   }
   // 503 e demais erros seguem como instabilidade: não são bloqueio, e insistir dentro
   // do orçamento já é o comportamento certo.
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   if (!ctype.includes("json")) throw new Error(diagnosticarRespostaNaoJson(ctype, texto));
   registrarSucesso();
+  livro("ok", r.status);
   const dados = await r.json();
   cacheGravar(chave, dados, Date.now());
   return dados;
@@ -1899,7 +1933,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.27.1";
+export const VERSAO = "1.28.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
