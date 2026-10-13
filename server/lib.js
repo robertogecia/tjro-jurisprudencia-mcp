@@ -18,11 +18,20 @@ export const SITE = "https://juris.tjro.jus.br";
 export const API = "https://juris-back.tjro.jus.br";
 export const ENDPOINT = `${API}/search/varios_parametros/`;
 
+// v1.30.0: identificação perante o portal. PADRÃO = honesta (a extensão se declara). O usuário pode, por decisão e risco
+// próprios, escolher se identificar como navegador (Configurações da extensão › "Identificar-se como navegador", ou
+// TJRO_MCP_IDENTIFICACAO=navegador). Não muda ritmo, limite nem disjuntor: o espaçamento mínimo e o teto continuam valendo.
+export const UA_HONESTO = "Mozilla/5.0 (compatible; MCP-TJRO-Jurisprudencia/1.1)";
+export const UA_NAVEGADOR = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+export const modoNavegadorAtivo = (env = process.env) => {
+  const v = String(env.TJRO_MCP_IDENTIFICACAO || "").trim().toLowerCase();
+  return ["navegador", "true", "1", "sim", "on"].includes(v);
+};
 export const HEADERS = {
   Origin: SITE,
   Referer: SITE + "/",
   "Content-Type": "application/json",
-  "User-Agent": "Mozilla/5.0 (compatible; MCP-TJRO-Jurisprudencia/1.1)",
+  "User-Agent": modoNavegadorAtivo() ? UA_NAVEGADOR : UA_HONESTO,
 };
 
 export const TIPOS_VALIDOS = [
@@ -271,7 +280,9 @@ const RE_EMBARGOS_OUTROS = /\bEMBARGOS (DE TERCEIRO|A EXECUCAO|MONITORIOS|INFRIN
 // da apelação. Lendo só a seção IV (dispositivo e tese) e reconhecendo "embargos de declaração"
 // nela, o rótulo muda em ~6,7% das ementas CNJ sem fecho (medição offline 12/10/2026).
 export const resultadoComOrigem = (texto, tipo) => {
-  if (String(tipo || "").toUpperCase() === "SENTENÇA") return { conjunto: new Set(), origem: "nenhuma" };
+  // v1.30.0: RELATÓRIO também não tem dispositivo: a cauda narra a decisão recorrida e o histórico. Nos avisos de
+  // "resultado oposto" 25 de 25 casos com RELATÓRIO eram falsos (2 rotuladores cegos), e o relatório sujava o rótulo do julgamento.
+  if (["SENTENÇA", "RELATÓRIO"].includes(String(tipo || "").toUpperCase())) return { conjunto: new Set(), origem: "nenhuma" };
   const t = fold(texto).toUpperCase();
   const caudaToda = t.length > 2500 ? t.slice(-2500) : t;
   const fecho = trechoDispositivo(caudaToda);
@@ -473,9 +484,7 @@ export function formatPanorama(data) {
   return (
     `\n**Panorama dos ${total} documentos que casaram (índice, não só esta página; zero consulta extra):**\n` +
     linhas.join("\n") +
-    "\n_Câmara e gabinete são os do cadastro do portal, que mostra a câmara ATUAL do processo, não a que julgou (relatores realocados para a 3ª Câmara Cível levaram seus processos); " +
-    "as datas de julgamento cobrem só o que o índice agrega. Serve para ver onde e quando o tema é julgado " +
-    "e escolher filtros (orgao_colegiado, relator, classe_judicial, data), nunca como posição sobre a tese._"
+    "\n_Câmara e gabinete são do CADASTRO (câmara ATUAL do processo, não a que julgou). Serve para escolher filtros; nunca é posição sobre a tese._"
   );
 }
 
@@ -720,7 +729,7 @@ export function diagnosticarRespostaNaoJson(contentType, texto) {
     return (
       "O portal do TJRO respondeu com uma verificação de navegador (desafio JavaScript do " +
       "filtro de segurança), em vez dos dados. Isso NÃO é excesso de consultas: esperar não " +
-      "resolve, e a extensão não executa esse desafio nem contorna a proteção do tribunal. " +
+      "resolve, e a extensão não executa esse desafio (trocar a identificação não o resolve). " +
       "Enquanto isso, o portal continua funcionando no navegador (juris.tjro.jus.br). Para acesso pela " +
       "extensão, o caminho é pedir liberação ao tribunal: suporte@tjro.jus.br, assunto " +
       '"Acesso Bloqueado", citando o endpoint juris-back.tjro.jus.br/search/varios_parametros/.'
@@ -731,7 +740,8 @@ export function diagnosticarRespostaNaoJson(contentType, texto) {
       'O portal do TJRO bloqueou esta consulta por suspeita de automação ("robotização"). ' +
       "Costuma ser temporário (ex.: muitas buscas em pouco tempo) — aguarde alguns minutos " +
       'antes de tentar de novo. Se persistir, abra um chamado em suporte@tjro.jus.br com ' +
-      'assunto "Acesso Bloqueado".'
+      'assunto "Acesso Bloqueado".' +
+      (identidadeAtual === "honesta" ? AVISO_OPCAO_NAVEGADOR : "")
     );
   }
   return (
@@ -791,6 +801,16 @@ let arquivoEstadoDisjuntor = path.join(os.homedir(), ".tjro-jurisprudencia-mcp-e
 // continua COMPARTILHADO, por ser o mesmo IP perante o portal: a janela de volume, o espaçamento e a escada. Por
 // identificação: bloqueadoAte, backoffMs e ultimoSucessoEm. O diário de incidentes é um só, e cada incidente leva a
 // identificação em que ocorreu; incidente sem etiqueta (arquivo antigo) vale para quem ler.
+// Oferecido quando o filtro recusa a identificação honesta. É decisão do usuário, e o aviso diz o que ele assume.
+export const AVISO_OPCAO_NAVEGADOR =
+  "\n\nOpção SUA (desligada por padrão): nas Configurações da extensão há \"Identificar-se como navegador\". Ela faz a extensão " +
+  "se apresentar ao portal como um navegador comum, o que pode passar pelo filtro que recusa a identificação honesta. Mas é um " +
+  "disfarce: o tribunal pode considerar uso indevido do portal e, se restringir o acesso (por exemplo, bloqueando o IP da sua " +
+  "rede), o risco é inteiramente seu — e de quem divide a rede com você. O ritmo mínimo entre consultas continua valendo. " +
+  "Ative só se aceitar isso; para voltar atrás, desligue a opção.";
+export const AVISO_MODO_NAVEGADOR =
+  "_⚠️ Identificação de navegador ATIVA (opção sua nas Configurações da extensão): o portal do TJRO pode tratar este tráfego como " +
+  "uso indevido e o risco é seu. Para voltar à identificação honesta, desligue a opção._";
 export const identidadeDoUA = (ua) => (/compatible;\s*MCP-TJRO/i.test(String(ua || "")) ? "honesta" : "navegador");
 let identidadeAtual = identidadeDoUA(HEADERS["User-Agent"]);
 export const identidadeDoDisjuntor = () => identidadeAtual;
@@ -1136,7 +1156,7 @@ export function diagnosticoRitmo(agora = Date.now(), opts = {}) {
     agora < e.bloqueadoAte
       ? `- ⚠️ BLOQUEADO por suspeita de automação — liberando em ${fmtDuracao(e.bloqueadoAte - agora)}`
       : "- Situação: liberado",
-    `- Identificação desta instalação: ${identidadeAtual === "navegador" ? "navegador (build de uso pessoal)" : "extensão (identificação honesta)"}`,
+    `- Identificação desta instalação: ${identidadeAtual === "navegador" ? "navegador (opção ativada nesta instalação; risco assumido por quem a ativou)" : "extensão (identificação honesta)"}`,
   ];
   const outra = IDENTIDADES.find((id) => id !== identidadeAtual);
   if (agora < bruto.porIdentidade[outra].bloqueadoAte) {
@@ -1526,7 +1546,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
           `${r ? ROTULOS_RESULTADO[r] + sufixoOrigem(i) : "sem resultado identificável"}${votSufixoI(i)} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}`
       );
     });
-    out.push("_Resultado declarado é extraído do fim do texto (dispositivo) e não é posição sobre a tese; ementa e acórdão do mesmo julgado aparecem em linhas separadas. \"(unânime / por maioria / voto divergente prevaleceu)\" vem da proclamação do fecho do ACÓRDÃO (medido às cegas, ~99%); ausência não prova unanimidade e \"com declaração de voto\" não é exaustivo. Abra o inteiro teor antes de citar._");
+    out.push("_Resultado declarado vem do fim do texto e não é posição sobre a tese; ementa e acórdão do mesmo julgado aparecem em linhas separadas. A votação entre parênteses vem do fecho do ACÓRDÃO; ausência não prova unanimidade. Abra o inteiro teor antes de citar._");
   }
 
   if (!compacto) hits.forEach((h, i) => {
@@ -1561,24 +1581,20 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
     const grupo = porProcesso.get(chaveProc(i));
     if (grupo.length > 1) {
       if (grupo[0] === i) {
-        const lista = grupo
-          .map((j) => {
-            const x = hits[j]._source || {};
-            const rel = relator(x) !== "—" ? ` (Rel. ${relator(x)})` : "";
-            return `nº ${inicio + j}: ${quandoDe(x)} ${x.tipo || ""}${rel}`;
-          })
-          .join("; ");
         linhas.push(
-          `- ⚠️ Mesmo número, ${grupo.length} documentos nesta página (${lista}) — o número NÃO identifica a decisão: cite pelo id + data de julgamento.`
+          `- ⚠️ Mesmo número, ${grupo.length} documentos nesta página (${listaMesmoNumero(grupo.map((j) => ({ n: inicio + j, s: hits[j]._source || {} })), quandoDe)}) — o número NÃO identifica a decisão: cite pelo id + data de julgamento.`
         );
       } else {
-        linhas.push(`- ⚠️ Mesmo número que o resultado nº ${inicio + grupo[0]} — cite pelo id + data de julgamento.`);
+        linhas.push(`- ⚠️ Mesmo número do nº ${inicio + grupo[0]} — cite pelo id + data de julgamento.`);
       }
       // Resultado oposto no MESMO julgamento: provável voto vencido indexado.
       for (const j of grupo) {
         // Data ausente não é evidência de mesmo julgamento: nunca casa (red team, achado 6).
         if (j === i || !chaveJulg(i) || chaveJulg(j) !== chaveJulg(i)) continue;
         for (const par of OPOSTOS) {
+          // v1.30.0: ACOLHIDO × REJEITADO só vale em embargos de declaração; em apelação, "preliminar rejeitada" + mérito
+          // acolhido não é voto vencido (7 dos 10 alarmes falsos fora de RELATÓRIO, validação cega de 13/10/2026).
+          if (par[0] === "ACOLHIDO" && !ehEmbargos((hits[i]._source || {}).ds_classe_judicial)) continue;
           const meu = ladoDe(resultados[i], par);
           const dele = ladoDe(resultados[j], par);
           if (meu && dele && meu !== dele) {
@@ -1596,7 +1612,9 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
     // do texto integral do hit (nunca do fragmento do destaque), só no tipo EMENTA e só no modo completo.
     if (s.tipo === "EMENTA") {
       const te = teseDaEmenta(limpar(s.ds_modelo_documento || "", 0));
-      if (te) linhas.push(linhaTese(te));
+      // v1.30.0: se o trecho de 800 caracteres já mostra a tese inteira, a linha só repetiria o mesmo texto.
+      const semMarcas = (x) => String(x).replace(/[«»…]/g, "").replace(/[ \t\n\r\f\v]+/g, " ");
+      if (te && !(te.completa && semMarcas(trecho).includes(semMarcas(te.texto)))) linhas.push(linhaTese(te));
     }
     linhas.push(`- ${rotulo}: ${trecho || "(sem trecho)"}`);
     out.push(linhas.join("\n"));
@@ -1607,9 +1625,8 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   // de uma ementa numerada, sem ler o item final, que aplicava o oposto.
   if (houveCorte)
     out.push(
-      "\n_Os trechos acima são fragmentos (até 800 caracteres) do ponto onde os termos casaram, " +
-        "não a ementa inteira. Ementa numerada costuma ENUNCIAR a tese nos primeiros itens e APLICÁ-LA " +
-        "nos últimos, às vezes com alcance menor — abra o inteiro teor antes de fichar ou citar._"
+      "\n_Os trechos são fragmentos (até 800 caracteres), não a ementa inteira: ementa numerada ENUNCIA a tese nos primeiros itens " +
+        "e a APLICA nos últimos, às vezes com alcance menor. Abra o inteiro teor antes de fichar ou citar._"
     );
 
   // Resumo 100% offline dos resultados DESTA página (ver resumoResultadosPagina).
@@ -1623,13 +1640,11 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       .map(([k, n]) => `${n} ${ROTULOS_RESULTADO[k]}${n > 1 ? "s" : ""}`);
     if (semResultado > 0) partes.push(`${semResultado} sem resultado identificável`);
     if (partes.length) {
-      const enviesa = ordenacao === "relevantes" ? ' — enviesa a amostra; prefira "recentes" ou "antigos" para uma leitura mais honesta' : "";
+      const enviesa = ordenacao === "relevantes" ? ' (enviesa a amostra; prefira "recentes" ou "antigos")' : "";
       out.push(
-        `\n_Nesta página: ${partes.join(", ")}. Contagem por JULGAMENTO (nº do processo + data de ` +
-          "julgamento) — ementa e acórdão do MESMO julgado contam uma vez só. Documento que declara os " +
-          'dois lados de um par entra em "sem resultado identificável", nunca num dos lados. Resultado ' +
-          "não é posição sobre a tese: recurso provido por outro fundamento conta como provido e nada diz " +
-          `sobre a tese buscada. É a amostra desta página, na ordenação "${ordenacao}"${enviesa}. Indício ` +
+        `\n_Nesta página: ${partes.join(", ")}. Contagem por JULGAMENTO (ementa e acórdão do mesmo julgado contam uma vez); ` +
+          'quem declara os dois lados de um par vai para "sem resultado identificável". Resultado não é posição sobre a tese ' +
+          `(provido por outro fundamento conta como provido). Amostra desta página, ordenação "${ordenacao}"${enviesa}. Indício ` +
           "para escolher o que ler, nunca conclusão._"
       );
       // Quebra por relator / órgão / ano só com amostra que a sustente (10+ julgamentos).
@@ -1643,8 +1658,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
           out.push(
             "\n_Quebra da mesma amostra (só chaves com 3+ julgamentos):_\n" +
               blocos.map(([t, l]) => `- ${t}: ${l.join("; ")}`).join("\n") +
-              "\n_Taxa de provimento não é taxa de acolhimento da tese: diz quem costuma reformar ou manter, não por quê. " +
-              "Mudança de proporção entre anos é sinal para ler os julgados dos dois períodos, não conclusão._"
+              "\n_Taxa de provimento não é taxa de acolhimento da tese. Mudança de proporção entre anos é sinal para ler os julgados dos dois períodos, não conclusão._"
           );
       }
     }
@@ -1949,20 +1963,33 @@ export const ehPrimeiroGrau = (s) =>
 
 export const ehTurmaRecursal = (s) =>
   /turma\s+recursal/i.test(`${s.ds_orgao_julgador_colegiado || ""} ${s.ds_orgao_julgador || ""}`);
+// v1.30.0: lista compacta de "mesmo número": agrupa por data de julgamento ("18/08/2026: ACÓRDÃO nº1, RELATÓRIO nº2, VOTO nº3"),
+// e só repete o relator quando ele muda dentro do grupo; relator único vai uma vez no fim. Antes: uma entrada por documento.
+export function listaMesmoNumero(docs, quandoDe) {
+  const relUnico = new Set(docs.map((d) => relator(d.s)).filter((r) => r !== "—"));
+  const grupos = new Map();
+  for (const d of docs) { const q = quandoDe(d.s); if (!grupos.has(q)) grupos.set(q, []); grupos.get(q).push(d); }
+  const partes = [...grupos.entries()].map(([q, ds]) => {
+    const tipos = ds.map((d) => `${d.s.tipo || ""} nº${d.n}` + (relUnico.size > 1 && relator(d.s) !== "—" ? ` (Rel. ${relator(d.s)})` : "")).join(", ");
+    return `${q}: ${tipos}`;
+  });
+  return partes.join("; ") + (relUnico.size === 1 ? `; Rel. ${[...relUnico][0]}` : "");
+}
+
 export function linhasDeSinais(s, textoInteiro) {
   const linhas = [];
   if (ehPrimeiroGrau(s))
     linhas.push(
-      "- ⚠️ 1º grau: sentença não é precedente — serve para ver como o juízo decide e que fundamentos cita, não para citar como jurisprudência."
+      "- ⚠️ 1º grau: sentença não é precedente; serve para ver como o juízo decide, não para citar como jurisprudência."
     );
   if (ehTurmaRecursal(s))
     linhas.push(
-      "- ⚠️ Turma Recursal (Juizados Especiais): não é o TJ em 2º grau comum. Pesa em processo do Juizado; em apelação no rito comum é só persuasivo — prefira acórdão de Câmara e diga o órgão na citação."
+      "- ⚠️ Turma Recursal (Juizados): vale no rito do Juizado; no rito comum é só persuasivo. Diga o órgão na citação."
     );
   const a = ancoras(textoInteiro);
   if (a.length)
     linhas.push(
-      `- Cita: ${a.join(" · ")} — precedente qualificado citado pelo julgado (peso, e âncora para a próxima busca); confirme a situação de cada um na fonte.`
+      `- Cita: ${a.join(" · ")} — citado pelo julgado; confirme a situação na fonte.`
     );
   return linhas;
 }
@@ -2125,8 +2152,13 @@ export function iniciarChecagemVersao(opcoes) {
   return checagem;
 }
 // Crédito + (uma vez) aviso de versão. Nunca atrasa a resposta além do timeout da checagem.
+let navegadorAvisado = false;
 export async function comAvisos(texto) {
-  const base = comCredito(texto);
+  let base = comCredito(texto);
+  if (identidadeAtual === "navegador" && modoNavegadorAtivo() && !navegadorAvisado) {
+    navegadorAvisado = true;
+    base = `${base}\n\n${AVISO_MODO_NAVEGADOR}`;
+  }
   if (avisoDado) return base;
   const nova = await iniciarChecagemVersao();
   if (!nova) return base;

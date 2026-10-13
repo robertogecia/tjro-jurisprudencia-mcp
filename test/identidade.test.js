@@ -73,7 +73,7 @@ test("backoff e último sucesso são de cada identificação; incidentes levam a
   assert.match(dh, /identificação: honesta/);
   const dn = como("navegador", () => diagnosticoRitmo(t + 1000));
   assert.match(dn, /Situação: liberado/);
-  assert.match(dn, /Identificação desta instalação: navegador \(build de uso pessoal\)/);
+  assert.match(dn, /Identificação desta instalação: navegador \(opção ativada nesta instalação; risco assumido/);
   assert.match(dn, /A outra identificação \(honesta\) está em pausa por mais/);
   limpa();
 });

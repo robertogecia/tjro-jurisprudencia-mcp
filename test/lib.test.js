@@ -39,6 +39,9 @@ import {
   resultadoDe,
   resultadoComOrigem,
   linhaTese,
+  modoNavegadorAtivo,
+  UA_HONESTO,
+  UA_NAVEGADOR,
   ladoDe,
   OPOSTOS,
   extrairOrgaoDoTexto,
@@ -764,8 +767,8 @@ test("busca: mesmo número com vários documentos avisa, lista as decisões e tr
   };
   const out = formatBusca(data, "honorários", ["ACÓRDÃO"], "relevantes", 1, 10);
   assert.match(out, /Id\. do documento: 30009487 \(chave única desta decisão\)/);
-  assert.match(out, /Mesmo número, 2 documentos nesta página \(nº 1: 07\/11\/2025 ACÓRDÃO \(Rel\. ALEXANDRE MIGUEL\); nº 2: 29\/04\/2026 ACÓRDÃO \(Rel\. JORGE LUIZ DE MOURA GURGEL DO AMARAL\)\)/);
-  assert.match(out, /Mesmo número que o resultado nº 1 — cite pelo id \+ data de julgamento/);
+  assert.match(out, /Mesmo número, 2 documentos nesta página \(07\/11\/2025: ACÓRDÃO nº1 \(Rel\. ALEXANDRE MIGUEL\); 29\/04\/2026: ACÓRDÃO nº2 \(Rel\. JORGE LUIZ DE MOURA GURGEL DO AMARAL\)\)/);
+  assert.match(out, /Mesmo número do nº 1 — cite pelo id \+ data de julgamento/);
   assert.doesNotMatch(out, /Resultado oposto/); // datas diferentes: não é o mesmo julgamento
   const terceiro = out.split("\n---\n")[3];
   assert.doesNotMatch(terceiro, /Mesmo número/); // número diferente: sem aviso
@@ -1056,7 +1059,7 @@ test("busca avisa uma única vez que os trechos são fragmentos (ementa numerada
   const data = { hits: { total: { value: 2 }, hits: [{ _source: src(1) }, { _source: src(2) }] } };
   const out = formatBusca(data, "palavra", ["EMENTA"], "relevantes", 1, 10);
   assert.equal((out.match(/são fragmentos \(até 800 caracteres\)/g) || []).length, 1);
-  assert.match(out, /ENUNCIAR a tese nos primeiros itens e APLICÁ-LA/);
+  assert.match(out, /ENUNCIA a tese nos primeiros itens e a APLICA nos últimos/);
   // trecho curto (nada cortado) não gera o aviso
   const curto = { hits: { total: { value: 1 }, hits: [{ _source: { ...src(1), ds_modelo_documento: "ementa curta" } }] } };
   assert.doesNotMatch(formatBusca(curto, "x", ["EMENTA"], "relevantes", 1, 10), /são fragmentos/);
@@ -1563,7 +1566,7 @@ test("orgaoMultiplo recusa vários órgãos e aceita um só", () => {
 test("sinal de Turma Recursal só para órgão de Juizado", () => {
   assert.ok(ehTurmaRecursal({ ds_orgao_julgador_colegiado: "2ª Turma Recursal" }));
   assert.ok(!ehTurmaRecursal({ ds_orgao_julgador_colegiado: "2ª Câmara Especial" }));
-  assert.match(linhasDeSinais({ ds_orgao_julgador_colegiado: "1ª Turma Recursal" }, "").join(), /Juizados Especiais/);
+  assert.match(linhasDeSinais({ ds_orgao_julgador_colegiado: "1ª Turma Recursal" }, "").join(), /Turma Recursal \(Juizados\)/);
   assert.equal(linhasDeSinais({ ds_orgao_julgador_colegiado: "1ª Câmara Cível" }, "").length, 0);
 });
 
@@ -1747,7 +1750,7 @@ test("formatPanorama usa as agregações fixas do portal (resultado inteiro) e s
   assert.match(p, /Panorama dos 1234 documentos/);
   assert.match(p, /Órgãos \(cadastro\): 3ª Câmara Cível 700 · 1ª Câmara Cível 500$/m);
   assert.match(p, /Por ano de julgamento: 2024: 15 · 2025: 7/);
-  assert.match(p, /cadastro do portal, que mostra a câmara ATUAL/);
+  assert.match(p, /CADASTRO \(câmara ATUAL do processo, não a que julgou\)/);
   assert.equal(formatPanorama({ hits: { total: { value: 3 } } }), "");
   // entra no formatBusca com 3+ documentos e some com opções.semPanorama
   const out = formatBusca({ ...data, hits: { total: { value: 1234 }, hits: [srcV27(1, "x"), srcV27(2, "y"), srcV27(3, "z")] } }, "q", ["ACÓRDÃO"], "relevantes", 1, 10);
@@ -2084,4 +2087,34 @@ test("formatBusca (H06): a linha TESE DA EMENTA sai só no hit do tipo EMENTA, d
   assert.match(out, /TESE DA EMENTA \(literal[^\n]*"1\. A negativação indevida gera dano moral\."/);
   const comp = formatBusca(fake, "negativação", ["EMENTA", "ACÓRDÃO"], "relevantes", 1, 10, [], "", false, "", { modo: "compacto" });
   assert.doesNotMatch(comp, /TESE DA EMENTA/);
+});
+
+// v1.30.0 — identificação perante o portal: honesta por padrão; navegador só por opção do usuário, com aviso.
+test("modoNavegadorAtivo: desligado por padrão; liga só por opção explícita do usuário", () => {
+  assert.equal(modoNavegadorAtivo({}), false);
+  assert.equal(modoNavegadorAtivo({ TJRO_MCP_IDENTIFICACAO: "false" }), false);
+  assert.equal(modoNavegadorAtivo({ TJRO_MCP_IDENTIFICACAO: "" }), false);
+  assert.equal(modoNavegadorAtivo({ TJRO_MCP_IDENTIFICACAO: "true" }), true);
+  assert.equal(modoNavegadorAtivo({ TJRO_MCP_IDENTIFICACAO: "Navegador" }), true);
+  assert.equal(HEADERS["User-Agent"], UA_HONESTO, "sob o test runner, sem a opção, a identificação é a honesta");
+  assert.equal(identidadeDoUA(UA_HONESTO), "honesta");
+  assert.equal(identidadeDoUA(UA_NAVEGADOR), "navegador");
+});
+
+test("bloqueio com identificação honesta oferece a opção, com o risco dito; a mensagem do desafio não promete que a opção resolve", () => {
+  const m = diagnosticarRespostaNaoJson("text/html", "<html>STIC - Página Bloqueada ... robotização</html>");
+  assert.match(m, /Identificar-se como navegador/);
+  assert.match(m, /o risco é inteiramente seu/);
+  assert.match(m, /ritmo mínimo entre consultas continua valendo/);
+  const d = diagnosticarRespostaNaoJson("text/html", "<script src=/TSPD/>loaderConfig</script>");
+  assert.match(d, /trocar a identificação não o resolve/);
+  assert.doesNotMatch(d, /Identificar-se como navegador/);
+});
+
+test("manifest: opção de identificação é booleana, desligada por padrão, e chega ao servidor por variável de ambiente", () => {
+  const m = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
+  const c = m.user_config.identificacao_navegador;
+  assert.equal(c.type, "boolean"); assert.equal(c.default, false); assert.equal(c.required, false);
+  assert.match(c.description, /risco é inteiramente seu/);
+  assert.equal(m.server.mcp_config.env.TJRO_MCP_IDENTIFICACAO, "${user_config.identificacao_navegador}");
 });

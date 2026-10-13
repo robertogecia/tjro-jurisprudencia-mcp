@@ -28,7 +28,9 @@
       "args": [
         "${__dirname}/server/index.js"
       ],
-      "env": {}
+      "env": {
+        "TJRO_MCP_IDENTIFICACAO": "${user_config.identificacao_navegador}"
+      }
     }
   },
   "tools": [
@@ -92,5 +94,14 @@
       "node": ">=18.0.0"
     }
   },
-  "icon": "icon.png"
+  "icon": "icon.png",
+  "user_config": {
+    "identificacao_navegador": {
+      "type": "boolean",
+      "title": "Identificar-se como navegador (assumo o risco)",
+      "description": "Desligado por padrão: a extensão se declara ao portal do TJRO. Ligado, ela se apresenta como um navegador comum, o que pode passar pelo filtro que recusa a identificação honesta. É um disfarce: o tribunal pode considerar uso indevido e restringir o acesso (por exemplo, bloqueando o IP da sua rede). O risco é inteiramente seu e de quem divide a rede com você. O ritmo mínimo entre consultas continua valendo.",
+      "default": false,
+      "required": false
+    }
+  }
 }
