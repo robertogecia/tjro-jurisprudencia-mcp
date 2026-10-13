@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { avisoGrafiaRelator } from "../server/relatores.js";
+import { teseDaEmenta } from "../server/posicao.js";
 import {
   montarExclusao,
   ehOrgao1oGrau,
@@ -21,6 +23,7 @@ import {
   sugestoes,
   formatBusca,
   formatInteiro,
+  contencoesDoInteiro,
   diagnosticarRespostaNaoJson,
   post,
   reservarRequisicao,
@@ -34,6 +37,8 @@ import {
   _statusPersistencia,
   idDocumento,
   resultadoDe,
+  resultadoComOrigem,
+  linhaTese,
   ladoDe,
   OPOSTOS,
   extrairOrgaoDoTexto,
@@ -1942,4 +1947,141 @@ test("trechoCentrado mantém o início quando o termo já cabe nos 800 primeiros
   const curto = "Ementa: «dano moral» configurado. " + "x ".repeat(600);
   const r = _tc(curto, 800);
   assert.ok(r.startsWith("Ementa:") && r.includes("«dano moral»") && !r.startsWith("…"));
+});
+
+// v1.29.0 — H04: peça contida letra a letra no ACÓRDÃO do mesmo julgamento vira ponteiro.
+const _h04src = (tipo, texto, id, data = "10/03/2025") => ({
+  tipo, ds_modelo_documento: texto, nr_processo: "70000000000000000000", dtjulgamento_str: data, id_processo_documento: id,
+});
+const _h04acordao = "PODER JUDICIÁRIO RELATÓRIO Trata-se de apelação. É o relatório. VOTO Conheço do recurso. " + "A prova dos autos sustenta a pretensão. ".repeat(30) + "Nego provimento. EMENTA Apelação cível. Recurso desprovido. ACÓRDÃO acordam os Magistrados da 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, em, RECURSO NÃO PROVIDO, À UNANIMIDADE.";
+
+test("formatInteiro (H04): EMENTA contida no ACÓRDÃO do mesmo julgamento vira ponteiro, com id, link e avisos próprios", () => {
+  const data = { hits: { total: { value: 2 }, hits: [
+    { _source: _h04src("ACÓRDÃO", _h04acordao, 11) },
+    { _source: _h04src("EMENTA", "Apelação cível. Recurso desprovido.", 12) },
+  ] } };
+  const out = formatInteiro(data, "70000000000000000000");
+  assert.match(out, /## EMENTA — julgado em 10\/03\/2025 · id 12 · link/);
+  assert.match(out, /texto idêntico a um trecho do ACÓRDÃO id 11 acima \(35 caracteres, contido letra a letra\)/);
+  const blocoEmenta = out.split("\n## EMENTA")[1];
+  assert.match(blocoEmenta.trim().split("\n").pop(), /^_\[texto idêntico/, "o corpo da ementa é só o ponteiro");
+  assert.ok(out.indexOf("## ACÓRDÃO") < out.indexOf("## EMENTA"), "contentor antes do ponteiro");
+});
+
+test("formatInteiro (H04): não aponta entre datas distintas, sem data, nem quando o texto só é parecido", () => {
+  const data = { hits: { total: { value: 3 }, hits: [
+    { _source: _h04src("ACÓRDÃO", _h04acordao, 11) },
+    { _source: _h04src("EMENTA", "Apelação cível. Recurso desprovido.", 12, "11/03/2025") },
+    { _source: { ..._h04src("EMENTA", "Apelação cível. Recurso desprovido.", 13), dtjulgamento_str: undefined } },
+    { _source: _h04src("VOTO", "Apelação cível. Recurso provido.", 14) },
+  ] } };
+  const out = formatInteiro(data, "70000000000000000000");
+  assert.doesNotMatch(out, /texto idêntico/);
+  assert.equal((out.match(/Apelação cível\. Recurso desprovido\./g) || []).length, 3);
+});
+
+test("formatInteiro (H04): peça contida além do corte do acórdão gigante não some — ponteiro honesto, e acórdão ganha o orçamento", () => {
+  const gigante = "RELATÓRIO " + "palavra ".repeat(9000) + " VOTO Nego provimento. EMENTA Fim da ementa gigante. ACÓRDÃO acordam os Magistrados da 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, em, RECURSO NÃO PROVIDO.";
+  const data = { hits: { total: { value: 3 }, hits: [
+    { _source: _h04src("ACÓRDÃO", gigante, 21) },
+    { _source: _h04src("EMENTA", "Fim da ementa gigante.", 22) },
+    { _source: _h04src("RELATÓRIO", "RELATÓRIO " + "palavra ".repeat(100), 23) },
+  ] } };
+  const out = formatInteiro(data, "70000000000000000000");
+  assert.match(out, /## EMENTA[^\n]*id 22/);
+  assert.match(out, /## RELATÓRIO[^\n]*id 23/);
+  assert.match(out, /EMENTA[^\n]*\n[^]*?texto contido letra a letra no ACÓRDÃO id 21, na parte não exibida acima/);
+  assert.match(out, /RELATÓRIO[^\n]*\n[^]*?texto idêntico a um trecho do ACÓRDÃO id 21 acima/);
+  assert.match(out, /peça exibida parcialmente \(4\d\d\d\d de/); // o acórdão usa quase todo o orçamento (antes: 15 mil)
+  assert.doesNotMatch(out, /sem ponteiro omitidas/);
+});
+
+test("contencoesDoInteiro: só peça não-acórdão, mesma data, contida; entre dois acórdãos, o maior", () => {
+  const d = (s) => s.dtjulgamento_str || "";
+  const u = [
+    [{ tipo: "ACÓRDÃO", dtjulgamento_str: "x" }, "abc def ghi"],
+    [{ tipo: "ACÓRDÃO", dtjulgamento_str: "x" }, "abc def ghi jkl"],
+    [{ tipo: "EMENTA", dtjulgamento_str: "x" }, "def ghi"],
+    [{ tipo: "EMENTA", dtjulgamento_str: "y" }, "def ghi"],
+    [{ tipo: "EMENTA", dtjulgamento_str: "x" }, ""],
+    [{ tipo: "ACÓRDÃO", dtjulgamento_str: "x" }, "abc"],
+  ];
+  assert.deepEqual([...contencoesDoInteiro(u, d)], [[2, 1]]);
+});
+
+test("resultadoDe (H02-a): SENTENÇA nunca recebe rótulo de 2º grau; os outros tipos seguem iguais", () => {
+  const t = "Ante o exposto, ACOLHO o pedido e JULGO PROCEDENTE a ação. Rejeito a preliminar. O acórdão citado deu provimento ao recurso.";
+  assert.deepEqual([...resultadoDe(t, "SENTENÇA")], []);
+  assert.ok(resultadoDe(t, "ACÓRDÃO").has("ACOLHIDO"));
+  assert.ok(resultadoDe(t).has("ACOLHIDO"));
+  const fake = { hits: { total: { value: 1 }, hits: [{ _source: { tipo: "SENTENÇA", ds_modelo_documento: t, nr_processo: "70000000000000000001", dtjulgamento_str: "01/02/2026", ds_classe_judicial: "PROCEDIMENTO COMUM CÍVEL" } }] } };
+  const out = formatBusca(fake, "pedido", ["SENTENÇA"], "relevantes", 1, 10);
+  assert.doesNotMatch(out, /acolhido|rejeitado|provido/i);
+});
+
+// v1.29.0 — H05: resultado da EMENTA (modelo CNJ, sem fecho) lido só da seção IV, com embargos reconhecidos nela.
+test("resultadoComOrigem (H05): ementa de embargos com classe de apelação lê a seção IV e não o histórico", () => {
+  const em = "EMENTA DIREITO CIVIL. EMBARGOS DE DECLARAÇÃO. I. CASO EM EXAME Embargos de declaração opostos contra acórdão que deu provimento ao recurso de apelação. II. QUESTÃO EM DISCUSSÃO Omissão. III. RAZÕES DE DECIDIR Não há omissão; o recurso provido foi analisado. IV. DISPOSITIVO E TESE Embargos de declaração rejeitados. Tese de julgamento: a apelação provida não se revê por embargos de declaração. Jurisprudência relevante citada: TJRO, ApC 1, recurso provido.";
+  const r = resultadoComOrigem(em, "EMENTA");
+  assert.equal(r.origem, "ementa-IV");
+  assert.deepEqual([...r.conjunto].sort(), ["REJEITADO"]);
+  assert.equal(rotuloDoConjunto(r.conjunto, "APELAÇÃO CÍVEL"), "REJEITADO");
+  // caminho antigo (sem tipo): histórico contamina
+  assert.notEqual(rotuloDoConjunto(resultadoComOrigem(em).conjunto, "APELAÇÃO CÍVEL"), "REJEITADO");
+  // "não acolhidos" é rejeição; "embargos" só na tese não transforma provido em acolhido
+  assert.deepEqual([...resultadoComOrigem("I. CASO EM EXAME x. IV. DISPOSITIVO E TESE Embargos de declaração não acolhidos. Tese de julgamento: y.", "EMENTA").conjunto], ["REJEITADO"]);
+  assert.deepEqual([...resultadoComOrigem("I. CASO EM EXAME x. IV. DISPOSITIVO E TESE Recurso provido. Tese de julgamento: o prequestionamento por embargos de declaração dispensa provimento.", "EMENTA").conjunto], ["PROVIDO"]);
+  // VOTO com ementa CNJ transcrita: continua pela cauda (nunca pela seção IV alheia)
+  assert.equal(resultadoComOrigem("VOTO ... transcrevo: IV. DISPOSITIVO E TESE Recurso provido. ... Pelo exposto, nego provimento.", "VOTO").origem, "cauda");
+  // acórdão com fecho: inalterado
+  assert.equal(resultadoComOrigem("x. IV. DISPOSITIVO E TESE Recurso provido. ACORDAM os Magistrados da 1ª Câmara, em, RECURSO NÃO PROVIDO.", "ACÓRDÃO").origem, "fecho");
+});
+
+// v1.29.0 — H07: grafias do mesmo relator unidas na quebra; aviso no filtro relator=.
+test("resumoResultadosPagina (H07): une 'Gilberto Barbosa' e 'GILBERTO BARBOSA' numa chave, com a grafia mais frequente", () => {
+  const hit = (i, rel, txt) => ({ _source: { tipo: "ACÓRDÃO", nr_processo: `700000000000000000${String(i).padStart(2, "0")}`, dtjulgamento: `2021-0${(i % 9) + 1}-01`, nome_relator_acordao: rel, ds_classe_judicial: "APELAÇÃO CÍVEL", ds_modelo_documento: txt } });
+  const hits = [];
+  for (let i = 1; i <= 12; i++) hits.push(hit(i, i <= 7 ? "GILBERTO BARBOSA" : "Gilberto Barbosa", "ACORDAM os Magistrados da 1ª Câmara, em, RECURSO PROVIDO."));
+  const R = resumoResultadosPagina(hits);
+  assert.deepEqual([...R.porRelator.keys()], ["GILBERTO BARBOSA [grafias unidas: 2]"]);
+  assert.equal(R.porRelator.get("GILBERTO BARBOSA [grafias unidas: 2]").PROVIDO, 12);
+  assert.match(linhasQuebra(R.porRelator)[0], /^GILBERTO BARBOSA \[grafias unidas: 2\] \(12\): 12 providos$/);
+});
+
+test("avisoGrafiaRelator (H07): avisa a outra grafia conhecida, com anos; silencia sem outra grafia", () => {
+  const av = avisoGrafiaRelator("Gilberto Barbosa");
+  assert.match(av, /relator="Gilberto Barbosa"/);
+  assert.match(av, /"GILBERTO BARBOSA" \(2018–2026, 160 julgados vistos\)/);
+  assert.match(av, /repita com relator="GILBERTO BARBOSA"/);
+  assert.equal(avisoGrafiaRelator("Fulano Inexistente"), "");
+  assert.equal(avisoGrafiaRelator(""), "");
+  // recibos locais acrescentam grafia e anos
+  const av2 = avisoGrafiaRelator("Fulano de Tal", [{ relator_indice: "FULANO DE TAL", data_julgamento: "10/03/2024" }, { relator_indice: "FULANO DE TAL", data_julgamento: "05/05/2026" }]);
+  assert.match(av2, /"FULANO DE TAL" \(2024–2026, 2 julgados vistos\)/);
+  assert.match(av2, /grafia ainda não vista nesta máquina/);
+});
+
+// v1.29.0 — H06: TESE DA EMENTA literal, só em EMENTA, cortada em item inteiro.
+test("teseDaEmenta (H06): extrai a tese depois de 'Tese de julgamento', conta itens e corta em item inteiro", () => {
+  const em = "EMENTA DIREITO CIVIL. I. CASO EM EXAME Apelação. II. QUESTÃO EM DISCUSSÃO Dano moral. III. RAZÕES DE DECIDIR Fundamento. IV. DISPOSITIVO E TESE Recurso provido. Tese de julgamento: 1. A negativação indevida gera dano moral. 2. O valor segue a razoabilidade. Dispositivos relevantes citados: CDC, art. 42.";
+  const te = teseDaEmenta(em);
+  assert.deepEqual(te, { texto: "1. A negativação indevida gera dano moral. 2. O valor segue a razoabilidade.", total: 2, exibidos: 2, completa: true });
+  assert.equal(teseDaEmenta("EMENTA sem seções. Recurso provido."), null);
+  assert.equal(teseDaEmenta("I. CASO EM EXAME x. IV. DISPOSITIVO E TESE Recurso provido."), null, "sem rótulo 'Tese de julgamento', nada");
+  const longa = "I. CASO EM EXAME x. IV. DISPOSITIVO E TESE Recurso provido. Teses de julgamento: " + [1, 2, 3, 4].map((n) => `${n}. ${"Item longo da tese. ".repeat(20)}`).join(" ");
+  const tl = teseDaEmenta(longa);
+  assert.equal(tl.completa, false); assert.equal(tl.total, 4); assert.equal(tl.exibidos, 2); assert.ok(tl.texto.length <= 1000); assert.ok(tl.texto.startsWith("1. ") && /2\. Item/.test(tl.texto) && !/3\. Item/.test(tl.texto));
+  assert.match(linhaTese(tl), /TESE INCOMPLETA: 2 de 4 itens; abra o inteiro teor antes de fichar/);
+  assert.match(linhaTese(te), /^- TESE DA EMENTA \(literal; tese enunciada pelo órgão, não prova de ratio\): "1\. A negativação/);
+});
+
+test("formatBusca (H06): a linha TESE DA EMENTA sai só no hit do tipo EMENTA, do texto integral, e não no compacto", () => {
+  const em = "EMENTA DIREITO CIVIL. I. CASO EM EXAME Apelação. IV. DISPOSITIVO E TESE Recurso provido. Tese de julgamento: 1. A negativação indevida gera dano moral. Dispositivos relevantes citados: CDC.";
+  const mk = (tipo, id) => ({ _source: { tipo, ds_modelo_documento: em, nr_processo: "70000000000000000001", dtjulgamento_str: "01/02/2026", id_processo_documento: id, ds_classe_judicial: "APELAÇÃO CÍVEL" }, highlight: { ds_modelo_documento: ["<em>negativação</em> indevida"] } });
+  const fake = { hits: { total: { value: 2 }, hits: [mk("EMENTA", 1), mk("ACÓRDÃO", 2)] } };
+  const out = formatBusca(fake, "negativação", ["EMENTA", "ACÓRDÃO"], "relevantes", 1, 10);
+  assert.equal((out.match(/TESE DA EMENTA/g) || []).length, 1);
+  assert.match(out, /TESE DA EMENTA \(literal[^\n]*"1\. A negativação indevida gera dano moral\."/);
+  const comp = formatBusca(fake, "negativação", ["EMENTA", "ACÓRDÃO"], "relevantes", 1, 10, [], "", false, "", { modo: "compacto" });
+  assert.doesNotMatch(comp, /TESE DA EMENTA/);
 });

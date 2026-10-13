@@ -235,3 +235,34 @@ export function posicaoNoJulgado(texto, tipo, ini0, fim, fx) {
   }
   return "";
 }
+
+/** v1.29.0 (H06): tese literal da ementa do CNJ — o trecho depois do rótulo "Tese(s) de julgamento" dentro da seção IV,
+ * cortado em item inteiro acima de `teto`. Só para documento do tipo EMENTA: no ACÓRDÃO o rótulo repete em 33% dos casos,
+ * muitas vezes na ementa de outro julgado transcrita no voto (medição 12/10/2026). null sem seção IV ou sem o rótulo.
+ * Devolve {texto, total, exibidos, completa}; `total` conta os itens numerados ("1. …") quando a tese é numerada. */
+export const TESE_MAX = 1000;
+const RE_TESE_ROTULO = /\bteses? de julgamento ?:? ?/;
+const RE_ITEM_TESE = /(?<![^ ])\d{1,2}\. /g;
+export function teseDaEmenta(texto, teto = TESE_MAX) {
+  const t = String(texto || "");
+  const iv = secoesDaEmenta(t, 0, t.length).find((x) => x.nome === "dispositivo e tese" || x.nome === "dispositivo");
+  if (!iv) return null;
+  const seg = t.slice(iv.a, iv.b);
+  const m = RE_TESE_ROTULO.exec(norm1(seg));
+  if (!m) return null;
+  const tese = seg.slice(m.index + m[0].length).replace(/[ \t\n\r\f\v]+/g, " ").trim();
+  if (!tese) return null;
+  const inicios = [...tese.matchAll(RE_ITEM_TESE)].map((mm) => mm.index);
+  const total = inicios.length >= 2 && inicios[0] < 5 ? inicios.length : 1;
+  if (tese.length <= teto) return { texto: tese, total, exibidos: total, completa: true };
+  if (total > 1) {
+    const ate = inicios.filter((p) => p > 0 && p <= teto);
+    if (ate.length) {
+      const p = ate[ate.length - 1];
+      return { texto: tese.slice(0, p).replace(/[ ]+$/, ""), total, exibidos: inicios.indexOf(p), completa: false };
+    }
+  }
+  const fim = tese.lastIndexOf(". ", teto);
+  const corte = fim > 0 ? tese.slice(0, fim + 1) : tese.slice(0, teto).replace(/ \S*$/, "");
+  return { texto: corte.trim(), total, exibidos: 0, completa: false };
+}

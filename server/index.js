@@ -11,7 +11,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { verificarCitacao } from "./verificar.js";
-import { buscarRecibos, recalcularRecibos, RECIBOS_LIMITE_MAX } from "./recibos.js";
+import { buscarRecibos, recalcularRecibos, RECIBOS_LIMITE_MAX, listarRecibos } from "./recibos.js";
+import { avisoGrafiaRelator } from "./relatores.js";
 import {
   ORDENACOES,
   JANELA_MAXIMA,
@@ -126,7 +127,9 @@ server.registerTool(
             "NÃO há padrão único de maiúsculas (diferente de classe_judicial): o mesmo índice guarda relatores em " +
             'Title Case (ex.: "Alexandre Miguel") e outros em CAIXA ALTA. Se vier zero resultados, rode uma busca ' +
             'sem este filtro, copie o texto exato do campo "Relator(a)" de um resultado e repita — não adivinhe a ' +
-            "caixa. Só filtra o campo do ACÓRDÃO: inclua ACÓRDÃO em tipo (esse campo costuma vir vazio em EMENTA)."
+            "caixa. Só filtra o campo do ACÓRDÃO: inclua ACÓRDÃO em tipo (esse campo costuma vir vazio em EMENTA). " +
+            "O MESMO relator costuma existir em 2 grafias no índice (Title Case nos anos antigos, CAIXA ALTA nos recentes): " +
+            "quando a grafia pedida tiver outra conhecida, a resposta avisa qual e em que anos, e o remédio é repetir com a outra grafia."
         ),
       excluir: z
         .array(z.string())
@@ -210,6 +213,11 @@ server.registerTool(
           `relator="${a.relator}" (grafia e maiúsculas EXATAS como no índice — não há padrão único de caixa; ` +
             'confira o campo "Relator(a)" de um resultado sem filtro antes de repetir; para tipo=["SENTENÇA"] é o NOME DO JUIZ; nos demais tipos, só ACÓRDÃO carrega relator)'
         );
+      if (a.relator) {
+        // v1.29.0 (H07): grafia minoritária do mesmo relator fica fora em silêncio.
+        const avG = avisoGrafiaRelator(a.relator, listarRecibos());
+        if (avG) nota += avG + "\n";
+      }
       if (a.assunto)
         filtros.push(
           `assunto="${a.assunto}" (grafia EXATA da Tabela Processual Unificada do CNJ — copie do campo "Assunto:" de um resultado)`

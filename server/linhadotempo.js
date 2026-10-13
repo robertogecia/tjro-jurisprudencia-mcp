@@ -1,6 +1,8 @@
 // Linha do tempo por ano e "julgados que citam este" (v1.25, 09/10/2026). Espelho de _linha_do_tempo e _citacoes_de (servidor_tjro.py).
 import { buildBuscaBody, post, limpar, resultadoDe, rotuloDoConjunto, cnj, orgao, relator, idDocumento, gravarRecibos } from "./lib.js";
 import { norm1 } from "./custodia.js";
+import { avisoGrafiaRelator } from "./relatores.js";
+import { listarRecibos } from "./recibos.js";
 
 const RE_SINAL_AFASTA = /(?<![a-z0-9])(?:distingue|distinguish\w*|distincao|nao se aplica|inaplicavel|nao se amolda|nao guarda similitude|nao ha similitude|situacao diversa|hipotese diversa|caso diverso|em sentido contrario|em sentido diverso|contrariamente|diverge|divergente|afasta(?:-se)? a aplicacao|nao ha identidade|nao incide|nao se verifica a mesma)(?![a-z0-9])/;
 const WS = /[ \t\n\r\f\v]+/g;
@@ -46,7 +48,7 @@ export function contarJulgamentos(hits) {
     const s = h._source || {};
     const k = `${s.nr_processo}|${s.dtjulgamento_str || s.dtjulgamento}`;
     const e = por.get(k) || { r: new Set(), cl: s.ds_classe_judicial };
-    for (const r of resultadoDe(limpar(s.ds_modelo_documento || "", 0))) e.r.add(r);
+    for (const r of resultadoDe(limpar(s.ds_modelo_documento || "", 0), s.tipo)) e.r.add(r);
     por.set(k, e);
   }
   const cont = {};
@@ -98,7 +100,9 @@ export async function linhaDoTempo(o, postImpl = post, dormirImpl = dormir) {
     linhas.push({ ano, total: (((data.hits || {}).total) || {}).value || 0, n: c.n, cont: c.cont });
   }
   if (!linhas.length) return incompleta || "Sem resultado.";
-  return formatarLinhaDoTempo(linhas, filtros, incompleta);
+  // v1.29.0 (H07): a grafia minoritária do relator fora do filtro simula queda no ano da troca.
+  const avG = o.relator ? avisoGrafiaRelator(o.relator, listarRecibos()) : "";
+  return formatarLinhaDoTempo(linhas, filtros, incompleta) + (avG ? "\n" + avG : "");
 }
 
 export async function citacoesDe(nrProcesso, limite = 10, postImpl = post, dormirImpl = dormir) {

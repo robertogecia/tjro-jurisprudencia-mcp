@@ -10,7 +10,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { camposAlheios, linhaCustodia, CUSTODIA_VERSAO } from "./custodia.js";
 import { linhaFavoravel } from "./partes.js";
-import { fatosDoJulgado, FATOS_MAX, FATOS_MAX_SENT, RE_ALEGACAO } from "./posicao.js";
+import { fatosDoJulgado, FATOS_MAX, FATOS_MAX_SENT, RE_ALEGACAO, secoesDaEmenta, teseDaEmenta } from "./posicao.js";
+import { chaveRelator } from "./relatores.js";
 import { anotarRequisicao, lerRitmo, contextoDoBloqueio, analisarBloqueios, formatarRelatorio } from "./bloqueios.js";
 
 export const SITE = "https://juris.tjro.jus.br";
@@ -255,13 +256,44 @@ export const trechoDispositivo = (cauda) => {
   if (v > 40) f = f.slice(0, v);
   return f;
 };
-export const resultadoDe = (texto) => {
+// v1.29.0: SENTENÇA nunca recebe rótulo de 2º grau (PROVIDO/ACOLHIDO…): "acolho o pedido",
+// "rejeito a preliminar" e acórdão citado davam rótulo enganoso em 38% das 537 sentenças dos
+// recibos (medição offline de 12/10/2026). Rótulo errado é pior que nenhum; o desfecho de
+// 1º grau (procedente/improcedente) é outro extrator, ainda não publicado.
+export const resultadoDe = (texto, tipo) => resultadoComOrigem(texto, tipo).conjunto;
+const RE_EMBARGOS_DECL = /\bEMBARGOS (DE DECLARACAO|DECLARATORIOS|(NAO )?PROVIDOS?|REJEITADOS?|ACOLHIDOS?|PARCIALMENTE)/;
+const RE_EMBARGOS_OUTROS = /\bEMBARGOS (DE TERCEIRO|A EXECUCAO|MONITORIOS|INFRINGENTES)/;
+// {conjunto, origem}: origem = "fecho" (proclamação do acórdão), "ementa-IV" (seção IV da ementa
+// CNJ, só em documento do tipo EMENTA, sem fecho), "cauda" (últimos 2.500 caracteres) ou "nenhuma".
+// v1.29.0 (H05): na EMENTA do modelo CNJ, as seções I e III narram a decisão recorrida e o
+// recurso anterior ("recurso provido") — e a classe do índice de embargos de declaração é a do
+// processo principal (APELAÇÃO), então ehEmbargos falhava e a ementa de ED recebia o resultado
+// da apelação. Lendo só a seção IV (dispositivo e tese) e reconhecendo "embargos de declaração"
+// nela, o rótulo muda em ~6,7% das ementas CNJ sem fecho (medição offline 12/10/2026).
+export const resultadoComOrigem = (texto, tipo) => {
+  if (String(tipo || "").toUpperCase() === "SENTENÇA") return { conjunto: new Set(), origem: "nenhuma" };
   const t = fold(texto).toUpperCase();
   const caudaToda = t.length > 2500 ? t.slice(-2500) : t;
   const fecho = trechoDispositivo(caudaToda);
-  const cauda = fecho || caudaToda;
+  let cauda = fecho || caudaToda;
+  let origem = fecho ? "fecho" : "cauda";
+  let embargos = !!fecho && RE_EMBARGOS_DECL.test(fecho) && !RE_EMBARGOS_OUTROS.test(fecho);
+  if (!fecho && String(tipo || "").toUpperCase() === "EMENTA") {
+    const iv = secoesDaEmenta(String(texto || ""), 0, String(texto || "").length).find((x) => x.nome === "dispositivo e tese" || x.nome === "dispositivo");
+    if (iv) {
+      // Só a linha de resultado: a tese enunciada depois de "Tese(s) de julgamento" cita "embargos
+      // de declaração" e "provimento" de outros contextos (validação cega 12/10/2026).
+      cauda = fold(String(texto).slice(iv.a, iv.b)).toUpperCase().replace(/\bTESES? DE JULGAMENTO\b[^]*$/, "");
+      origem = "ementa-IV";
+      // É julgamento de embargos? Decide o cabeçalho + seção I (caso em exame) + a linha de
+      // resultado — nunca as razões (III) nem a tese, que citam ED de passagem (prequestionamento).
+      const secs = secoesDaEmenta(String(texto || ""), 0, String(texto || "").length);
+      const fimI = secs.find((x) => x.nome === "caso em exame");
+      const cabeca = fold(String(texto).slice(0, fimI ? fimI.b : Math.min(iv.a, 400))).toUpperCase();
+      embargos = (RE_EMBARGOS_DECL.test(cauda) || RE_EMBARGOS_DECL.test(cabeca)) && !RE_EMBARGOS_OUTROS.test(cauda) && !RE_EMBARGOS_OUTROS.test(cabeca);
+    }
+  }
   const r = new Set();
-  const embargos = !!fecho && /\bEMBARGOS (DE DECLARACAO|DECLARATORIOS|(NAO )?PROVIDOS?|REJEITADOS?|ACOLHIDOS?|PARCIALMENTE)/.test(fecho) && !/\bEMBARGOS (DE TERCEIRO|A EXECUCAO|MONITORIOS|INFRINGENTES)/.test(fecho);
   // Cada lado é testado de forma INDEPENDENTE (não é if/else): texto que
   // menciona os dois — ementa que registra o voto vencido ("vencido o relator,
   // que negava provimento"), "recurso do autor provido e do réu desprovido",
@@ -272,17 +304,22 @@ export const resultadoDe = (texto) => {
   if (/(?<!NAO )(?<!NAO SE )\bCONHEC/.test(cauda)) r.add("CONHECIDO");
   if (/\b(DESPROVI|IMPROVI|NAO PROVI|NEG\w*(-SE| SE)? PROVIMENTO|PROVIMENTO NEGADO)/.test(cauda)) r.add("DESPROVIDO");
   if (/(?<!NAO )\b(PROVI(DO|DOS|DA|DAS)\b|D(A|AO|AR|OU|ERAM|EU)(-SE| SE)? (PARCIAL )?PROVIMENTO)/.test(cauda)) r.add("PROVIDO");
-  if (/\bREJEIT/.test(cauda)) r.add("REJEITADO");
-  if (/\bACOLH/.test(cauda)) r.add("ACOLHIDO");
+  // "embargos NÃO acolhidos" é rejeição, não acolhimento (validação cega 12/10/2026).
+  if (/\bREJEIT|\bNAO ACOLH/.test(cauda)) r.add("REJEITADO");
+  if (/(?<!NAO )\bACOLH/.test(cauda)) r.add("ACOLHIDO");
   // PARCIAL é qualificador do PROVIDO (o par OPOSTOS não muda): "parcial
   // provimento", "parcialmente provido", "provido em parte".
   if (/\bPARCIAL(MENTE)? PROVI|\bPARCIAL PROVIMENTO|\bPROVIMENTO PARCIAL|\bPROVID[OA]S? EM PARTE/.test(cauda)) r.add("PARCIAL");
   if (embargos) {
-    // "EMBARGOS PROVIDOS" = acolhidos; "EMBARGOS NÃO PROVIDOS" = rejeitados.
+    // "EMBARGOS PROVIDOS" = acolhidos; "EMBARGOS NÃO PROVIDOS" = rejeitados. Com "ACOLHIDOS"
+    // explícito, "negar provimento ao recurso" é o efeito infringente sobre o recurso
+    // originário, não rejeição dos embargos (validação cega 12/10/2026).
     if (r.has("PROVIDO")) { r.delete("PROVIDO"); r.delete("PARCIAL"); r.add("ACOLHIDO"); }
-    if (r.has("DESPROVIDO")) { r.delete("DESPROVIDO"); r.add("REJEITADO"); }
+    // No fecho do acórdão isso NÃO vale: "embargos do autor acolhidos, do réu não providos" é ambíguo
+    // (21 de 21 nos acórdãos rotulados às cegas em 12/10/2026) — só na linha de resultado da ementa.
+    if (r.has("DESPROVIDO")) { r.delete("DESPROVIDO"); if (!(origem === "ementa-IV" && r.has("ACOLHIDO"))) r.add("REJEITADO"); }
   }
-  return r;
+  return { conjunto: r, origem: r.size ? origem : "nenhuma" };
 };
 // Lado de um par declarado por um documento; null se nenhum ou se ambos (ambíguo).
 export const ladoDe = (conjunto, [a, b]) =>
@@ -332,13 +369,13 @@ export function resumoResultadosPagina(hits) {
     const chave = proc && data ? `${proc}|${data}` : `#${i}`;
     if (!porJulgamento.has(chave)) porJulgamento.set(chave, { conjunto: new Set(), classe: s.ds_classe_judicial || "", relator: relator(s), orgao: orgao(s), ano: String(s.dtjulgamento || "").slice(0, 4) || "?" });
     const j = porJulgamento.get(chave);
-    for (const r of resultadoDe(limpar(s.ds_modelo_documento || "", 0))) j.conjunto.add(r);
+    for (const r of resultadoDe(limpar(s.ds_modelo_documento || "", 0), s.tipo)) j.conjunto.add(r);
   });
   const contagem = { PROVIDO: 0, PARCIAL: 0, DESPROVIDO: 0, ACOLHIDO: 0, REJEITADO: 0 };
   let semResultado = 0;
   // Quebra por relator, órgão (do ÍNDICE, que erra a câmara — indício) e ano:
   // é o mesmo dado, só agrupado, para ver tendência e quem decide o quê.
-  const porRelator = new Map(), porOrgao = new Map(), porAno = new Map();
+  const porRelatorChave = new Map(), grafias = new Map(), porOrgao = new Map(), porAno = new Map();
   const soma = (mapa, k, r) => {
     if (!mapa.has(k)) mapa.set(k, CONTAGEM_VAZIA());
     mapa.get(k)[r || "sem"] += 1;
@@ -347,9 +384,20 @@ export function resumoResultadosPagina(hits) {
     const r = rotuloDoConjunto(j.conjunto, j.classe);
     if (r) contagem[r] += 1;
     else semResultado += 1;
-    soma(porRelator, j.relator, r);
+    // v1.29.0 (H07): o índice guarda o MESMO relator em 2–3 grafias (caixa, acento); a quebra
+    // os unia como se fossem dois e perdia linhas abaixo do mínimo. Chave sem caixa nem acento.
+    const ck = chaveRelator(j.relator) || j.relator;
+    soma(porRelatorChave, ck, r);
+    if (!grafias.has(ck)) grafias.set(ck, new Map());
+    grafias.get(ck).set(j.relator, (grafias.get(ck).get(j.relator) || 0) + 1);
     soma(porOrgao, j.orgao, r);
     soma(porAno, j.ano, r);
+  }
+  // Rótulo: a grafia mais frequente (empate: ordem de código, igual no Python), com a contagem de grafias unidas.
+  const porRelator = new Map();
+  for (const [ck, c] of porRelatorChave) {
+    const gs = [...grafias.get(ck).entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+    porRelator.set(gs.length > 1 ? `${gs[0][0]} [grafias unidas: ${gs.length}]` : gs[0][0], c);
   }
   return { contagem, semResultado, totalJulgamentos: porJulgamento.size, porRelator, porOrgao, porAno };
 }
@@ -386,7 +434,7 @@ export function filtrarPorResultado(hits, rotulo) {
   hits.forEach((h, i) => {
     const k = chaveDe(h, i);
     if (!conjuntos.has(k)) { conjuntos.set(k, new Set()); classes.set(k, (h._source || {}).ds_classe_judicial || ""); }
-    for (const r of resultadoDe(limpar((h._source || {}).ds_modelo_documento || "", 0))) conjuntos.get(k).add(r);
+    for (const r of resultadoDe(limpar((h._source || {}).ds_modelo_documento || "", 0), (h._source || {}).tipo)) conjuntos.get(k).add(r);
   });
   const fica = hits.filter((h, i) => rotuloDoConjunto(conjuntos.get(chaveDe(h, i)), classes.get(chaveDe(h, i))) === alvo);
   return { hits: fica, removidos: hits.length - fica.length };
@@ -1423,7 +1471,9 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   const chaveProc = (i) => String((hits[i]._source || {}).nr_processo || "").replace(/\D/g, "") || `#${i}`;
   const chaveJulg = (i) => String((hits[i]._source || {}).dtjulgamento || "");
   const textos = hits.map((h) => limpar((h._source || {}).ds_modelo_documento || "", 0));
-  const resultados = textos.map(resultadoDe);
+  const comOrigem = textos.map((x, i) => resultadoComOrigem(x, (hits[i]._source || {}).tipo));
+  const resultados = comOrigem.map((x) => x.conjunto);
+  const sufixoOrigem = (i) => (comOrigem[i].origem === "ementa-IV" ? " (lido da seção IV da ementa)" : "");
   // Câmara declarada no FECHO de cada acórdão da página (offline, sobre o texto já
   // trazido). Vale também para os outros documentos do MESMO julgamento na página
   // (nº + data; sem data não se presume — red team 04/09/2026, achado 6): a ementa
@@ -1473,7 +1523,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       const org = doFecho && orgaoDiverge(doFecho, orgao(s)) ? `${doFecho} (fecho; índice: ${orgao(s)})` : orgao(s);
       out.push(
         `${inicio + i}. ${s.tipo || "?"} · ${s.ds_classe_judicial || "—"} · ${org} · ${quandoDe(s)} · ${relator(s)} · ` +
-          `${r ? ROTULOS_RESULTADO[r] : "sem resultado identificável"}${votSufixoI(i)} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}`
+          `${r ? ROTULOS_RESULTADO[r] + sufixoOrigem(i) : "sem resultado identificável"}${votSufixoI(i)} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}`
       );
     });
     out.push("_Resultado declarado é extraído do fim do texto (dispositivo) e não é posição sobre a tese; ementa e acórdão do mesmo julgado aparecem em linhas separadas. \"(unânime / por maioria / voto divergente prevaleceu)\" vem da proclamação do fecho do ACÓRDÃO (medido às cegas, ~99%); ausência não prova unanimidade e \"com declaração de voto\" não é exaustivo. Abra o inteiro teor antes de citar._");
@@ -1542,6 +1592,12 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       }
     }
     linhas.push(...linhasDeSinais(s, inteiro));
+    // v1.29.0 (H06): a tese da ementa CNJ fica fora do trecho de 800 caracteres em ~92% das EMENTAS; sai literal,
+    // do texto integral do hit (nunca do fragmento do destaque), só no tipo EMENTA e só no modo completo.
+    if (s.tipo === "EMENTA") {
+      const te = teseDaEmenta(limpar(s.ds_modelo_documento || "", 0));
+      if (te) linhas.push(linhaTese(te));
+    }
     linhas.push(`- ${rotulo}: ${trecho || "(sem trecho)"}`);
     out.push(linhas.join("\n"));
   });
@@ -1613,6 +1669,10 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   return out.join("\n");
 }
 
+export const linhaTese = (te) =>
+  `- TESE DA EMENTA (literal; tese enunciada pelo órgão, não prova de ratio): "${te.texto}${te.completa ? "" : " […]"}"` +
+  (te.completa ? "" : ` ⚠️ TESE INCOMPLETA: ${te.total > 1 ? `${te.exibidos} de ${te.total} itens` : "trecho parcial"}; abra o inteiro teor antes de fichar.`);
+
 export function formatInteiro(data, nrProcesso) {
   const hitsObj = data.hits || {};
   const total = (hitsObj.total || {}).value || 0;
@@ -1681,11 +1741,45 @@ export function formatInteiro(data, nrProcesso) {
       `⚠️ O processo tem ${total} documentos; vieram os ${hits.length} mais recentes — refine o parâmetro tipo para alcançar os demais.`
     );
 
+  // v1.29.0: EMENTA/RELATÓRIO/VOTO do mesmo julgamento vêm, no índice, contidos
+  // letra a letra no ACÓRDÃO (672 de 681 peças em 433 leituras do cache, 12/10/2026).
+  // Repetir o texto gastava o orçamento e cortava justamente o fecho do acórdão
+  // (134 de 336 acórdãos saíam truncados). A peça contida vira um ponteiro para o
+  // acórdão, mas só se o trecho couber na parte do acórdão efetivamente exibida;
+  // cabeçalho, id, link e avisos continuam calculados sobre o corpo dela.
+  // Contenção EXATA sobre o corpo já normalizado por limpar (espaços colapsados):
+  // sem fold, sem limiar — "idêntico" precisa ser verdade. Só com data igual.
+  const contidoEm = contencoesDoInteiro(unicos, dataDe);
+  const redundantes = contidoEm.size;
   // Orçamento global com teto por peça dinâmico: uma peça sozinha pode usar
-  // o orçamento inteiro (há acórdãos de ~80k chars).
-  const tetoPeca = Math.max(15000, Math.floor(ORCAMENTO_INTEIRO / Math.max(1, unicos.length)));
-  let usado = out.reduce((n, x) => n + x.length, 0);
-  for (const [s, corpo] of unicos) {
+  // o orçamento inteiro (há acórdãos de ~80k chars). Peças redundantes não contam.
+  // Reserva de orçamento para os ponteiros (cabeçalho + avisos + 1 linha): a peça
+  // contida nunca é omitida, mesmo que o acórdão seja gigante.
+  const RESERVA_PONTEIRO = 1500;
+  const tetoPeca = Math.max(
+    15000,
+    Math.floor((ORCAMENTO_INTEIRO - RESERVA_PONTEIRO * redundantes) / Math.max(1, unicos.length - redundantes))
+  );
+  // Orçamento contado em caracteres (pontos de código), como no Python: `.length`
+  // conta emoji dos avisos como 2 e deslocava o corte das peças em relação ao espelho.
+  const tam = (x) => { let n = 0; for (const _ of x) n++; return n; };
+  let usado = out.reduce((n, x) => n + tam(x), 0);
+  let avisouLimite = false;
+  // Ordem de emissão: a do índice, mas o acórdão contentor sai antes da peça que
+  // aponta para ele (o leitor precisa encontrar o texto acima, não abaixo).
+  const ordem = [];
+  const emitidos = new Set();
+  for (let i = 0; i < unicos.length; i++) {
+    const c = contidoEm.get(i);
+    if (c !== undefined && !emitidos.has(c)) { ordem.push(c); emitidos.add(c); }
+    if (!emitidos.has(i)) { ordem.push(i); emitidos.add(i); }
+  }
+  const exibido = new Map(); // índice do contentor -> texto efetivamente exibido
+  for (let k = 0; k < ordem.length; k++) {
+    const i = ordem[k];
+    const [s, corpo] = unicos[i];
+    const c = contidoEm.get(i);
+    const restantes = ordem.slice(k + 1).filter((x) => contidoEm.has(x)).length;
     const quando = s.dtjulgamento_str || s.dtjulgamento || "";
     const cab =
       `\n## ${s.tipo}` +
@@ -1693,11 +1787,15 @@ export function formatInteiro(data, nrProcesso) {
       (relator(s) !== "—" ? ` · Relator(a): ${relator(s)}` : "") +
       (idDocumento(s) ? ` · id ${idDocumento(s)}` : "") +
       ` · link ${link(s)}`;
-    if (usado >= ORCAMENTO_INTEIRO) {
-      out.push(
-        "\n_(limite de tamanho da resposta atingido — peças restantes omitidas; chame novamente filtrando por tipo ou abra o link do portal acima)_"
-      );
-      break;
+    // Orçamento desta peça: o teto por peça, menos a reserva dos ponteiros que ainda virão.
+    const teto = Math.min(tetoPeca, ORCAMENTO_INTEIRO - usado - RESERVA_PONTEIRO * restantes);
+    if (teto <= 0 && c === undefined) {
+      if (!avisouLimite)
+        out.push(
+          "\n_(limite de tamanho da resposta atingido — peças restantes sem ponteiro omitidas; chame novamente filtrando por tipo ou abra o link do portal acima)_"
+        );
+      avisouLimite = true;
+      continue;
     }
     // Índice × texto: o campo do cadastro pode divergir do que o acórdão diz.
     const avisos = [];
@@ -1736,18 +1834,56 @@ export function formatInteiro(data, nrProcesso) {
       avisos.push(`📌 FATOS DO JULGADO (trecho literal, ${fatos.onde}; não é resumo meu): "${fatos.texto.replace(/[ \t\n\r\f\v]+/g, " ")}${fatos.texto.length >= teto ? " […]" : ""}"${aviso}`);
     }
     let texto = corpo || "(documento sem texto)";
-    const teto = Math.min(tetoPeca, ORCAMENTO_INTEIRO - usado);
-    if (texto.length > teto) {
-      const corte = texto.slice(0, teto).replace(/\s+\S*$/, "");
+    const mae = c !== undefined ? exibido.get(c) : undefined;
+    const idMae = c !== undefined && idDocumento(unicos[c][0]) ? ` id ${idDocumento(unicos[c][0])}` : "";
+    if (mae !== undefined && mae.includes(corpo)) {
       texto =
-        `${corte}…\n_[peça exibida parcialmente (${corte.length} de ${corpo.length} caracteres) — ` +
-        `para o texto integral, chame obter_inteiro_teor_tjro(tipo=["${s.tipo}"]) ou abra o link do portal]_`;
+        `_[texto idêntico a um trecho do ACÓRDÃO${idMae} acima ` +
+        `(${corpo.length} caracteres, contido letra a letra); não repetido para poupar espaço — os avisos acima são desta peça]_`;
+    } else if (c !== undefined && teto < 1000) {
+      // Contida, mas na parte que o teto cortou do acórdão, e sem orçamento para o corpo:
+      // ponteiro honesto em vez de omitir a peça.
+      texto =
+        `_[texto contido letra a letra no ACÓRDÃO${idMae}, na parte não exibida acima ` +
+        `(${corpo.length} caracteres); para lê-lo, chame obter_inteiro_teor_tjro(tipo=["${s.tipo}"]) ou abra o link desta peça]_`;
+    } else {
+      if (texto.length > teto) {
+        const corte = texto.slice(0, teto).replace(/\s+\S*$/, "");
+        exibido.set(i, corte);
+        texto =
+          `${corte}…\n_[peça exibida parcialmente (${corte.length} de ${corpo.length} caracteres) — ` +
+          `para o texto integral, chame obter_inteiro_teor_tjro(tipo=["${s.tipo}"]) ou abra o link do portal]_`;
+      } else {
+        exibido.set(i, corpo);
+      }
     }
     const bloco = `${cab}${avisos.length ? "\n" + avisos.join("\n") : ""}\n${texto}`;
     out.push(bloco);
-    usado += bloco.length;
+    usado += tam(bloco);
   }
   return out.join("\n");
+}
+
+// Para cada peça que NÃO é acórdão, o índice (em `unicos`) do ACÓRDÃO do mesmo
+// julgamento (mesma data, nunca sem data) que a contém letra a letra. Entre vários
+// acórdãos candidatos, o maior; empate, o primeiro. Exportada para teste.
+export function contencoesDoInteiro(unicos, dataDe) {
+  const m = new Map();
+  for (let i = 0; i < unicos.length; i++) {
+    const [s, corpo] = unicos[i];
+    if (s.tipo === "ACÓRDÃO" || !corpo) continue;
+    const d = dataDe(s);
+    if (!d) continue;
+    let melhor = -1;
+    for (let j = 0; j < unicos.length; j++) {
+      const [sj, cj] = unicos[j];
+      if (j === i || sj.tipo !== "ACÓRDÃO" || dataDe(sj) !== d) continue;
+      if (cj.length <= corpo.length || !cj.includes(corpo)) continue;
+      if (melhor < 0 || cj.length > unicos[melhor][1].length) melhor = j;
+    }
+    if (melhor >= 0) m.set(i, melhor);
+  }
+  return m;
 }
 
 
@@ -1933,7 +2069,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.28.0";
+export const VERSAO = "1.29.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
