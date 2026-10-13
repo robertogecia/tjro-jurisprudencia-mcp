@@ -506,7 +506,7 @@ São dois casos diferentes, e a mensagem de erro agora diz qual é.
 **1. "Verificação de navegador" (desafio JavaScript).** O filtro de segurança do
 portal (F5/TSPD) exige que o acesso execute um desafio em JavaScript, coisa que só
 navegador faz. **Não é excesso de consultas: esperar não resolve**, e a extensão
-não executa esse desafio nem contorna a proteção do tribunal. Isso varia por rede,
+não executa esse desafio (a opção de identificação descrita abaixo não o resolve). Isso varia por rede,
 por provedor e pelo programa que faz o acesso — em 21/09/2026 um usuário em Sergipe
 foi barrado já na primeira busca do dia, enquanto na máquina do autor, no mesmo dia,
 a extensão consultava normalmente e só o `curl` era recusado. O que fazer:
@@ -529,11 +529,25 @@ do que a extensão usa. O teste controlado de 22/09 mostrou a causa real: o filt
 do portal recusa requisições que se identificam como ferramenta automatizada — e a
 extensão, por princípio, se identifica honestamente. Com a identificação de
 navegador, a mesma requisição passa. Ou seja: não adianta trocar de rede nem
-esperar. **Decisão do autor:** a extensão continua se identificando honestamente — ela não
-será disfarçada de navegador, nem como opção, porque isso seria contornar a
-proteção do tribunal. O caminho escolhido é pedir ao TJRO a liberação formal do
-acesso. Enquanto isso, a pesquisa pelo site (juris.tjro.jus.br) continua
-funcionando normalmente no navegador.
+esperar. **Decisão do autor (22/09/2026):** a extensão continua se identificando honestamente por
+padrão. O caminho principal é pedir ao TJRO a liberação formal do acesso, e enquanto isso a
+pesquisa pelo site (juris.tjro.jus.br) continua funcionando normalmente no navegador.
+**Revisada em 13/10/2026: agora há uma opção, desligada por padrão, para quem decidir assumir o risco** (próxima seção).
+
+### Opção: identificar-se como navegador (por sua conta e risco)
+
+Em Configurações → Extensões → Jurisprudência TJRO há a chave **"Identificar-se como navegador
+(assumo o risco)"**. Desligada (padrão), a extensão se declara ao portal. Ligada, ela se apresenta como um navegador
+comum, o que **pode** passar pelo filtro que recusa a identificação honesta. O que você precisa saber antes de ligar:
+
+- **É um disfarce.** O tribunal pode considerar uso indevido do portal e restringir o acesso, por exemplo bloqueando o IP da sua rede,
+  o que atinge também quem divide a rede com você. O risco é inteiramente seu.
+- **Não muda o ritmo.** O espaçamento mínimo entre consultas, o teto por janela e a pausa depois de um bloqueio continuam valendo.
+- **Não resolve a "verificação de navegador"** (o desafio em JavaScript): esse caso não depende da identificação.
+- **A extensão avisa.** Com a opção ligada, a primeira resposta de cada sessão lembra que a identificação de navegador está ativa e que o
+  risco é seu, e o `diagnostico_ritmo_tjro` mostra a identificação em uso. Quando o portal bloqueia com a identificação honesta, a mensagem
+  de erro apresenta essa opção, com o mesmo aviso.
+- Para voltar atrás, desligue a chave. Quem usa pela linha de comando pode definir `TJRO_MCP_IDENTIFICACAO=navegador`.
 
 **Desde a v1.7.10, a própria extensão reconhece essa situação e avisa em linguagem
 simples.** Quando o portal bloqueia, a primeira linha da resposta diz que foi o

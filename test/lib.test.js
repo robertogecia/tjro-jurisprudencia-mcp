@@ -38,6 +38,10 @@ import {
   idDocumento,
   resultadoDe,
   resultadoComOrigem,
+  novoJulgamento,
+  somarResultado,
+  rotuloDoJulgamento,
+  trechoDispositivo,
   linhaTese,
   modoNavegadorAtivo,
   UA_HONESTO,
@@ -2117,4 +2121,34 @@ test("manifest: opção de identificação é booleana, desligada por padrão, e
   assert.equal(c.type, "boolean"); assert.equal(c.default, false); assert.equal(c.required, false);
   assert.match(c.description, /risco é inteiramente seu/);
   assert.equal(m.server.mcp_config.env.TJRO_MCP_IDENTIFICACAO, "${user_config.identificacao_navegador}");
+});
+
+// v1.30.0 — resultado por JULGAMENTO: fecho do acórdão manda; embargos reconhecidos pelo texto; RELATÓRIO não declara resultado.
+test("julgamento: fecho 'EMBARGOS REJEITADOS' vence o 'nego provimento' do voto, mesmo com classe de apelação no índice", () => {
+  const fecho = "ACÓRDÃO Vistos, relatados e discutidos estes autos, acordam os Magistrados da(o) 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, em, EMBARGOS DE DECLARAÇÃO REJEITADOS NOS TERMOS DO VOTO DO RELATOR, POR UNANIMIDADE.";
+  const voto = "VOTO Ante o exposto, nego provimento ao recurso. É como voto.";
+  const j = novoJulgamento("APELAÇÃO CÍVEL");
+  somarResultado(j, resultadoComOrigem(fecho, "ACÓRDÃO"));
+  somarResultado(j, resultadoComOrigem(voto, "VOTO"));
+  assert.equal(rotuloDoJulgamento(j), "REJEITADO");
+  const jx = novoJulgamento("APELAÇÃO CÍVEL"); // sem o fecho, só o voto: continua desprovido
+  somarResultado(jx, resultadoComOrigem(voto, "VOTO"));
+  assert.equal(rotuloDoJulgamento(jx), "DESPROVIDO");
+});
+
+test("julgamento: o fecho com resultado dispensa o ruído do voto e da ementa; sem fecho a união segue como antes", () => {
+  const fecho = "ACÓRDÃO acordam os Magistrados da(o) 2ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, em, PRELIMINAR REJEITADA. NO MÉRITO, RECURSO PROVIDO NOS TERMOS DO VOTO DO RELATOR, POR UNANIMIDADE.";
+  const voto = "VOTO Quanto aos honorários, dou parcial provimento ao pedido subsidiário.";
+  const j = novoJulgamento("APELAÇÃO CÍVEL");
+  somarResultado(j, resultadoComOrigem(fecho, "ACÓRDÃO")); somarResultado(j, resultadoComOrigem(voto, "VOTO"));
+  assert.equal(rotuloDoJulgamento(j), "PROVIDO");
+  const k = novoJulgamento("APELAÇÃO CÍVEL");
+  somarResultado(k, resultadoComOrigem("VOTO dou provimento ao recurso.", "VOTO")); somarResultado(k, resultadoComOrigem("EMENTA recurso desprovido.", "EMENTA"));
+  assert.equal(rotuloDoJulgamento(k), null, "sem fecho, provido e desprovido continuam ambíguos");
+});
+
+test("RELATÓRIO não declara resultado; o alarme de resultado oposto ignora ACOLHIDO×REJEITADO fora de embargos; fecho = última ocorrência", () => {
+  assert.equal(resultadoComOrigem("RELATÓRIO A sentença julgou improcedente; o recurso foi provido em parte.", "RELATÓRIO").conjunto.size, 0);
+  const t = "ACORDAM OS MAGISTRADOS transcritos de outro julgado, em, RECURSO DESPROVIDO. [...] ACORDAM OS MAGISTRADOS da 1ª Câmara, em, RECURSO PROVIDO.";
+  assert.equal(trechoDispositivo(t).startsWith("ACORDAM OS MAGISTRADOS da 1ª"), true);
 });

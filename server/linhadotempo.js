@@ -1,5 +1,5 @@
 // Linha do tempo por ano e "julgados que citam este" (v1.25, 09/10/2026). Espelho de _linha_do_tempo e _citacoes_de (servidor_tjro.py).
-import { buildBuscaBody, post, limpar, resultadoDe, rotuloDoConjunto, cnj, orgao, relator, idDocumento, gravarRecibos } from "./lib.js";
+import { buildBuscaBody, post, limpar, resultadoComOrigem, novoJulgamento, somarResultado, rotuloDoJulgamento, cnj, orgao, relator, idDocumento, gravarRecibos } from "./lib.js";
 import { norm1 } from "./custodia.js";
 import { avisoGrafiaRelator } from "./relatores.js";
 import { listarRecibos } from "./recibos.js";
@@ -47,13 +47,13 @@ export function contarJulgamentos(hits) {
   for (const h of hits) {
     const s = h._source || {};
     const k = `${s.nr_processo}|${s.dtjulgamento_str || s.dtjulgamento}`;
-    const e = por.get(k) || { r: new Set(), cl: s.ds_classe_judicial };
-    for (const r of resultadoDe(limpar(s.ds_modelo_documento || "", 0), s.tipo)) e.r.add(r);
+    const e = por.get(k) || novoJulgamento(s.ds_classe_judicial);
+    somarResultado(e, resultadoComOrigem(limpar(s.ds_modelo_documento || "", 0), s.tipo));
     por.set(k, e);
   }
   const cont = {};
   for (const e of por.values()) {
-    const rot = rotuloDoConjunto(e.r, e.cl);
+    const rot = rotuloDoJulgamento(e);
     const key = rot || "SEM";
     cont[key] = (cont[key] || 0) + 1;
   }

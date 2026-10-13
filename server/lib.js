@@ -255,11 +255,13 @@ export const OPOSTOS = [
 // acórdãos rotulados às cegas: de 69% para 91% de concordância). O que vem depois
 // de "VENCIDO(A)(S)" é o voto perdedor e sai. Em fecho de embargos de declaração,
 // "PROVIDOS"/"NÃO PROVIDOS" é acolhimento/rejeição, e assim entra no conjunto.
-const RE_FECHO_DISPOSITIVO = /ACORDAM\s+(?:OS|AS)\s+(?:MAGISTRADOS|DESEMBARGADORES|JUIZES|JUIZAS)[^]*$/;
+// v1.30.0: a ÚLTIMA ocorrência do fecho por regex, como o Python (antes: a 1ª ocorrência decidia o prefixo e lastIndexOf achava
+// outro ponto quando havia dois "ACORDAM OS …" na cauda — 2 respostas de 1.946 divergiam entre Node e Python).
+const RE_FECHO_DISPOSITIVO = /ACORDAM\s+(?:OS|AS)\s+(?:MAGISTRADOS|DESEMBARGADORES|JUIZES|JUIZAS)/g;
 export const trechoDispositivo = (cauda) => {
-  const m = RE_FECHO_DISPOSITIVO.exec(cauda);
-  if (!m) return null;
-  const ultimo = cauda.lastIndexOf(m[0].slice(0, 12));
+  let ultimo = -1;
+  for (const m of cauda.matchAll(RE_FECHO_DISPOSITIVO)) ultimo = m.index;
+  if (ultimo < 0) return null;
   let f = cauda.slice(ultimo);
   const v = f.search(/\bVENCID[OA]S?\b/);
   if (v > 40) f = f.slice(0, v);
@@ -282,7 +284,7 @@ const RE_EMBARGOS_OUTROS = /\bEMBARGOS (DE TERCEIRO|A EXECUCAO|MONITORIOS|INFRIN
 export const resultadoComOrigem = (texto, tipo) => {
   // v1.30.0: RELATÓRIO também não tem dispositivo: a cauda narra a decisão recorrida e o histórico. Nos avisos de
   // "resultado oposto" 25 de 25 casos com RELATÓRIO eram falsos (2 rotuladores cegos), e o relatório sujava o rótulo do julgamento.
-  if (["SENTENÇA", "RELATÓRIO"].includes(String(tipo || "").toUpperCase())) return { conjunto: new Set(), origem: "nenhuma" };
+  if (["SENTENÇA", "RELATÓRIO"].includes(String(tipo || "").toUpperCase())) return { conjunto: new Set(), origem: "nenhuma", embargos: false };
   const t = fold(texto).toUpperCase();
   const caudaToda = t.length > 2500 ? t.slice(-2500) : t;
   const fecho = trechoDispositivo(caudaToda);
@@ -330,7 +332,7 @@ export const resultadoComOrigem = (texto, tipo) => {
     // (21 de 21 nos acórdãos rotulados às cegas em 12/10/2026) — só na linha de resultado da ementa.
     if (r.has("DESPROVIDO")) { r.delete("DESPROVIDO"); if (!(origem === "ementa-IV" && r.has("ACOLHIDO"))) r.add("REJEITADO"); }
   }
-  return { conjunto: r, origem: r.size ? origem : "nenhuma" };
+  return { conjunto: r, origem: r.size ? origem : "nenhuma", embargos };
 };
 // Lado de um par declarado por um documento; null se nenhum ou se ambos (ambíguo).
 export const ladoDe = (conjunto, [a, b]) =>
@@ -360,8 +362,10 @@ export const ROTULOS_RESULTADO = { PROVIDO: "provido", PARCIAL: "parcialmente pr
 // o histórico do recurso julgado ("recurso provido"). Provido E desprovido no mesmo
 // texto continua ambíguo (red team 04/09/2026).
 const ehEmbargos = (classe) => /EMBARGOS DE DECLARA/i.test(String(classe || ""));
-export const rotuloDoConjunto = (conjunto, classe = "") => {
-  const ordem = ehEmbargos(classe) ? [OPOSTOS[1], OPOSTOS[0]] : [OPOSTOS[0], OPOSTOS[1]];
+// v1.30.0: `embargosDetectado` vem do próprio texto (fecho "EMBARGOS … REJEITADOS" ou ementa de ED): a classe do índice de um ED costuma ser a do
+// processo principal (APELAÇÃO), e sem isso "embargos rejeitados" + "nego provimento" do voto viravam "desprovido" (7 dos 9 erros restantes da amostra cega).
+export const rotuloDoConjunto = (conjunto, classe = "", embargosDetectado = false) => {
+  const ordem = ehEmbargos(classe) || embargosDetectado ? [OPOSTOS[1], OPOSTOS[0]] : [OPOSTOS[0], OPOSTOS[1]];
   for (const par of ordem) {
     const [a, b] = par;
     if (conjunto.has(a) && conjunto.has(b)) return null; // os dois lados do mesmo par: ambíguo, não força
@@ -370,6 +374,19 @@ export const rotuloDoConjunto = (conjunto, classe = "") => {
   }
   return null;
 };
+// Julgamento = união dos documentos do mesmo nº + data. v1.30.0: se algum documento traz o FECHO do acórdão com resultado, só o fecho vale
+// (o dispositivo do colegiado); voto, ementa e histórico sujavam o rótulo (J07: fecho "RECURSO PROVIDO", voto citando "parcial provimento" de outro ponto).
+export const novoJulgamento = (classe = "") => ({ conjunto: new Set(), fecho: null, embargos: false, classe });
+export function somarResultado(j, r) {
+  for (const x of r.conjunto) j.conjunto.add(x);
+  if (r.origem === "fecho" && r.conjunto.size) { j.fecho = j.fecho || new Set(); for (const x of r.conjunto) j.fecho.add(x); }
+  if (r.embargos) j.embargos = true;
+  return j;
+}
+// O fecho só manda quando traz o resultado do MÉRITO (provido/desprovido/parcial) ou, em embargos, acolhido/rejeitado. "PRELIMINAR REJEITADA/ACOLHIDA"
+// sozinha no fecho não é o resultado: ali a ementa/voto ainda diz o mérito (validação cega 13/10/2026: 4 regressões antes desta regra).
+const usaFecho = (j) => !!(j.fecho && j.fecho.size && (["PROVIDO", "DESPROVIDO", "PARCIAL"].some((x) => j.fecho.has(x)) || (j.embargos && (j.fecho.has("ACOLHIDO") || j.fecho.has("REJEITADO")))));
+export const rotuloDoJulgamento = (j) => rotuloDoConjunto(usaFecho(j) ? j.fecho : j.conjunto, j.classe, j.embargos);
 const CONTAGEM_VAZIA = () => ({ PROVIDO: 0, PARCIAL: 0, DESPROVIDO: 0, ACOLHIDO: 0, REJEITADO: 0, sem: 0 });
 export function resumoResultadosPagina(hits) {
   const porJulgamento = new Map();
@@ -378,9 +395,8 @@ export function resumoResultadosPagina(hits) {
     const proc = String(s.nr_processo || "").replace(/\D/g, "");
     const data = String(s.dtjulgamento || "");
     const chave = proc && data ? `${proc}|${data}` : `#${i}`;
-    if (!porJulgamento.has(chave)) porJulgamento.set(chave, { conjunto: new Set(), classe: s.ds_classe_judicial || "", relator: relator(s), orgao: orgao(s), ano: String(s.dtjulgamento || "").slice(0, 4) || "?" });
-    const j = porJulgamento.get(chave);
-    for (const r of resultadoDe(limpar(s.ds_modelo_documento || "", 0), s.tipo)) j.conjunto.add(r);
+    if (!porJulgamento.has(chave)) porJulgamento.set(chave, { ...novoJulgamento(s.ds_classe_judicial || ""), relator: relator(s), orgao: orgao(s), ano: String(s.dtjulgamento || "").slice(0, 4) || "?" });
+    somarResultado(porJulgamento.get(chave), resultadoComOrigem(limpar(s.ds_modelo_documento || "", 0), s.tipo));
   });
   const contagem = { PROVIDO: 0, PARCIAL: 0, DESPROVIDO: 0, ACOLHIDO: 0, REJEITADO: 0 };
   let semResultado = 0;
@@ -392,7 +408,7 @@ export function resumoResultadosPagina(hits) {
     mapa.get(k)[r || "sem"] += 1;
   };
   for (const j of porJulgamento.values()) {
-    const r = rotuloDoConjunto(j.conjunto, j.classe);
+    const r = rotuloDoJulgamento(j);
     if (r) contagem[r] += 1;
     else semResultado += 1;
     // v1.29.0 (H07): o índice guarda o MESMO relator em 2–3 grafias (caixa, acento); a quebra
@@ -420,7 +436,8 @@ export function linhasQuebra(mapa, max = 8, minimo = 3) {
   return [...mapa.entries()]
     .map(([k, c]) => [k, c, ordem.reduce((n, r) => n + c[r], 0) + c.sem])
     .filter(([, , n]) => n >= minimo)
-    .sort((a, b) => b[2] - a[2] || String(a[0]).localeCompare(String(b[0])))
+    // desempate por ORDEM DE CÓDIGO (igual ao sorted() do Python): localeCompare põe "Á" antes de "F" e o Python depois (v1.30.0)
+    .sort((a, b) => b[2] - a[2] || (String(a[0]) < String(b[0]) ? -1 : String(a[0]) > String(b[0]) ? 1 : 0))
     .slice(0, max)
     .map(([k, c, n]) => {
       const partes = ordem.filter((r) => c[r] > 0).map((r) => `${c[r]} ${ROTULOS_RESULTADO[r]}${c[r] > 1 ? "s" : ""}`);
@@ -434,8 +451,7 @@ export const ROTULOS_FILTRO = { provido: "PROVIDO", parcial: "PARCIAL", desprovi
 export function filtrarPorResultado(hits, rotulo) {
   if (!(rotulo in ROTULOS_FILTRO)) return { hits, removidos: 0 };
   const alvo = ROTULOS_FILTRO[rotulo];
-  const conjuntos = new Map();
-  const classes = new Map();
+  const julgs = new Map();
   const chaveDe = (h, i) => {
     const s = h._source || {};
     const proc = String(s.nr_processo || "").replace(/\D/g, "");
@@ -444,10 +460,10 @@ export function filtrarPorResultado(hits, rotulo) {
   };
   hits.forEach((h, i) => {
     const k = chaveDe(h, i);
-    if (!conjuntos.has(k)) { conjuntos.set(k, new Set()); classes.set(k, (h._source || {}).ds_classe_judicial || ""); }
-    for (const r of resultadoDe(limpar((h._source || {}).ds_modelo_documento || "", 0), (h._source || {}).tipo)) conjuntos.get(k).add(r);
+    if (!julgs.has(k)) julgs.set(k, novoJulgamento((h._source || {}).ds_classe_judicial || ""));
+    somarResultado(julgs.get(k), resultadoComOrigem(limpar((h._source || {}).ds_modelo_documento || "", 0), (h._source || {}).tipo));
   });
-  const fica = hits.filter((h, i) => rotuloDoConjunto(conjuntos.get(chaveDe(h, i)), classes.get(chaveDe(h, i))) === alvo);
+  const fica = hits.filter((h, i) => rotuloDoJulgamento(julgs.get(chaveDe(h, i))) === alvo);
   return { hits: fica, removidos: hits.length - fica.length };
 }
 
@@ -462,7 +478,7 @@ export function formatPanorama(data) {
   const top = (k, n) =>
     buckets(k)
       .map((b) => [(Array.isArray(b.key) ? b.key.join(" ") : String(b.key)).trim() || "(sem cadastro)", b.doc_count])
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)) // ordem de código, igual ao Python
       .slice(0, n)
       .map(([k2, c]) => `${k2} ${c}`)
       .join(" · ");
@@ -471,7 +487,7 @@ export function formatPanorama(data) {
     const ano = typeof b.key === "number" ? new Date(b.key).getUTCFullYear() : String(b.key_as_string || b.key).slice(0, 4);
     anos.set(ano, (anos.get(ano) || 0) + b.doc_count);
   }
-  const porAno = [...anos.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map(([a, c]) => `${a}: ${c}`).join(" · ");
+  const porAno = [...anos.entries()].sort((a, b) => (String(a[0]) < String(b[0]) ? -1 : String(a[0]) > String(b[0]) ? 1 : 0)).map(([a, c]) => `${a}: ${c}`).join(" · ");
   const linhas = [];
   const org = top("orgaos_julgadores_colegiados", 6);
   const gab = top("orgaos_julgadores", 6);
@@ -1538,7 +1554,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
     out.push("\n**Lista compacta** (nº · tipo · classe · órgão do cadastro · julgado em · relator · resultado declarado · assunto · processo · id):");
     hits.forEach((h, i) => {
       const s = h._source || {};
-      const r = rotuloDoConjunto(resultados[i], s.ds_classe_judicial);
+      const r = rotuloDoConjunto(resultados[i], s.ds_classe_judicial, comOrigem[i].embargos);
       const doFecho = orgaoDoFechoDe(i);
       const org = doFecho && orgaoDiverge(doFecho, orgao(s)) ? `${doFecho} (fecho; índice: ${orgao(s)})` : orgao(s);
       out.push(
@@ -1831,7 +1847,8 @@ export function formatInteiro(data, nrProcesso) {
       if (vf) avisos.push(`🗳️ Votação no fecho: ${vf}. (Lida da proclamação; não diz quem foi vencido: confira o fecho antes de citar como posição do órgão.)`);
     }
     if (s.tipo === "ACÓRDÃO") {
-      const lado = linhaFavoravel(corpo, rotuloDoConjunto(resultadoDe(corpo), s.ds_classe_judicial));
+      const roF = resultadoComOrigem(corpo, s.tipo);
+      const lado = linhaFavoravel(corpo, rotuloDoConjunto(roF.conjunto, s.ds_classe_judicial, roF.embargos));
       if (lado) avisos.push(lado);
     }
     // v1.10.0: custódia na hora da leitura — a mesma conta do recibo, que antes só o lint via.
@@ -2096,7 +2113,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.29.0";
+export const VERSAO = "1.30.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
