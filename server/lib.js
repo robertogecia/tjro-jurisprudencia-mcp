@@ -8,9 +8,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { camposAlheios, linhaCustodia, CUSTODIA_VERSAO } from "./custodia.js";
+import { camposAlheios, linhaCustodia, CUSTODIA_VERSAO, norm1 } from "./custodia.js";
 import { linhaFavoravel } from "./partes.js";
-import { fatosDoJulgado, FATOS_MAX, FATOS_MAX_SENT, RE_ALEGACAO, secoesDaEmenta, teseDaEmenta } from "./posicao.js";
+import { fatosDoJulgado, FATOS_MAX, FATOS_MAX_SENT, RE_ALEGACAO, secoesDaEmenta, teseDaEmenta, desfechoDaSentenca, ROTULOS_SENTENCA } from "./posicao.js";
 import { chaveRelator } from "./relatores.js";
 import { anotarRequisicao, lerRitmo, contextoDoBloqueio, analisarBloqueios, formatarRelatorio } from "./bloqueios.js";
 
@@ -387,6 +387,9 @@ export function somarResultado(j, r) {
 // sozinha no fecho não é o resultado: ali a ementa/voto ainda diz o mérito (validação cega 13/10/2026: 4 regressões antes desta regra).
 const usaFecho = (j) => !!(j.fecho && j.fecho.size && (["PROVIDO", "DESPROVIDO", "PARCIAL"].some((x) => j.fecho.has(x)) || (j.embargos && (j.fecho.has("ACOLHIDO") || j.fecho.has("REJEITADO")))));
 export const rotuloDoJulgamento = (j) => rotuloDoConjunto(usaFecho(j) ? j.fecho : j.conjunto, j.classe, j.embargos);
+const PLURAL_SENTENCA = { PROCEDENTE: "procedentes", PARCIAL: "parcialmente procedentes", IMPROCEDENTE: "improcedentes", EXTINTO: "extintas sem resolução do mérito", HOMOLOGADO: "com acordo ou desistência homologados" };
+// v1.31.0: desfecho de 1º grau de um documento do tipo SENTENÇA (texto já limpo); null para outros tipos ou sem desfecho identificável.
+export const desfechoDeSentenca = (textoLimpo, tipo, classe = "") => (String(tipo || "").toUpperCase() === "SENTENÇA" ? desfechoDaSentenca(norm1(textoLimpo), classe) : null);
 const CONTAGEM_VAZIA = () => ({ PROVIDO: 0, PARCIAL: 0, DESPROVIDO: 0, ACOLHIDO: 0, REJEITADO: 0, sem: 0 });
 export function resumoResultadosPagina(hits) {
   const porJulgamento = new Map();
@@ -395,9 +398,20 @@ export function resumoResultadosPagina(hits) {
     const proc = String(s.nr_processo || "").replace(/\D/g, "");
     const data = String(s.dtjulgamento || "");
     const chave = proc && data ? `${proc}|${data}` : `#${i}`;
-    if (!porJulgamento.has(chave)) porJulgamento.set(chave, { ...novoJulgamento(s.ds_classe_judicial || ""), relator: relator(s), orgao: orgao(s), ano: String(s.dtjulgamento || "").slice(0, 4) || "?" });
-    somarResultado(porJulgamento.get(chave), resultadoComOrigem(limpar(s.ds_modelo_documento || "", 0), s.tipo));
+    if (!porJulgamento.has(chave)) porJulgamento.set(chave, { ...novoJulgamento(s.ds_classe_judicial || ""), relator: relator(s), orgao: orgao(s), ano: String(s.dtjulgamento || "").slice(0, 4) || "?", tipos: new Set(), desfecho: null });
+    const j = porJulgamento.get(chave); const texto = limpar(s.ds_modelo_documento || "", 0);
+    j.tipos.add(String(s.tipo || "").toUpperCase());
+    somarResultado(j, resultadoComOrigem(texto, s.tipo));
+    const d = desfechoDeSentenca(texto, s.tipo, s.ds_classe_judicial); if (d && !j.desfecho) j.desfecho = d;
   });
+  // v1.31.0: julgamento só de SENTENÇA (1º grau) não entra na contagem de 2º grau (virava "sem resultado identificável"): tem contagem própria.
+  const sentencas = { contagem: {}, sem: 0, total: 0 };
+  for (const [k, j] of [...porJulgamento]) {
+    if (j.tipos.size === 1 && j.tipos.has("SENTENÇA")) {
+      sentencas.total += 1; if (j.desfecho) sentencas.contagem[j.desfecho] = (sentencas.contagem[j.desfecho] || 0) + 1; else sentencas.sem += 1;
+      porJulgamento.delete(k);
+    }
+  }
   const contagem = { PROVIDO: 0, PARCIAL: 0, DESPROVIDO: 0, ACOLHIDO: 0, REJEITADO: 0 };
   let semResultado = 0;
   // Quebra por relator, órgão (do ÍNDICE, que erra a câmara — indício) e ano:
@@ -426,7 +440,7 @@ export function resumoResultadosPagina(hits) {
     const gs = [...grafias.get(ck).entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
     porRelator.set(gs.length > 1 ? `${gs[0][0]} [grafias unidas: ${gs.length}]` : gs[0][0], c);
   }
-  return { contagem, semResultado, totalJulgamentos: porJulgamento.size, porRelator, porOrgao, porAno };
+  return { contagem, semResultado, totalJulgamentos: porJulgamento.size, porRelator, porOrgao, porAno, sentencas };
 }
 
 // Linha "Fulano: 5 providos · 2 parcialmente providos · 3 desprovidos (2 sem resultado)" por chave,
@@ -1509,6 +1523,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   const textos = hits.map((h) => limpar((h._source || {}).ds_modelo_documento || "", 0));
   const comOrigem = textos.map((x, i) => resultadoComOrigem(x, (hits[i]._source || {}).tipo));
   const resultados = comOrigem.map((x) => x.conjunto);
+  const desfechos = textos.map((x, i) => desfechoDeSentenca(x, (hits[i]._source || {}).tipo, (hits[i]._source || {}).ds_classe_judicial));
   const sufixoOrigem = (i) => (comOrigem[i].origem === "ementa-IV" ? " (lido da seção IV da ementa)" : "");
   // Câmara declarada no FECHO de cada acórdão da página (offline, sobre o texto já
   // trazido). Vale também para os outros documentos do MESMO julgamento na página
@@ -1559,7 +1574,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       const org = doFecho && orgaoDiverge(doFecho, orgao(s)) ? `${doFecho} (fecho; índice: ${orgao(s)})` : orgao(s);
       out.push(
         `${inicio + i}. ${s.tipo || "?"} · ${s.ds_classe_judicial || "—"} · ${org} · ${quandoDe(s)} · ${relator(s)} · ` +
-          `${r ? ROTULOS_RESULTADO[r] + sufixoOrigem(i) : "sem resultado identificável"}${votSufixoI(i)} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}`
+          `${r ? ROTULOS_RESULTADO[r] + sufixoOrigem(i) : desfechos[i] ? ROTULOS_SENTENCA[desfechos[i]] + " (1º grau)" : "sem resultado identificável"}${votSufixoI(i)} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}`
       );
     });
     out.push("_Resultado declarado vem do fim do texto e não é posição sobre a tese; ementa e acórdão do mesmo julgado aparecem em linhas separadas. A votação entre parênteses vem do fecho do ACÓRDÃO; ausência não prova unanimidade. Abra o inteiro teor antes de citar._");
@@ -1624,6 +1639,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       }
     }
     linhas.push(...linhasDeSinais(s, inteiro));
+    if (desfechos[i]) linhas.push(`- Desfecho da sentença (lido do dispositivo; é o que foi decidido sobre o pedido, não quem ganhou): ${ROTULOS_SENTENCA[desfechos[i]]}`);
     // v1.29.0 (H06): a tese da ementa CNJ fica fora do trecho de 800 caracteres em ~92% das EMENTAS; sai literal,
     // do texto integral do hit (nunca do fragmento do destaque), só no tipo EMENTA e só no modo completo.
     if (s.tipo === "EMENTA") {
@@ -1649,7 +1665,16 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   // Só com amostra mínima (3+): com 1-2 hits, um resumo teria peso de conclusão
   // que a amostra não sustenta.
   if (hits.length >= 3) {
-    const { contagem, semResultado, totalJulgamentos, porRelator, porOrgao, porAno } = resumoResultadosPagina(hits);
+    const { contagem, semResultado, totalJulgamentos, porRelator, porOrgao, porAno, sentencas } = resumoResultadosPagina(hits);
+    if (sentencas.total >= 3) {
+      const ps = Object.entries(sentencas.contagem).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${PLURAL_SENTENCA[k]}`);
+      if (sentencas.sem > 0) ps.push(`${sentencas.sem} sem desfecho identificável`);
+      out.push(
+        `\n_Sentenças nesta página: ${ps.join(", ")}. Desfecho do PEDIDO lido do dispositivo, não diz quem ganhou (em embargos à execução e ` +
+          "impugnação, procedente favorece o devedor). Decisão sobre embargos de declaração e sentença sem dispositivo localizável ficam sem desfecho. " +
+          "Amostra desta página; indício para escolher o que ler, nunca conclusão._"
+      );
+    }
     const partes = Object.entries(contagem)
       .filter(([, n]) => n > 0)
       .sort((a, b) => b[1] - a[1])
@@ -1854,6 +1879,8 @@ export function formatInteiro(data, nrProcesso) {
     // v1.10.0: custódia na hora da leitura — a mesma conta do recibo, que antes só o lint via.
     const cust = linhaCustodia(corpo, s.tipo);
     if (cust) avisos.push(cust);
+    const desf = desfechoDeSentenca(corpo, s.tipo, s.ds_classe_judicial);
+    if (desf) avisos.push(`⚖️ DESFECHO DA SENTENÇA (lido do dispositivo; é o que foi decidido sobre o pedido, não quem ganhou; confira o dispositivo antes de citar): ${ROTULOS_SENTENCA[desf]}.`);
     const fatos = fatosDoJulgado(corpo, s.tipo);
     if (fatos && fatos.onde.startsWith("sem relatório formal")) {
       avisos.push(`📌 FATOS DO JULGADO: sentença ${fatos.onde}; a narrativa dos fatos vem logo no início do texto abaixo e emenda na fundamentação sem marco; leia-a lá (não transcrevo porque o corte automático seria incerto).`);

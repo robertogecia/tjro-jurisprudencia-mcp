@@ -266,3 +266,72 @@ export function teseDaEmenta(texto, teto = TESE_MAX) {
   const corte = fim > 0 ? tese.slice(0, fim + 1) : tese.slice(0, teto).replace(/ \S*$/, "");
   return { texto: corte.trim(), total, exibidos: 0, completa: false };
 }
+
+// v1.31.0: DESFECHO da SENTENÇA (1º grau) lido só do dispositivo — o par PROVIDO/DESPROVIDO é de 2º grau e a sentença ficava sem rótulo.
+// O rótulo diz o que foi decidido sobre o PEDIDO (procedente/improcedente…), nunca quem ganhou: em embargos à execução e impugnação,
+// "procedente" favorece o devedor. Sentença que corrige/integra outra (ED, "onde se lê"), sem âncora de dispositivo ou com desfechos
+// opostos fica sem rótulo (null), porque rótulo errado é pior que nenhum.
+export const ROTULOS_SENTENCA = { PROCEDENTE: "procedente", PARCIAL: "parcialmente procedente", IMPROCEDENTE: "improcedente", EXTINTO: "extinto sem resolução do mérito", HOMOLOGADO: "acordo ou desistência homologados" };
+const RE_S_INTEGRATIVA = /onde se le\b|leia-se|passara a ter a seguinte|embargos de declaracao|conheco dos embargos|corrijo (?:de oficio )?o erro material|retifico a sentenca/;
+const RE_S_PARCIAL = /parcialmente (?:procedente|procedentes|acolh)|procedentes? em parte|procedencia parcial|parcial procedencia|julgo parcialmente/;
+const RE_S_IMPROC = /improcedente/;
+const RE_S_PROC = /(?<![a-z0-9])procedente/;
+const RE_S_HOMOLOGA = /homologo (?:o |a |, )?(?:o |a )?(?:acordo|transacao|desistencia|pedido de desistencia|renuncia|reconhecimento|composicao|autocomposicao|entabulad)/;
+const RE_S_EXTINTO = /extin\w+[^.]{0,220}sem (?:resolucao|julgamento) (?:do|de) merito|sem (?:resolucao|julgamento) (?:do|de) merito[^.]{0,100}extin/;
+/** Âncoras de dispositivo (fórmula de conclusão + verbo decisório em até 400 car.) depois do cabeçalho, em ordem; tn = norm1 do texto limpo. */
+function ancorasDeDispositivo(tn) {
+  const n = tn.length;
+  const corpo = new RegExp(RE_INICIO_CORPO_SENT.source, "g");
+  const mc = buscaEm(corpo, tn, 0, Math.min(n, 6000));
+  const cab = mc ? mc.index : Math.min(n, 1200);
+  const out = [];
+  const rd = new RegExp(RE_DISPOSITIVO_SENT.source, "g"); rd.lastIndex = cab;
+  for (let x; (x = rd.exec(tn)) !== null;) {
+    const v = new RegExp(RE_VERBO_DECISORIO_SENT.source, "g");
+    if (buscaEm(v, tn, x.index, Math.min(n, x.index + x[0].length + 400))) out.push(x.index);
+  }
+  return out;
+}
+/** Fim do dispositivo: a data da assinatura nos 900 últimos caracteres (depois de `ini`) ou o fim do texto. */
+function fimDoDispositivo(tn, ini) {
+  const n = tn.length; let ass = -1;
+  const rt = new RegExp(RE_DATA_SENT.source, "g"); rt.lastIndex = Math.max(ini, n - 900);
+  for (let x; (x = rt.exec(tn)) !== null;) ass = x.index;
+  return ass > ini ? ass : n;
+}
+/** Trecho do dispositivo (da última âncora "ante o exposto…" seguida de verbo decisório até a data da assinatura) ou null; tn = norm1 do texto limpo. */
+export function dispositivoDaSentenca(tn) {
+  const a = ancorasDeDispositivo(tn);
+  if (!a.length) return null;
+  const disp = a[a.length - 1];
+  return tn.slice(disp, fimDoDispositivo(tn, disp));
+}
+const PENAL = /acao penal|penal\b|criminal|inquerito|termo circunstanciado|medida protetiva|execucao da pena/;
+function rotuloDoTrecho(d) {
+  if (!d || RE_S_INTEGRATIVA.test(d)) return null;
+  const im = RE_S_IMPROC.test(d), pr = RE_S_PROC.test(d.replace(/improcedente/g, " ")), pa = RE_S_PARCIAL.test(d);
+  // homologação + outro desfecho no mesmo dispositivo (vários réus: "julgo improcedente… homologo a desistência quanto ao réu X"): sem rótulo
+  if (RE_S_HOMOLOGA.test(d)) return im || pr || pa ? null : "HOMOLOGADO";
+  if (pa) return "PARCIAL";
+  if (im && pr) return null;
+  if (pr) return "PROCEDENTE";
+  if (im) return "IMPROCEDENTE";
+  if (RE_S_EXTINTO.test(d)) return "EXTINTO";
+  return null;
+}
+/** Rótulo do desfecho da sentença: PROCEDENTE | PARCIAL | IMPROCEDENTE | EXTINTO | HOMOLOGADO | null.
+ * `classe`: processo penal fica sem rótulo ("procedente a pretensão punitiva" é condenação, "improcedente" é absolvição: não é o par cível).
+ * Se a âncora anterior (até 2.500 car. antes) der outro desfecho (ex.: "parcialmente procedentes os pedidos" e, adiante, "improcedente a reconvenção"), null. */
+export function desfechoDaSentenca(tn, classe = "") {
+  if (PENAL.test(norm1(String(classe || "")))) return null;
+  const a = ancorasDeDispositivo(tn);
+  if (!a.length) return null;
+  const ultima = a[a.length - 1];
+  const rUlt = rotuloDoTrecho(tn.slice(ultima, fimDoDispositivo(tn, ultima)));
+  if (!rUlt) return null;
+  if (a.length > 1 && ultima - a[a.length - 2] < 2500) {
+    const rAnt = rotuloDoTrecho(tn.slice(a[a.length - 2], ultima));
+    if (rAnt && rAnt !== rUlt) return null;
+  }
+  return rUlt;
+}

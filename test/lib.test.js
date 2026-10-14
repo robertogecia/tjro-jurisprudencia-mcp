@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { avisoGrafiaRelator } from "../server/relatores.js";
-import { teseDaEmenta } from "../server/posicao.js";
+import { teseDaEmenta, desfechoDaSentenca } from "../server/posicao.js";
+import { norm1 } from "../server/custodia.js";
 import {
   montarExclusao,
   ehOrgao1oGrau,
@@ -2151,4 +2152,33 @@ test("RELATÓRIO não declara resultado; o alarme de resultado oposto ignora ACO
   assert.equal(resultadoComOrigem("RELATÓRIO A sentença julgou improcedente; o recurso foi provido em parte.", "RELATÓRIO").conjunto.size, 0);
   const t = "ACORDAM OS MAGISTRADOS transcritos de outro julgado, em, RECURSO DESPROVIDO. [...] ACORDAM OS MAGISTRADOS da 1ª Câmara, em, RECURSO PROVIDO.";
   assert.equal(trechoDispositivo(t).startsWith("ACORDAM OS MAGISTRADOS da 1ª"), true);
+});
+
+// v1.31.0/1.30.0 — DESFECHO da SENTENÇA (1º grau), lido do dispositivo.
+const _sent = (disp, classe = "") => norm1(`SENTENÇA Vistos. Trata-se de ação de cobrança. Relatório dispensado. Fundamento e decido. O autor tem razão em parte. ${disp} Publique-se. Porto Velho, 10 de março de 2026. Fulano de Tal Juiz de Direito`);
+test("desfechoDaSentenca: procedente, parcial, improcedente, extinto, homologado; ED, penal e conflito ficam sem rótulo", () => {
+  assert.equal(desfechoDaSentenca(_sent("Ante o exposto, JULGO PROCEDENTE o pedido inicial para condenar o réu.")), "PROCEDENTE");
+  assert.equal(desfechoDaSentenca(_sent("Ante o exposto, julgo parcialmente procedentes os pedidos para condenar o réu e rejeitar o dano moral.")), "PARCIAL");
+  assert.equal(desfechoDaSentenca(_sent("Ante o exposto, JULGO IMPROCEDENTE o pedido inicial.")), "IMPROCEDENTE");
+  assert.equal(desfechoDaSentenca(_sent("Ante o exposto, julgo extinta a ação, sem resolução do mérito, nos termos do art. 485, I, do CPC.")), "EXTINTO");
+  assert.equal(desfechoDaSentenca(_sent("Ante o exposto, HOMOLOGO o acordo celebrado entre as partes e extingo o processo com resolução do mérito.")), "HOMOLOGADO");
+  assert.equal(desfechoDaSentenca(_sent("Posto isso, acolho os embargos de declaração, para sanar a omissão.")), null, "decisão de ED não é sentença de mérito");
+  assert.equal(desfechoDaSentenca(_sent("Ante o exposto, JULGO IMPROCEDENTE a pretensão punitiva e absolvo o réu."), "AÇÃO PENAL - PROCEDIMENTO SUMÁRIO"), null, "processo penal fica sem rótulo");
+  assert.equal(desfechoDaSentenca(_sent("Ante o exposto, JULGO IMPROCEDENTE o pedido contra o réu A. HOMOLOGO o pedido de desistência quanto ao réu B.")), null, "homologação + outro desfecho: sem rótulo");
+  assert.equal(desfechoDaSentenca(_sent("Ante o exposto, julgo parcialmente procedentes os pedidos. Diante do exposto, julgo improcedente a reconvenção.")), null, "âncora anterior discorda: sem rótulo");
+  assert.equal(desfechoDaSentenca(norm1("Texto sem nenhum dispositivo reconhecível.")), null);
+});
+
+test("busca (sentença): linha de desfecho no resultado, '(1º grau)' no compacto e resumo próprio das sentenças, fora da contagem de 2º grau", () => {
+  const mk = (i, disp) => ({ _source: { tipo: "SENTENÇA", nr_processo: `70000000000000000${i}00`.slice(0, 20), dtjulgamento: `2026-0${i}-10`, dtjulgamento_str: `10/0${i}/2026`, id_processo_documento: 900 + i, ds_classe_judicial: "PROCEDIMENTO COMUM CÍVEL", ds_modelo_documento: `SENTENÇA Vistos. Trata-se de ação. Fundamento e decido. ${disp} Publique-se. Porto Velho, 10 de março de 2026. Juiz de Direito` } });
+  const fake = { hits: { total: { value: 3 }, hits: [mk(1, "Ante o exposto, JULGO PROCEDENTE o pedido."), mk(2, "Ante o exposto, JULGO IMPROCEDENTE o pedido."), mk(3, "Nada decidido aqui.")] } };
+  const out = formatBusca(fake, "ação", ["SENTENÇA"], "relevantes", 1, 10);
+  assert.match(out, /- Desfecho da sentença \(lido do dispositivo; é o que foi decidido sobre o pedido, não quem ganhou\): procedente/);
+  assert.match(out, /_Sentenças nesta página: 1 procedentes, 1 improcedentes, 1 sem desfecho identificável\./);
+  assert.doesNotMatch(out, /_Nesta página:/, "sentença não entra na contagem de 2º grau");
+  const comp = formatBusca(fake, "ação", ["SENTENÇA"], "relevantes", 1, 10, [], "", false, "", { modo: "compacto" });
+  assert.match(comp, /procedente \(1º grau\)/);
+  assert.match(comp, /improcedente \(1º grau\)/);
+  const inteiro = formatInteiro({ hits: { total: { value: 1 }, hits: [mk(1, "Ante o exposto, JULGO PROCEDENTE o pedido.")] } }, "70000000000000000100");
+  assert.match(inteiro, /⚖️ DESFECHO DA SENTENÇA \(lido do dispositivo[^)]*\): procedente\./);
 });
