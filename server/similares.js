@@ -7,7 +7,7 @@
 // fato/tese que um julgado bom — indício para escolher o que ler, nunca prova.
 import { limpar, idDocumento } from "./lib.js";
 
-const STOP = new Set(
+export const STOP_SIM = new Set(
   (
     "para pela pelo pelos pelas como mais pois sobre entre sendo seja sejam este esta estes estas esse essa " +
     "isso isto aquele aquela quando onde qual quais cujo cuja cujos cujas assim ainda também porém contudo " +
@@ -33,7 +33,7 @@ export const tokens = (texto) => {
     .normalize("NFD")
     .replace(/\p{M}/gu, "");
   const out = [];
-  for (const w of t.split(/[^a-z0-9]+/)) if (w.length >= 4 && !/^\d+$/.test(w) && !STOP.has(w)) out.push(w);
+  for (const w of t.split(/[^a-z0-9]+/)) if (w.length >= 4 && !/^\d+$/.test(w) && !STOP_SIM.has(w)) out.push(w);
   return out;
 };
 
