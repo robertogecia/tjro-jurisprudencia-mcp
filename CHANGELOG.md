@@ -2,6 +2,16 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.32.0 (14/10/2026): vocabulário das ementas que casaram e "mais como este"
+
+Resposta à pergunta "como achar o que o julgador escreveu com outras palavras?". O motor do TJRO casa palavras; pesquisa semântica por vetores não cabe (o índice é do tribunal e não aceita vetor, o corpus local é pequeno e exigiria baixar modelo). O que cabe, sem consulta extra e sem dependência:
+
+- **`sugerir_termos=true` na busca** acrescenta, no fim, o vocabulário das ementas da página: **termos e pares característicos** (frequentes nos resultados e raros no corpus local de recibos), **variantes dos seus termos** com o radical para `termo*` ("desconto" → `descont*`), e, com `relator`, as **expressões que ele repete** (3 palavras em sequência). É realimentação por relevância feita no cliente: serve para montar a 2ª rodada em `grupos` (alternativas em OU) e `excluir`. Fora, por medição: nomes de quem assina, endereço do fórum e fórmulas de cabeçalho.
+- **`similares_a` ganha "mais como este":** a nota lista os termos que distinguem o julgado-modelo do corpus local, para a 2ª rodada em `grupos` (antes só reordenava a página).
+- **Medido às cegas** (2 rotuladores Sonnet, 40 páginas de resultados por rodada, cada termo ou par julgado "pertinente ao assunto / genérico / ruído"): na 1ª amostra, 59% de precisão e 16% de ruído; depois de tirar nomes, endereço e fórmulas e de encurtar a lista (8 termos, 5 pares), **na amostra inédita de validação: 65% de precisão (290 de 444 itens com consenso), 4% de ruído, 31% genéricos; 31 de 40 páginas com 3 termos pertinentes ou mais**. É sugestão, não conclusão: confira que a nova busca traz o assunto. Concordância entre rotuladores 86%.
+- Paridade Node × Python: 80 de 80 páginas, byte a byte. 274 testes no Node, asserts espelhados no Python. Opt-in: sem `sugerir_termos`, a saída da busca não muda.
+- Inclui tudo da v1.31.0 (recibo da busca, embargos parcialmente acolhidos, grafias de relator).
+
 ## v1.31.0 (14/10/2026): recibo a partir da busca, embargos parcialmente acolhidos e grafias de relator atualizadas
 
 - **Recibo gravado pela própria busca (H01).** `buscar_jurisprudencia_tjro` e `linha_do_tempo_tjro` passam a guardar o texto dos documentos que trouxeram (marcado `origem: "busca"`; o texto é idêntico ao do inteiro teor: 1.224 de 1.224 ids em comum no cache de 14/10/2026). Reabrir um acórdão só para citá-lo deixa de gastar consulta. Três salvaguardas: a busca **nunca sobrescreve** recibo existente (o do inteiro teor vale mais, e o inteiro teor promove o de busca); acima de 300 MB os recibos de busca **mais antigos** saem (`TJRO_MCP_RECIBOS_BUSCA_MAX_MB`; nunca os de inteiro teor); e `verificar_citacao_tjro` por número do processo **não declara ausência** quando só há recibos de busca: se o trecho não está neles, lê o processo inteiro no portal ou manda chamar `obter_inteiro_teor_tjro` (a busca traz só os documentos que casaram). Por id, o recibo continua valendo como antes. Recibos idênticos em Node e Python (200 de 200).

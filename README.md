@@ -172,6 +172,11 @@ Duas leituras a mais, sem nenhuma consulta extra ao portal:
   palavras não é semelhança de tese: ementa e acórdão do mesmo julgado pontuam alto
   entre si, e um julgado do mesmo assunto com outro vocabulário pontua baixo. Serve
   para escolher o que ler, não para concluir.
+- **`sugerir_termos`, na busca (v1.32.0).** O motor do TJRO casa palavras, e o julgador pode ter escrito o mesmo com outras. Com `sugerir_termos=true` (e `por_pagina`
+  de 50 a 250), a resposta termina com o **vocabulário das ementas que casaram**: termos e pares característicos (frequentes nos resultados, raros nos julgados que
+  a extensão já leu), as variantes dos seus termos com o radical para `termo*` e, com `relator`, as expressões que ele repete. Use para montar a 2ª rodada em
+  `grupos` (alternativas em OU) e `excluir`. Não gasta consulta; a rodada seguinte gasta. Medido às cegas: 65% das sugestões descrevem o assunto, 4% são ruído,
+  o resto é fórmula de acórdão; é sugestão, confira que a nova busca traz o assunto. Com `similares_a`, a nota também lista os termos que distinguem o julgado-modelo ("mais como este").
 
 ## Antes das aspas: verificar a citação, e o que já foi lido — desde a 1.10.0
 
