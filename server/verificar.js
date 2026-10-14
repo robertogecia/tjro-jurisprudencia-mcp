@@ -267,6 +267,24 @@ export async function verificarCitacao({ nr_processo, id_documento, trecho, busc
   }
   if (!docs.length && digitos.length >= 7) docs = recibosDoProcesso(digitos, pasta);
   if (id && docs.length > 1) docs = docs.filter((r) => String(r.id_documento) === id).concat(docs.filter((r) => String(r.id_documento) !== id));
+  // v1.31.0 (H01): recibos gravados pela BUSCA (origem "busca") não provam que o processo esteja completo. Achado ✅ vale (o texto é o do tribunal);
+  // "não encontrado" só vale como ausência no processo se houver recibo do inteiro teor. Sem ✅ e sem prova de completude: vai ao portal, ou avisa.
+  const porId = !!id && docs.length > 0 && String(docs[0].id_documento) === id;
+  if (docs.length && !porId && docs.every((d) => d.origem === "busca")) {
+    if (!docs.some((d) => conferirTrecho(d.texto, trecho, d.tipo).ok)) {
+      if (buscar && digitos.length >= 7) {
+        try {
+          docs = recibosDeResposta(await buscar(digitos));
+          origem = "portal (inteiro teor lido agora; recibos gravados)";
+        } catch (e) {
+          return `[VERIFICAÇÃO NÃO REALIZADA] só há recibos de busca para ${cnj(digitos)} (${docs.length} documento(s), sem prova de que sejam todos) e o portal não pôde ser lido: ${e?.message || e}. Não cite entre aspas até conferir.`;
+        }
+        if (!docs.length) return `Nenhum documento sob o número ${cnj(digitos)} no portal — não há como verificar; não cite.`;
+      } else {
+        return `Só há recibos de BUSCA para ${cnj(digitos)} (${docs.length} documento(s)), e o trecho não está neles. Isso NÃO prova que o trecho esteja fora do processo: a busca traz só os documentos que casaram. Chame obter_inteiro_teor_tjro(nr_processo) (lê o processo inteiro e grava o recibo) e repita.`;
+      }
+    } else origem = "recibo local (de busca; o processo pode ter outros documentos)";
+  }
   if (!docs.length) {
     if (!buscar || digitos.length < 7)
       return `Sem recibo local para ${id ? `o id ${id}` : `o processo ${cnj(digitos)}`} — o documento ainda não foi lido nesta máquina. Chame obter_inteiro_teor_tjro(nr_processo) primeiro (grava o recibo) e repita; com só o id não há como buscar no portal.`;

@@ -244,6 +244,7 @@ server.registerTool(
           porPagina,
         });
       const data = await post(corpo);
+      gravarRecibos(data, undefined, { origem: "busca" }); // v1.31.0 (H01): a busca já trouxe o texto; guardar evita reabrir o acórdão para citar
       if (a.resultado) {
         const antes = ((data.hits || {}).hits || []).length;
         const { hits, removidos } = filtrarPorResultado((data.hits || {}).hits || [], a.resultado);

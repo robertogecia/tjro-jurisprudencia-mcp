@@ -94,7 +94,7 @@ export async function linhaDoTempo(o, postImpl = post, dormirImpl = dormir) {
       incompleta = `⚠️ [PESQUISA INCOMPLETA] parou no ano ${ano}: ${(e && e.message) || e}. Os anos acima são reais; os demais não foram consultados (não é "zero").`;
       break;
     }
-    if (postImpl === post) gravarRecibos(data);
+    if (postImpl === post) gravarRecibos(data, undefined, { origem: "busca" });
     const hits = ((data.hits || {}).hits) || [];
     const c = contarJulgamentos(hits);
     linhas.push({ ano, total: (((data.hits || {}).total) || {}).value || 0, n: c.n, cont: c.cont });
@@ -116,7 +116,7 @@ export async function citacoesDe(nrProcesso, limite = 10, postImpl = post, dormi
   } catch (e) {
     return `[PESQUISA NÃO REALIZADA] ${(e && e.message) || e}`;
   }
-  if (postImpl === post) gravarRecibos(data);
+  if (postImpl === post) gravarRecibos(data, undefined, { origem: "busca" });
   const hits = ((data.hits || {}).hits) || [];
   const achados = [];
   for (const h of hits) {

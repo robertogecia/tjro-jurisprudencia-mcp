@@ -301,3 +301,61 @@ test("obiterAntes: 'Registre-se, por oportuno' é fórmula de cartório em sente
   assert.ok(obiterAntes(tn, i, i + 30, t, false));
   assert.equal(obiterAntes(tn, i, i + 30, t, true), null);
 });
+
+// v1.31.0 (H01) — recibo gravado pela BUSCA
+import { gravarRecibos, podarRecibosDeBusca } from "../server/lib.js";
+const hit = (id, nr, tipo, texto) => ({ _source: { id_processo_documento: id, nr_processo: nr, tipo, dtjulgamento_str: "01/02/2026", ds_modelo_documento: texto } });
+const trechoVoto = "Assim, evidenciada a falha na prestação do serviço, correta a sentença ao reconhecer o dever de indenizar";
+
+test("gravarRecibos da busca: marca origem, não sobrescreve recibo existente e é promovido pelo inteiro teor", () => {
+  const pasta = pastaTmp();
+  const lei = (id) => JSON.parse(fs.readFileSync(path.join(pasta, `${id}.json`), "utf8"));
+  assert.equal(gravarRecibos({ hits: { hits: [hit(601, "70000000020258220001", "VOTO", voto.texto)] } }, pasta, { origem: "busca" }), 1);
+  assert.equal(lei(601).origem, "busca");
+  assert.ok(fs.existsSync(path.join(pasta, ".busca-indice.json")));
+  // o inteiro teor sobrescreve e promove: sem o campo origem, fora do índice de poda
+  gravarRecibos({ hits: { hits: [hit(601, "70000000020258220001", "VOTO", voto.texto)] } }, pasta);
+  assert.equal(lei(601).origem, undefined);
+  assert.equal("601" in JSON.parse(fs.readFileSync(path.join(pasta, ".busca-indice.json"), "utf8")), false);
+  // e a busca nunca desfaz o recibo de inteiro teor
+  assert.equal(gravarRecibos({ hits: { hits: [hit(601, "70000000020258220001", "VOTO", voto.texto + " alterado")] } }, pasta, { origem: "busca" }), 0);
+  assert.equal(lei(601).texto.endsWith("alterado"), false);
+});
+
+test("poda: acima do teto saem os recibos de busca mais antigos, nunca os de inteiro teor", () => {
+  const pasta = pastaTmp();
+  gravarRecibos({ hits: { hits: [hit(701, "70000000020258220001", "VOTO", voto.texto)] } }, pasta); // inteiro
+  for (let i = 0; i < 6; i++) gravarRecibos({ hits: { hits: [hit(710 + i, "70000000020258220001", "VOTO", voto.texto + ` v${i}`)] } }, pasta, { origem: "busca" });
+  const antes = fs.readdirSync(pasta).filter((n) => /^\d+\.json$/.test(n)).length;
+  assert.equal(antes, 7);
+  const tam = Object.values(JSON.parse(fs.readFileSync(path.join(pasta, ".busca-indice.json"), "utf8"))).map((v) => v[0]);
+  const removidos = podarRecibosDeBusca(pasta, Math.floor(tam.reduce((a, b) => a + b, 0) / 2));
+  assert.ok(removidos >= 3 && removidos <= 6, `removidos ${removidos}`);
+  assert.ok(fs.existsSync(path.join(pasta, "701.json")), "o recibo de inteiro teor fica");
+  assert.ok(fs.existsSync(path.join(pasta, "715.json")), "o mais novo fica");
+});
+
+test("verificarCitacao: só recibos de busca não provam ausência; ✅ vale; por id vale; com buscar, vai ao portal", async () => {
+  const pasta = pastaTmp();
+  gravarRecibos({ hits: { hits: [hit(801, "70000000020258220001", "VOTO", voto.texto)] } }, pasta, { origem: "busca" });
+  const nr = "7000000-00.2025.8.22.0001";
+  // achado em recibo de busca: vale, com a fonte dizendo que é de busca
+  let out = await verificarCitacao({ nr_processo: nr, trecho: trechoVoto, pasta });
+  assert.match(out, /✅ LITERAL/);
+  assert.match(out, /fonte: recibo local \(de busca; o processo pode ter outros documentos\)/);
+  // por id: o documento é o próprio, ❌ vale para ele
+  out = await verificarCitacao({ id_documento: "801", trecho: "frase que não existe em lugar nenhum do voto", pasta });
+  assert.match(out, /❌ NÃO ENCONTRADO/);
+  // por número, sem ✅ e sem buscar: não declara ausência
+  out = await verificarCitacao({ nr_processo: nr, trecho: "frase que não existe em lugar nenhum do voto", pasta });
+  assert.match(out, /Só há recibos de BUSCA/);
+  assert.match(out, /NÃO prova/);
+  assert.doesNotMatch(out, /Em nenhum documento/);
+  // com buscar: lê o processo inteiro e confere lá
+  let chamadas = 0;
+  const buscar = async () => { chamadas++; return { hits: { hits: [hit(801, "70000000020258220001", "VOTO", voto.texto), hit(802, "70000000020258220001", "ACÓRDÃO", "ACORDAM os Magistrados. outra peça do processo com uma frase que só existe no acórdão inteiro deste julgamento")] } }; };
+  out = await verificarCitacao({ nr_processo: nr, trecho: "uma frase que só existe no acórdão inteiro deste julgamento", pasta, buscar });
+  assert.equal(chamadas, 1);
+  assert.match(out, /fonte: portal/);
+  assert.match(out, /✅ LITERAL · id 802/);
+});

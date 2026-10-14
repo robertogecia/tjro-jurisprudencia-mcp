@@ -2104,7 +2104,9 @@ export function linhasDeSinais(s, textoInteiro) {
 export const dirRecibos = (env = process.env) =>
   env.TJRO_MCP_DIR_RECIBOS || path.join(os.homedir(), ".tjro-jurisprudencia-recibos");
 
-export function recibo(s, agora = new Date()) {
+// v1.31.0 (H01): `origem: "busca"` marca o recibo gravado a partir de uma BUSCA (texto idêntico ao do inteiro teor: 1.224 de 1.224 ids em
+// comum no cache de 14/10/2026), que NÃO prova que a lista de documentos do processo esteja completa. Recibo do inteiro teor não leva o campo.
+export function recibo(s, agora = new Date(), origem = "inteiro") {
   const id = idDocumento(s);
   const texto = limpar(s.ds_modelo_documento || "", 0);
   if (!/^\d{1,20}$/.test(id) || !texto) return null;
@@ -2119,6 +2121,7 @@ export function recibo(s, agora = new Date()) {
     relator_indice: relator(s) !== "—" ? relator(s) : null,
     orgao_indice: orgao(s) !== "—" ? orgao(s) : null,
     obtido_em: agora.toISOString(),
+    ...(origem === "busca" ? { origem: "busca" } : {}),
     texto,
     ...alheios(texto, s.tipo),
   };
@@ -2134,17 +2137,67 @@ function alheios(texto, tipo) {
   }
 }
 
-export function gravarRecibos(data, pasta = dirRecibos()) {
+const INDICE_BUSCA = ".busca-indice.json";
+export const RECIBOS_BUSCA_MAX_BYTES = (env = process.env) => Math.max(10, Number(env.TJRO_MCP_RECIBOS_BUSCA_MAX_MB) || 300) * 1024 * 1024;
+const lerIndiceBusca = (pasta) => {
+  try { const d = JSON.parse(fs.readFileSync(path.join(pasta, INDICE_BUSCA), "utf8")); return d && typeof d === "object" ? d : {}; } catch { return {}; }
+};
+const gravarIndiceBusca = (pasta, idx) => {
+  const tmp = path.join(pasta, `.${INDICE_BUSCA}.${process.pid}.tmp`);
+  fs.writeFileSync(tmp, JSON.stringify(idx));
+  fs.renameSync(tmp, path.join(pasta, INDICE_BUSCA));
+};
+// Recibos de busca ocupam espaço sem que ninguém os tenha pedido: acima do teto (300 MB), os MAIS ANTIGOS saem até 80% do teto.
+// Nunca se apaga recibo de inteiro teor (o arquivo é relido e só some se ainda for "busca").
+export function podarRecibosDeBusca(pasta = dirRecibos(), maxBytes = RECIBOS_BUSCA_MAX_BYTES()) {
+  let removidos = 0;
+  try {
+    const idx = lerIndiceBusca(pasta);
+    let total = Object.values(idx).reduce((a, v) => a + (Number(v[0]) || 0), 0);
+    if (total <= maxBytes) return 0;
+    for (const [id, v] of Object.entries(idx).sort((x, y) => (x[1][1] || 0) - (y[1][1] || 0))) {
+      if (total <= maxBytes * 0.8) break;
+      const cam = path.join(pasta, `${id}.json`);
+      try {
+        const r = JSON.parse(fs.readFileSync(cam, "utf8"));
+        if (r && r.origem === "busca") { fs.unlinkSync(cam); removidos++; }
+      } catch { /* sumiu ou ilegível: só sai do índice */ }
+      total -= Number(v[0]) || 0;
+      delete idx[id];
+    }
+    gravarIndiceBusca(pasta, idx);
+  } catch { /* poda é higiene, nunca condição */ }
+  return removidos;
+}
+
+// `origem: "busca"` (busca e linha do tempo): NUNCA sobrescreve recibo existente (o do inteiro teor vale mais) e entra no índice de poda.
+// `origem: "inteiro"` (padrão): sobrescreve, e assim promove o recibo de busca a recibo completo.
+export function gravarRecibos(data, pasta = dirRecibos(), { origem = "inteiro" } = {}) {
   let n = 0;
   try {
     fs.mkdirSync(pasta, { recursive: true });
+    const daBusca = origem === "busca";
+    const novos = {};
+    const promovidos = [];
     for (const h of data?.hits?.hits || []) {
-      const r = recibo(h._source || {});
+      const r = recibo(h._source || {}, new Date(), origem);
       if (!r) continue;
+      const alvo = path.join(pasta, `${r.id_documento}.json`);
+      if (daBusca && fs.existsSync(alvo)) continue;
       const tmp = path.join(pasta, `.${r.id_documento}.${process.pid}.tmp`);
-      fs.writeFileSync(tmp, JSON.stringify(r));
-      fs.renameSync(tmp, path.join(pasta, `${r.id_documento}.json`));
+      const bruto = JSON.stringify(r);
+      fs.writeFileSync(tmp, bruto);
+      fs.renameSync(tmp, alvo);
+      if (daBusca) novos[r.id_documento] = [Buffer.byteLength(bruto), Date.now()];
+      else promovidos.push(r.id_documento);
       n++;
+    }
+    if (daBusca && n) {
+      gravarIndiceBusca(pasta, { ...lerIndiceBusca(pasta), ...novos });
+      podarRecibosDeBusca(pasta);
+    } else if (promovidos.length) {
+      const idx = lerIndiceBusca(pasta);
+      if (promovidos.some((id) => id in idx)) { for (const id of promovidos) delete idx[id]; gravarIndiceBusca(pasta, idx); }
     }
   } catch {
     /* recibo é conferência extra, nunca condição da pesquisa */
