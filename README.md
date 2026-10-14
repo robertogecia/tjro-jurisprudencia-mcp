@@ -547,7 +547,11 @@ comum, o que **pode** passar pelo filtro que recusa a identificação honesta. O
 - **A extensão avisa.** Com a opção ligada, a primeira resposta de cada sessão lembra que a identificação de navegador está ativa e que o
   risco é seu, e o `diagnostico_ritmo_tjro` mostra a identificação em uso. Quando o portal bloqueia com a identificação honesta, a mensagem
   de erro apresenta essa opção, com o mesmo aviso.
-- Para voltar atrás, desligue a chave. Quem usa pela linha de comando pode definir `TJRO_MCP_IDENTIFICACAO=navegador`.
+- **A extensão pergunta antes da primeira consulta.** Se você não ligou a chave e ainda não respondeu, a primeira busca não consulta nada:
+  o Claude lhe explica o risco e pergunta se você aceita. Se disser sim, a extensão passa a se apresentar como navegador, de forma
+  permanente (a resposta fica gravada em `~/.tjro-jurisprudencia-mcp-identificacao.json`). Se disser não, ela continua se declarando e a
+  pergunta não se repete. Quem grava a resposta é a ferramenta `configurar_identificacao_tjro`, que o Claude só chama depois de você responder.
+- Para voltar atrás, desligue a chave ou peça ao Claude `configurar_identificacao_tjro` com a escolha "honesta". Quem usa pela linha de comando pode definir `TJRO_MCP_IDENTIFICACAO=navegador`.
 
 **Desde a v1.7.10, a própria extensão reconhece essa situação e avisa em linguagem
 simples.** Quando o portal bloqueia, a primeira linha da resposta diz que foi o

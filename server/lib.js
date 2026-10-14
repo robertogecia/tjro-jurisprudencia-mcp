@@ -31,8 +31,44 @@ export const HEADERS = {
   Origin: SITE,
   Referer: SITE + "/",
   "Content-Type": "application/json",
-  "User-Agent": modoNavegadorAtivo() ? UA_NAVEGADOR : UA_HONESTO,
+  // v1.30.0: lido a cada requisição, para a escolha feita na conversa valer sem reiniciar a extensão
+  get "User-Agent"() {
+    return identidadeAtual === "navegador" ? UA_NAVEGADOR : UA_HONESTO;
+  },
 };
+
+// v1.30.0: escolha do usuário, feita na conversa (ferramenta configurar_identificacao_tjro) e guardada em arquivo próprio,
+// fora do estado do disjuntor. Valores: "navegador" | "honesta"; ausente = ainda não perguntado. A opção das
+// Configurações da extensão, quando ligada, vale por cima do arquivo. Sob o test runner o arquivo é outro e a pergunta
+// não é exigida, salvo se o teste pedir.
+let arquivoEscolha = process.env.NODE_TEST_CONTEXT
+  ? path.join(os.tmpdir(), `tjro-mcp-identificacao-teste-${process.pid}.json`)
+  : path.join(os.homedir(), ".tjro-jurisprudencia-mcp-identificacao.json");
+let exigirEscolha = !process.env.NODE_TEST_CONTEXT;
+export function _setArquivoEscolhaParaTeste(caminho) {
+  arquivoEscolha = caminho;
+}
+export function _setExigirEscolhaParaTeste(v) {
+  exigirEscolha = !!v;
+}
+export function lerEscolha() {
+  try {
+    const d = JSON.parse(fs.readFileSync(arquivoEscolha, "utf-8"));
+    return d?.escolha === "navegador" || d?.escolha === "honesta" ? d.escolha : null;
+  } catch {
+    return null;
+  }
+}
+export const identificacaoEfetiva = (env = process.env) => (modoNavegadorAtivo(env) ? "navegador" : lerEscolha() || "honesta");
+export const escolhaPendente = (env = process.env) => exigirEscolha && !modoNavegadorAtivo(env) && lerEscolha() === null;
+export function gravarEscolha(escolha, agora = new Date()) {
+  if (escolha !== "navegador" && escolha !== "honesta") throw new Error("escolha inválida");
+  const tmp = `${arquivoEscolha}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ escolha, em: agora.toISOString() }));
+  fs.renameSync(tmp, arquivoEscolha);
+  identidadeAtual = identificacaoEfetiva();
+  return identidadeAtual;
+}
 
 export const TIPOS_VALIDOS = [
   "ACÓRDÃO",
@@ -833,16 +869,26 @@ let arquivoEstadoDisjuntor = path.join(os.homedir(), ".tjro-jurisprudencia-mcp-e
 // identificação em que ocorreu; incidente sem etiqueta (arquivo antigo) vale para quem ler.
 // Oferecido quando o filtro recusa a identificação honesta. É decisão do usuário, e o aviso diz o que ele assume.
 export const AVISO_OPCAO_NAVEGADOR =
-  "\n\nOpção SUA (desligada por padrão): nas Configurações da extensão há \"Identificar-se como navegador\". Ela faz a extensão " +
+  "\n\nOpção SUA (desligada por padrão): nas Configurações da extensão há \"Identificar-se como navegador\" (ou, na conversa, a ferramenta configurar_identificacao_tjro, só depois de o usuário aceitar). Ela faz a extensão " +
   "se apresentar ao portal como um navegador comum, o que pode passar pelo filtro que recusa a identificação honesta. Mas é um " +
   "disfarce: o tribunal pode considerar uso indevido do portal e, se restringir o acesso (por exemplo, bloqueando o IP da sua " +
   "rede), o risco é inteiramente seu — e de quem divide a rede com você. O ritmo mínimo entre consultas continua valendo. " +
-  "Ative só se aceitar isso; para voltar atrás, desligue a opção.";
+  "Ative só se aceitar isso; para voltar atrás, desligue a opção (ou peça configurar_identificacao_tjro com escolha=honesta).";
 export const AVISO_MODO_NAVEGADOR =
-  "_⚠️ Identificação de navegador ATIVA (opção sua nas Configurações da extensão): o portal do TJRO pode tratar este tráfego como " +
-  "uso indevido e o risco é seu. Para voltar à identificação honesta, desligue a opção._";
+  "_⚠️ Identificação de navegador ATIVA (escolha sua): o portal do TJRO pode tratar este tráfego como " +
+  "uso indevido e o risco é seu. Para voltar à identificação honesta, desligue a opção nas Configurações ou peça configurar_identificacao_tjro com escolha=honesta._";
+export const AVISO_ESCOLHA_PENDENTE =
+  "ESCOLHA PENDENTE antes da primeira consulta ao TJRO (nada foi consultado). [tipo=escolha_pendente]\n" +
+  "PERGUNTE ao usuário, em linguagem simples, e espere a resposta dele nesta conversa (não decida por ele, nem por inferência): " +
+  "o portal do TJRO costuma recusar consultas que se identificam como extensão, e a consulta falha já na primeira requisição. " +
+  "Se o usuário aceitar, a extensão passa a se apresentar ao portal como um navegador comum, de forma permanente, até ele desfazer. " +
+  "É um disfarce: o tribunal pode considerar uso indevido do portal e, se restringir o acesso (por exemplo, bloqueando o IP da rede " +
+  "dele), o risco é inteiramente do usuário e de quem divide a rede com ele. O ritmo mínimo entre consultas continua valendo.\n" +
+  "Se ele disser SIM: chame configurar_identificacao_tjro com escolha=\"navegador\" e repita a consulta. " +
+  "Se disser NÃO: chame com escolha=\"honesta\" (a extensão continua se declarando; a consulta pode ser bloqueada pelo portal, e o " +
+  "caminho é o site juris.tjro.jus.br ou pedir liberação a suporte@tjro.jus.br). A escolha fica gravada e a pergunta não se repete.";
 export const identidadeDoUA = (ua) => (/compatible;\s*MCP-TJRO/i.test(String(ua || "")) ? "honesta" : "navegador");
-let identidadeAtual = identidadeDoUA(HEADERS["User-Agent"]);
+let identidadeAtual = identificacaoEfetiva();
 export const identidadeDoDisjuntor = () => identidadeAtual;
 export function _setIdentidadeParaTeste(id) {
   identidadeAtual = id === "navegador" ? "navegador" : "honesta";
@@ -1062,6 +1108,7 @@ const fmtDuracao = (ms) => {
 // opts.ignorarBloqueio: a API de processos (outro host) divide a cota e o
 // espaçamento, mas NÃO herda o disjuntor do bloqueio do JURIS.
 export function reservarRequisicao(agora = Date.now(), opts = {}) {
+  if (escolhaPendente()) return { erro: AVISO_ESCOLHA_PENDENTE };
   return transacao((e) => {
     if (!opts.ignorarBloqueio && agora < e.bloqueadoAte) {
       return {
@@ -1186,7 +1233,7 @@ export function diagnosticoRitmo(agora = Date.now(), opts = {}) {
     agora < e.bloqueadoAte
       ? `- ⚠️ BLOQUEADO por suspeita de automação — liberando em ${fmtDuracao(e.bloqueadoAte - agora)}`
       : "- Situação: liberado",
-    `- Identificação desta instalação: ${identidadeAtual === "navegador" ? "navegador (opção ativada nesta instalação; risco assumido por quem a ativou)" : "extensão (identificação honesta)"}`,
+    `- Identificação desta instalação: ${escolhaPendente() ? "ESCOLHA PENDENTE (o usuário ainda não foi perguntado; nenhuma consulta é feita até ele responder)" : identidadeAtual === "navegador" ? "navegador (opção ativada ou escolhida pelo usuário; risco assumido por quem a ativou)" : "extensão (identificação honesta)"}`,
   ];
   const outra = IDENTIDADES.find((id) => id !== identidadeAtual);
   if (agora < bruto.porIdentidade[outra].bloqueadoAte) {
@@ -2199,7 +2246,7 @@ export function iniciarChecagemVersao(opcoes) {
 let navegadorAvisado = false;
 export async function comAvisos(texto) {
   let base = comCredito(texto);
-  if (identidadeAtual === "navegador" && modoNavegadorAtivo() && !navegadorAvisado) {
+  if (identidadeAtual === "navegador" && !navegadorAvisado) {
     navegadorAvisado = true;
     base = `${base}\n\n${AVISO_MODO_NAVEGADOR}`;
   }

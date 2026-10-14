@@ -47,6 +47,10 @@
       "description": "Explica por que as buscas podem estar falhando (limite de ritmo, bloqueio em curso, histórico). Não consulta o portal. Com relatorio=true, acrescenta o relatório de bloqueios: o que disparou cada um, a taxa de bloqueio por faixa de intervalo e uma recomendação de ritmo baseada nos dados."
     },
     {
+      "name": "configurar_identificacao_tjro",
+      "description": "Grava a escolha do usuário sobre como a extensão se identifica ao portal do TJRO (navegador, por conta e risco dele, ou honesta). A extensão pergunta antes da primeira consulta."
+    },
+    {
       "name": "consultar_processo_tjro",
       "description": "Capa e movimentos de um processo do TJRO pela API pública de processos do tribunal (sem teor de decisão; não serve para prazo)."
     },
@@ -99,7 +103,7 @@
     "identificacao_navegador": {
       "type": "boolean",
       "title": "Identificar-se como navegador (assumo o risco)",
-      "description": "Desligado por padrão: a extensão se declara ao portal do TJRO. Ligado, ela se apresenta como um navegador comum, o que pode passar pelo filtro que recusa a identificação honesta. É um disfarce: o tribunal pode considerar uso indevido e restringir o acesso (por exemplo, bloqueando o IP da sua rede). O risco é inteiramente seu e de quem divide a rede com você. O ritmo mínimo entre consultas continua valendo.",
+      "description": "Desligado por padrão: a extensão se declara ao portal do TJRO e, antes da primeira consulta, pergunta na conversa se você quer mudar isso (a resposta fica gravada). Ligado, ela se apresenta como um navegador comum, o que pode passar pelo filtro que recusa a identificação honesta. É um disfarce: o tribunal pode considerar uso indevido e restringir o acesso (por exemplo, bloqueando o IP da sua rede). O risco é inteiramente seu e de quem divide a rede com você. O ritmo mínimo entre consultas continua valendo.",
       "default": false,
       "required": false
     }

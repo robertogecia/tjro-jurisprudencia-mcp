@@ -29,6 +29,9 @@ import {
   post,
   diagnosticoRitmo,
   comAvisos,
+  gravarEscolha,
+  lerEscolha,
+  modoNavegadorAtivo,
   comAjudaNoErro,
   gravarRecibos,
   iniciarChecagemVersao,
@@ -597,6 +600,43 @@ server.registerTool(
     },
   },
   async ({ relatorio }) => ({ content: [{ type: "text", text: diagnosticoRitmo(Date.now(), { relatorio: !!relatorio }) }] })
+);
+
+server.registerTool(
+  "configurar_identificacao_tjro",
+  {
+    title: "Escolher como a extensão se identifica ao portal do TJRO",
+    description:
+      "Grava a escolha do USUÁRIO sobre a identificação perante o portal do TJRO: \"navegador\" (a extensão se apresenta como um navegador comum, " +
+      "de forma permanente; é um disfarce e o risco, inclusive de o tribunal restringir o IP da rede, é inteiramente do usuário) ou \"honesta\" " +
+      "(a extensão se declara; o portal pode recusar a consulta). SÓ chame com escolha DEPOIS de perguntar ao usuário, nesta conversa, e de ele " +
+      "responder com clareza. Nunca decida por ele, nem por inferência, nem por 'ser mais prático'. Sem escolha, só mostra a situação atual. " +
+      "Não consulta o portal.",
+    inputSchema: {
+      escolha: z.enum(["navegador", "honesta"]).optional().describe("Resposta do usuário. Omita para só ver a situação."),
+    },
+  },
+  async ({ escolha }) => {
+    if (!escolha) {
+      const atual = lerEscolha();
+      const texto = modoNavegadorAtivo()
+        ? "Identificação: navegador (opção ligada nas Configurações da extensão; para desligar, use as Configurações)."
+        : atual
+          ? `Identificação: ${atual === "navegador" ? "navegador (escolha do usuário, gravada)" : "honesta (escolha do usuário, gravada)"}.`
+          : "Identificação: ESCOLHA PENDENTE. Pergunte ao usuário antes de qualquer consulta ao TJRO.";
+      return { content: [{ type: "text", text: texto }] };
+    }
+    const efetiva = gravarEscolha(escolha);
+    let texto =
+      escolha === "navegador"
+        ? "Escolha gravada: a extensão se apresenta ao portal como navegador, a partir de agora e nas próximas sessões. " +
+          "Para desfazer, peça configurar_identificacao_tjro com escolha=honesta."
+        : "Escolha gravada: a extensão continua se declarando ao portal. A pergunta não se repete; para mudar, peça configurar_identificacao_tjro.";
+    if (escolha === "honesta" && efetiva === "navegador") {
+      texto += " Atenção: a opção das Configurações da extensão está ligada e vale por cima; desligue-a lá para a escolha produzir efeito.";
+    }
+    return { content: [{ type: "text", text: texto }] };
+  }
 );
 
 const transport = new StdioServerTransport();

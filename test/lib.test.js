@@ -1432,7 +1432,7 @@ test("diagnóstico com bloqueios sem volume manda testar outra rede e recusa con
   const rel = diagnosticoRitmo();
   _setIdentidadeParaTeste("navegador");
   const relNav = diagnosticoRitmo();
-  _setIdentidadeParaTeste(identidadeDoUA(HEADERS["User-Agent"]));
+  _setIdentidadeParaTeste("honesta");
   assert.match(rel, /trocar de conexão não resolve/);
   assert.match(rel, /juris\.tjro\.jus\.br/);
   assert.match(rel, /não troca de IP/);

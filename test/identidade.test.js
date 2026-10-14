@@ -73,7 +73,7 @@ test("backoff e último sucesso são de cada identificação; incidentes levam a
   assert.match(dh, /identificação: honesta/);
   const dn = como("navegador", () => diagnosticoRitmo(t + 1000));
   assert.match(dn, /Situação: liberado/);
-  assert.match(dn, /Identificação desta instalação: navegador \(opção ativada nesta instalação; risco assumido/);
+  assert.match(dn, /Identificação desta instalação: navegador \(opção ativada ou escolhida pelo usuário; risco assumido/);
   assert.match(dn, /A outra identificação \(honesta\) está em pausa por mais/);
   limpa();
 });
@@ -125,4 +125,51 @@ test("arquivo ilegível ou valores absurdos: padrão seguro, sem pausa inflada",
   const e = como("honesta", () => reservarRequisicao(Date.now()));
   assert.ok(e.erro && /espera_segundos=(\d+)/.exec(e.erro)[1] <= 3600, e.erro);   // pausa limitada a 1 h
   limpa();
+});
+
+// v1.30.0 — pergunta antes da primeira consulta e escolha gravada
+import * as L from "../server/lib.js";
+
+test("escolha pendente: nenhuma requisição sai, a mensagem manda perguntar ao usuário; escolha grava e vale na hora", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-esc-"));
+  const estado = path.join(dir, "estado.json");
+  L._setArquivoEstadoParaTeste(estado);
+  L._setArquivoEscolhaParaTeste(path.join(dir, "ident.json"));
+  L._setExigirEscolhaParaTeste(true);
+  const antes = L.identidadeDoDisjuntor();
+  try {
+    assert.equal(L.escolhaPendente({}), true);
+    const r = L.reservarRequisicao(Date.now());
+    assert.match(r.erro, /ESCOLHA PENDENTE/);
+    assert.match(r.erro, /PERGUNTE ao usuário/);
+    assert.match(r.erro, /configurar_identificacao_tjro/);
+    assert.equal(fs.existsSync(estado), false, "pendente não consome vaga nem grava estado");
+    assert.equal(L.gravarEscolha("navegador"), "navegador");
+    assert.equal(L.HEADERS["User-Agent"], L.UA_NAVEGADOR);
+    assert.equal(L.escolhaPendente({}), false);
+    assert.equal(L.reservarRequisicao(Date.now()).erro, undefined);
+    assert.equal(L.gravarEscolha("honesta"), "honesta");
+    assert.equal(L.HEADERS["User-Agent"], L.UA_HONESTO);
+    assert.equal(L.reservarRequisicao(Date.now() + 60000).erro, undefined, "escolher 'honesta' também encerra a pergunta");
+    assert.throws(() => L.gravarEscolha("qualquer"), /inválida/);
+  } finally {
+    L._setExigirEscolhaParaTeste(false);
+    L._setIdentidadeParaTeste(antes);
+  }
+});
+
+test("a opção ligada nas Configurações dispensa a pergunta e vale por cima da escolha gravada", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-esc-"));
+  L._setArquivoEscolhaParaTeste(path.join(dir, "ident.json"));
+  L._setExigirEscolhaParaTeste(true);
+  try {
+    assert.equal(L.escolhaPendente({ TJRO_MCP_IDENTIFICACAO: "true" }), false);
+    assert.equal(L.identificacaoEfetiva({ TJRO_MCP_IDENTIFICACAO: "true" }), "navegador");
+    L.gravarEscolha("honesta");
+    assert.equal(L.identificacaoEfetiva({ TJRO_MCP_IDENTIFICACAO: "true" }), "navegador");
+    assert.equal(L.identificacaoEfetiva({}), "honesta");
+  } finally {
+    L._setExigirEscolhaParaTeste(false);
+    L._setIdentidadeParaTeste("honesta");
+  }
 });
