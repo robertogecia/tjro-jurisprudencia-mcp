@@ -659,6 +659,10 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
   `texto_voz_propria` (ementa da casa e fecho). Assim, quem confere a peça é
   avisado quando o trecho citado está no documento, mas foi escrito por outro
   tribunal ou pelo voto vencido. Medição e limites estão no `CHANGELOG.md`.
+- **Recibo da busca (v1.31.0).** A busca e a linha do tempo também guardam o texto dos documentos que trouxeram, marcados `origem: "busca"`.
+  Isso poupa reabrir um acórdão só para citá-lo, mas não prova que a lista de documentos do processo esteja completa: o verificador de citação
+  só declara "não encontrado" por número de processo quando há recibo do inteiro teor (ou lê o processo no portal). A busca nunca sobrescreve
+  um recibo existente, e acima de 300 MB (`TJRO_MCP_RECIBOS_BUSCA_MAX_MB`) saem os recibos de busca mais antigos, nunca os do inteiro teor.
 - **Aviso de versão nova.** Ao subir, a extensão pergunta ao GitHub qual é a
   release mais recente. Se houver uma mais nova que a instalada, a primeira
   resposta da sessão termina com uma linha avisando, com o endereço da página

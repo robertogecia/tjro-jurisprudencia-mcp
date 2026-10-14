@@ -2,6 +2,13 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.31.0 (14/10/2026): recibo a partir da busca, embargos parcialmente acolhidos e grafias de relator atualizadas
+
+- **Recibo gravado pela própria busca (H01).** `buscar_jurisprudencia_tjro` e `linha_do_tempo_tjro` passam a guardar o texto dos documentos que trouxeram (marcado `origem: "busca"`; o texto é idêntico ao do inteiro teor: 1.224 de 1.224 ids em comum no cache de 14/10/2026). Reabrir um acórdão só para citá-lo deixa de gastar consulta. Três salvaguardas: a busca **nunca sobrescreve** recibo existente (o do inteiro teor vale mais, e o inteiro teor promove o de busca); acima de 300 MB os recibos de busca **mais antigos** saem (`TJRO_MCP_RECIBOS_BUSCA_MAX_MB`; nunca os de inteiro teor); e `verificar_citacao_tjro` por número do processo **não declara ausência** quando só há recibos de busca: se o trecho não está neles, lê o processo inteiro no portal ou manda chamar `obter_inteiro_teor_tjro` (a busca traz só os documentos que casaram). Por id, o recibo continua valendo como antes. Recibos idênticos em Node e Python (200 de 200).
+- **Embargos de declaração parcialmente acolhidos.** "Embargos parcialmente acolhidos/providos" ou "acolhidos em parte" agora rotulam PARCIAL (antes: acolhido), com a regra de que o "parcial" tem de ser da oração dos embargos: "embargos acolhidos, para dar parcial provimento ao recurso" continua acolhimento integral. Medido às cegas (2 rotuladores, 50 itens inéditos, concordância 50 de 50): precisão do novo rótulo 22 de 22; um caso de embargos de partes diferentes com resultados opostos (um provido, outro desprovido) segue como acolhido, limite conhecido. Nas amostras de ajuste, 6 de 12 divergências viraram acerto (89,6% → 94,8%). Paridade Node × Python em 2.049 documentos.
+- **Semente de grafias de relator** refeita sobre 10.476 acórdãos e ementas (antes 7.711): entra José Augusto Alves Martins (26 relatores com duas grafias ou mais).
+- Testes: 269 no Node; asserts espelhados no Python. CI verde em Linux, macOS e Windows.
+
 ## v1.30.0 (13/10/2026): menos ruído na busca, resultado por julgamento mais correto e opção de identificação
 
 Origem: pedido de "diminuir o ruído no uso da skill". Medido primeiro (678 buscas em cache, 458 inteiros teores), hipótese por hipótese, com leitores e rotuladores cegos em amostras novas. Zero requisição ao portal.
