@@ -91,6 +91,7 @@ import {
   _setIdentidadeParaTeste,
   identidadeDoUA,
   HEADERS,
+  parcialDosEmbargos,
 } from "../server/lib.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -2063,7 +2064,7 @@ test("resumoResultadosPagina (H07): une 'Gilberto Barbosa' e 'GILBERTO BARBOSA' 
 test("avisoGrafiaRelator (H07): avisa a outra grafia conhecida, com anos; silencia sem outra grafia", () => {
   const av = avisoGrafiaRelator("Gilberto Barbosa");
   assert.match(av, /relator="Gilberto Barbosa"/);
-  assert.match(av, /"GILBERTO BARBOSA" \(2018–2026, 160 julgados vistos\)/);
+  assert.match(av, /"GILBERTO BARBOSA" \(2018–2026, \d+ julgados vistos\)/);
   assert.match(av, /repita com relator="GILBERTO BARBOSA"/);
   assert.equal(avisoGrafiaRelator("Fulano Inexistente"), "");
   assert.equal(avisoGrafiaRelator(""), "");
@@ -2185,4 +2186,20 @@ test("busca (sentença): linha de desfecho no resultado, '(1º grau)' no compact
   assert.match(comp, /improcedente \(1º grau\)/);
   const inteiro = formatInteiro({ hits: { total: { value: 1 }, hits: [mk(1, "Ante o exposto, JULGO PROCEDENTE o pedido.")] } }, "70000000000000000100");
   assert.match(inteiro, /⚖️ DESFECHO DA SENTENÇA \(lido do dispositivo[^)]*\): procedente\./);
+});
+
+// v1.31.0 — embargos de declaração PARCIALMENTE acolhidos guardam o qualificador (validação cega 14/10/2026: 22 de 22)
+test("embargos parcialmente acolhidos/providos viram PARCIAL; 'parcial' do recurso não torna parcial o acolhimento dos embargos", () => {
+  const ed = (linha) => resultadoComOrigem(`I. CASO EM EXAME x. IV. DISPOSITIVO E TESE ${linha} Tese de julgamento: y.`, "EMENTA");
+  const a = ed("Embargos de declaração parcialmente acolhidos, apenas para corrigir erro material.");
+  assert.deepEqual([...a.conjunto].sort(), ["ACOLHIDO", "PARCIAL"]);
+  assert.equal(rotuloDoConjunto(a.conjunto, "APELAÇÃO CÍVEL", a.embargos), "PARCIAL");
+  const b = ed("Embargos de declaração acolhidos, com efeitos infringentes, e agravo de instrumento parcialmente provido.");
+  assert.equal(rotuloDoConjunto(b.conjunto, "AGRAVO DE INSTRUMENTO", b.embargos), "ACOLHIDO");
+  const c = ed("Embargos de declaração providos em parte.");
+  assert.equal(rotuloDoConjunto(c.conjunto, "", c.embargos), "PARCIAL");
+  const d = ed("Embargos de declaração acolhidos, para dar parcial provimento ao recurso.");
+  assert.equal(rotuloDoConjunto(d.conjunto, "", d.embargos), "ACOLHIDO");
+  assert.equal(parcialDosEmbargos("EMBARGOS ACOLHIDOS, PARA DAR PARCIAL PROVIMENTO AO RECURSO"), false);
+  assert.equal(parcialDosEmbargos("EMBARGOS PARCIALMENTE ACOLHIDOS"), true);
 });

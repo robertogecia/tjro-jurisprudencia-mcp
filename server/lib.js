@@ -309,6 +309,12 @@ export const trechoDispositivo = (cauda) => {
 // 1º grau (procedente/improcedente) é outro extrator, ainda não publicado.
 export const resultadoDe = (texto, tipo) => resultadoComOrigem(texto, tipo).conjunto;
 const RE_EMBARGOS_DECL = /\bEMBARGOS (DE DECLARACAO|DECLARATORIOS|(NAO )?PROVIDOS?|REJEITADOS?|ACOLHIDOS?|PARCIALMENTE)/;
+const RE_ED_PARCIAL = /\bPARCIALMENTE (ACOLH|PROVID)|\b(ACOLHID|PROVID)\w* (PARCIALMENTE|EM PARTE)|\bPARCIAL (ACOLHIMENTO|PROVIMENTO)/;
+const RE_ED_OUTRO_OBJETO = /\b(AGRAVO|APELACAO|RECURSO|REMESSA|RECURSAL|RECURSOS)\b/;
+// O qualificador "parcial" é dos EMBARGOS só quando a oração dele fala dos embargos (ou de ninguém mais): "embargos acolhidos, ... para dar parcial
+// provimento ao recurso" e "embargos acolhidos e agravo parcialmente provido" são acolhimento integral dos embargos.
+export const parcialDosEmbargos = (cauda) =>
+  String(cauda || "").split(/[,.;:]/).some((seg) => RE_ED_PARCIAL.test(seg) && (!RE_ED_OUTRO_OBJETO.test(seg) || /\bEMBARGOS( DE DECLARACAO)?( \w+)? (PARCIALMENTE|EM PARTE)|\bEMBARGOS( DE DECLARACAO)? (ACOLHID|PROVID)\w* (PARCIALMENTE|EM PARTE)/.test(seg)));
 const RE_EMBARGOS_OUTROS = /\bEMBARGOS (DE TERCEIRO|A EXECUCAO|MONITORIOS|INFRINGENTES)/;
 // {conjunto, origem}: origem = "fecho" (proclamação do acórdão), "ementa-IV" (seção IV da ementa
 // CNJ, só em documento do tipo EMENTA, sem fecho), "cauda" (últimos 2.500 caracteres) ou "nenhuma".
@@ -360,10 +366,14 @@ export const resultadoComOrigem = (texto, tipo) => {
   // provimento", "parcialmente provido", "provido em parte".
   if (/\bPARCIAL(MENTE)? PROVI|\bPARCIAL PROVIMENTO|\bPROVIMENTO PARCIAL|\bPROVID[OA]S? EM PARTE/.test(cauda)) r.add("PARCIAL");
   if (embargos) {
+    // v1.31.0: "embargos PARCIALMENTE acolhidos/providos" (ou "acolhidos em parte") guarda o qualificador PARCIAL: o esquema só
+    // tinha PARCIAL para provimento e esses embargos viravam "acolhido" (6 das 12 divergências da amostra cega de 12/10/2026).
+    const parcialED = parcialDosEmbargos(cauda);
     // "EMBARGOS PROVIDOS" = acolhidos; "EMBARGOS NÃO PROVIDOS" = rejeitados. Com "ACOLHIDOS"
     // explícito, "negar provimento ao recurso" é o efeito infringente sobre o recurso
     // originário, não rejeição dos embargos (validação cega 12/10/2026).
     if (r.has("PROVIDO")) { r.delete("PROVIDO"); r.delete("PARCIAL"); r.add("ACOLHIDO"); }
+    if (parcialED && r.has("ACOLHIDO") && !r.has("REJEITADO")) r.add("PARCIAL");
     // No fecho do acórdão isso NÃO vale: "embargos do autor acolhidos, do réu não providos" é ambíguo
     // (21 de 21 nos acórdãos rotulados às cegas em 12/10/2026) — só na linha de resultado da ementa.
     if (r.has("DESPROVIDO")) { r.delete("DESPROVIDO"); if (!(origem === "ementa-IV" && r.has("ACOLHIDO"))) r.add("REJEITADO"); }
@@ -406,7 +416,7 @@ export const rotuloDoConjunto = (conjunto, classe = "", embargosDetectado = fals
     const [a, b] = par;
     if (conjunto.has(a) && conjunto.has(b)) return null; // os dois lados do mesmo par: ambíguo, não força
     const lado = ladoDe(conjunto, par);
-    if (lado) return lado === "PROVIDO" && conjunto.has("PARCIAL") ? "PARCIAL" : lado;
+    if (lado) return (lado === "PROVIDO" || lado === "ACOLHIDO") && conjunto.has("PARCIAL") ? "PARCIAL" : lado;
   }
   return null;
 };

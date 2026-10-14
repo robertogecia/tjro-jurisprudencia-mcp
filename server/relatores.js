@@ -1,18 +1,18 @@
 // relatores.js (v1.29.0, H07): grafias com que o índice do JURIS guarda o MESMO relator (Title Case antiga × CAIXA ALTA
-// recente, acento perdido). Semente estática derivada de 7.711 acórdãos vistos em 12/10/2026 — nomes de magistrados são
+// recente, acento perdido). Semente estática derivada de 10.476 acórdãos e ementas vistos até 14/10/2026 (cache e recibos locais; v1.31.0 atualizou a de 7.711 de 12/10/2026) — nomes de magistrados são
 // metadado público; nenhuma parte nem número de processo. O filtro relator= é exato: sem isto, a grafia minoritária
 // (em 21 de 25 casos, os anos de 2016 a 2021) some em silêncio, e a linha do tempo mostra queda falsa no ano da troca.
 export const GRAFIAS_RELATOR = {
  "alexandre miguel": {
   "ALEXANDRE MIGUEL": {
-   "n": 2,
+   "n": 65,
    "anos": [
-    "2026",
+    "2019",
     "2026"
    ]
   },
   "Alexandre Miguel": {
-   "n": 263,
+   "n": 297,
    "anos": [
     "2016",
     "2026"
@@ -21,9 +21,9 @@ export const GRAFIAS_RELATOR = {
  },
  "alvaro kalix ferro": {
   "ALVARO KALIX FERRO": {
-   "n": 41,
+   "n": 73,
    "anos": [
-    "2026",
+    "2023",
     "2026"
    ]
   },
@@ -51,7 +51,7 @@ export const GRAFIAS_RELATOR = {
    ]
   },
   "Carlos Augusto Teles de Negreiros": {
-   "n": 1,
+   "n": 2,
    "anos": [
     "2017",
     "2017"
@@ -60,7 +60,7 @@ export const GRAFIAS_RELATOR = {
  },
  "dalmo antonio de castro bezerra": {
   "DALMO ANTONIO DE CASTRO BEZERRA": {
-   "n": 35,
+   "n": 47,
    "anos": [
     "2018",
     "2026"
@@ -76,7 +76,7 @@ export const GRAFIAS_RELATOR = {
  },
  "daniel ribeiro lagos": {
   "DANIEL RIBEIRO LAGOS": {
-   "n": 155,
+   "n": 182,
    "anos": [
     "2017",
     "2026"
@@ -92,7 +92,7 @@ export const GRAFIAS_RELATOR = {
  },
  "enio salvador vaz": {
   "ENIO SALVADOR VAZ": {
-   "n": 131,
+   "n": 256,
    "anos": [
     "2016",
     "2026"
@@ -108,7 +108,7 @@ export const GRAFIAS_RELATOR = {
  },
  "gilberto barbosa": {
   "GILBERTO BARBOSA": {
-   "n": 160,
+   "n": 173,
    "anos": [
     "2018",
     "2026"
@@ -124,7 +124,7 @@ export const GRAFIAS_RELATOR = {
  },
  "glodner luiz pauletto": {
   "GLODNER LUIZ PAULETTO": {
-   "n": 66,
+   "n": 74,
    "anos": [
     "2017",
     "2025"
@@ -140,7 +140,7 @@ export const GRAFIAS_RELATOR = {
  },
  "hiram souza marques": {
   "HIRAM SOUZA MARQUES": {
-   "n": 123,
+   "n": 152,
    "anos": [
     "2018",
     "2026"
@@ -156,7 +156,7 @@ export const GRAFIAS_RELATOR = {
  },
  "isaias fonseca moraes": {
   "ISAIAS FONSECA MORAES": {
-   "n": 456,
+   "n": 623,
    "anos": [
     "2017",
     "2026"
@@ -172,7 +172,7 @@ export const GRAFIAS_RELATOR = {
  },
  "johnny gustavo clemes": {
   "JOHNNY GUSTAVO CLEMES": {
-   "n": 5,
+   "n": 10,
    "anos": [
     "2018",
     "2018"
@@ -188,9 +188,9 @@ export const GRAFIAS_RELATOR = {
  },
  "jorge luiz de moura gurgel do amaral": {
   "JORGE LUIZ DE MOURA GURGEL DO AMARAL": {
-   "n": 432,
+   "n": 545,
    "anos": [
-    "2021",
+    "2019",
     "2026"
    ]
   },
@@ -204,7 +204,7 @@ export const GRAFIAS_RELATOR = {
  },
  "jose antonio robles": {
   "JOSE ANTONIO ROBLES": {
-   "n": 504,
+   "n": 677,
    "anos": [
     "2020",
     "2026"
@@ -218,11 +218,27 @@ export const GRAFIAS_RELATOR = {
    ]
   }
  },
+ "jose augusto alves martins": {
+  "JOSE AUGUSTO ALVES MARTINS": {
+   "n": 319,
+   "anos": [
+    "2019",
+    "2026"
+   ]
+  },
+  "José Augusto Alves Martins": {
+   "n": 2,
+   "anos": [
+    "2019",
+    "2019"
+   ]
+  }
+ },
  "jose jorge ribeiro da luz": {
   "JOSE JORGE RIBEIRO DA LUZ": {
-   "n": 11,
+   "n": 31,
    "anos": [
-    "2026",
+    "2023",
     "2026"
    ]
   },
@@ -236,9 +252,9 @@ export const GRAFIAS_RELATOR = {
  },
  "juliana paula silva da costa": {
   "JULIANA PAULA SILVA DA COSTA": {
-   "n": 1,
+   "n": 8,
    "anos": [
-    "2026",
+    "2023",
     "2026"
    ]
   },
@@ -252,14 +268,14 @@ export const GRAFIAS_RELATOR = {
  },
  "marcos alaor diniz grangeia": {
   "MARCOS ALAOR DINIZ GRANGEIA": {
-   "n": 331,
+   "n": 532,
    "anos": [
     "2017",
     "2026"
    ]
   },
   "Marcos Alaor Diniz Grangeia": {
-   "n": 21,
+   "n": 22,
    "anos": [
     "2016",
     "2021"
@@ -268,7 +284,7 @@ export const GRAFIAS_RELATOR = {
  },
  "miguel monico neto": {
   "MIGUEL MONICO NETO": {
-   "n": 61,
+   "n": 73,
    "anos": [
     "2020",
     "2025"
@@ -300,14 +316,14 @@ export const GRAFIAS_RELATOR = {
  },
  "raduan miguel filho": {
   "RADUAN MIGUEL FILHO": {
-   "n": 372,
+   "n": 491,
    "anos": [
     "2017",
     "2026"
    ]
   },
   "Raduan Miguel Filho": {
-   "n": 12,
+   "n": 13,
    "anos": [
     "2016",
     "2019"
@@ -316,7 +332,7 @@ export const GRAFIAS_RELATOR = {
  },
  "renato martins mimessi": {
   "RENATO MARTINS MIMESSI": {
-   "n": 11,
+   "n": 12,
    "anos": [
     "2017",
     "2021"
@@ -332,7 +348,7 @@ export const GRAFIAS_RELATOR = {
  },
  "rinaldo forti da silva": {
   "RINALDO FORTI DA SILVA": {
-   "n": 5,
+   "n": 9,
    "anos": [
     "2019",
     "2020"
@@ -348,7 +364,7 @@ export const GRAFIAS_RELATOR = {
  },
  "roosevelt queiroz costa": {
   "ROOSEVELT QUEIROZ COSTA": {
-   "n": 66,
+   "n": 82,
    "anos": [
     "2017",
     "2025"
@@ -364,7 +380,7 @@ export const GRAFIAS_RELATOR = {
  },
  "rowilson teixeira": {
   "ROWILSON TEIXEIRA": {
-   "n": 621,
+   "n": 851,
    "anos": [
     "2018",
     "2026"
@@ -380,14 +396,14 @@ export const GRAFIAS_RELATOR = {
  },
  "sansao saldanha": {
   "SANSÃO SALDANHA": {
-   "n": 97,
+   "n": 158,
    "anos": [
     "2018",
     "2025"
    ]
   },
   "Sansão Saldanha": {
-   "n": 18,
+   "n": 19,
    "anos": [
     "2018",
     "2020"
@@ -396,7 +412,7 @@ export const GRAFIAS_RELATOR = {
  },
  "valdeci castellar citon": {
   "VALDECI CASTELLAR CITON": {
-   "n": 8,
+   "n": 10,
    "anos": [
     "2018",
     "2024"
