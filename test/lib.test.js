@@ -601,10 +601,12 @@ test("escrita do estado é atômica: nenhum .tmp residual e o arquivo final é J
 test("se o disco não aceitar escrita, o limite CONTINUA valendo em memória (não vira ilimitado)", () => {
   limparTudo();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-somente-leitura-"));
-  const alvo = path.join(dir, "estado.json");
+  // "pasta" que é um arquivo comum: a gravação falha em qualquer sistema (chmod não impede escrita no Windows)
+  const naoPasta = path.join(dir, "arquivo-comum");
+  fs.writeFileSync(naoPasta, "x");
+  const alvo = path.join(naoPasta, "estado.json");
   _setArquivoEstadoParaTeste(alvo);
   try {
-    fs.chmodSync(dir, 0o500); // diretório sem permissão de escrita
     const t0 = Date.now();
     let admitidas = 0;
     // 40 chamadas dentro da MESMA janela de 1min (1ms entre elas) — sem o fallback
@@ -1333,7 +1335,9 @@ test("recibo: grava o texto limpo por id do documento; id estranho ou texto vazi
 });
 
 test("recibo: pasta impossível de criar não derruba a pesquisa", () => {
-  assert.equal(gravarRecibos({ hits: { hits: [{ _source: { id_processo_documento: 1, ds_modelo_documento: "x" } }] } }, "/dev/null/x"), 0);
+  const arq = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "tjro-rec-")), "arquivo-comum");
+  fs.writeFileSync(arq, "x");
+  assert.equal(gravarRecibos({ hits: { hits: [{ _source: { id_processo_documento: 1, ds_modelo_documento: "x" } }] } }, path.join(arq, "x")), 0);
 });
 
 // ---------------------------------------------------------------------------
