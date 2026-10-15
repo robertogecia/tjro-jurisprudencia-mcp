@@ -3,108 +3,60 @@
 [![tests](https://github.com/robertogecia/tjro-jurisprudencia-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/robertogecia/tjro-jurisprudencia-mcp/actions/workflows/test.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Isto ensina qualquer advogado — **sem conhecimento nenhum de informática** — a dar
-ao Claude a capacidade de pesquisar jurisprudência do TJRO (o portal oficial JURIS)
-dentro da própria conversa, sem precisar abrir o site do tribunal. Sem login e sem
-mexer em código.
+Faz o Claude pesquisar a jurisprudência do TJRO por você, dentro da conversa. Você pede em português,
+e ele traz a decisão com a citação pronta e o link. Sem login e sem senha.
 
 Minhas redes sociais: @robertogrecia
 
-## Antes de começar: você já tem o "Claude Desktop"?
+## Antes de instalar
 
-O "Claude Desktop" é o **programa** do Claude que você instala no computador
-(diferente de usar o Claude pelo site, no navegador). É ele que faz a pesquisa
-funcionar — sem ele instalado, nada dos passos abaixo funciona.
+Você precisa do **Claude Desktop**, o programa do Claude instalado no computador (Mac ou Windows).
+Ainda não tem? Baixe em **[claude.com/download](https://claude.com/download)** e entre com a sua conta.
 
-- **Já tenho** (uso o Claude num aplicativo separado, não numa aba do navegador) →
-  pule para "Passo 1" abaixo.
-- **Não sei, ou uso só pelo navegador** → baixe primeiro o programa em
-  **[claude.com/download](https://claude.com/download)**, instale, crie sua conta
-  (ou entre com a que já tem) e volte aqui.
+## Como instalar
 
-## Instalar a pesquisa do TJRO (3 passos, uns 2 minutos)
+**1. Baixe o arquivo**
 
-### Passo 1 — Baixe o arquivo
+### ⬇️ [CLIQUE AQUI PARA BAIXAR](https://github.com/robertogecia/tjro-jurisprudencia-mcp/releases/latest/download/Jurisprudencia-TJRO.mcpb)
 
-### ⬇️ [CLIQUE AQUI PARA BAIXAR (`Jurisprudencia-TJRO.mcpb`)](https://github.com/robertogecia/tjro-jurisprudencia-mcp/releases/latest/download/Jurisprudencia-TJRO.mcpb)
+Ele vai para a pasta Downloads. Use só este botão: o botão verde "Code" baixa o arquivo errado.
 
-Um arquivo chamado `Jurisprudencia-TJRO.mcpb` vai para a pasta **Downloads** (ou
-"Transferências") do seu computador — o mesmo lugar onde caem os PDFs que você
-baixa da internet. Você não precisa abri-lo agora, só saber onde ele está.
+**2. Abra o arquivo**
 
-> **⚠️ Atenção a um erro comum:** se em vez de clicar no botão acima você navegou
-> até a página principal do projeto no GitHub e clicou no botão verde
-> **"Code" → "Download ZIP"**, isso baixou o arquivo errado (o código-fonte do
-> programa, que não serve para instalar). Apague esse zip e use só o link do
-> botão acima.
+Dê dois cliques em `Jurisprudencia-TJRO.mcpb`. O Claude Desktop abre e pergunta se quer instalar. Clique em **Instalar**.
+Se nada abrir: no Claude Desktop, vá em Configurações, depois Extensões, e arraste o arquivo para lá.
 
-### Passo 2 — Abra o arquivo baixado
+**3. Comece uma conversa nova**
 
-1. Abra a pasta **Downloads** do seu computador (no Mac, o ícone de seta para
-   baixo na barra de baixo da tela costuma abrir direto nela; no Windows, é
-   "Este Computador" → "Downloads", ou o ícone de pasta na barra de tarefas).
-2. Procure o arquivo **`Jurisprudencia-TJRO.mcpb`** e **dê dois cliques** nele,
-   como você faria para abrir uma foto ou um PDF.
-3. O programa Claude Desktop deve abrir sozinho, numa tela perguntando se você
-   quer instalar a extensão "Jurisprudência TJRO". Clique em **Instalar**
-   (ou "Install").
+Reinicie o Claude Desktop se ele pedir, abra uma **conversa nova** e escreva, por exemplo:
+*pesquise no TJRO acórdãos sobre dano moral por negativação indevida*.
 
-   *Se, em vez disso, nada abrir:* o passo alternativo é abrir você mesmo o
-   Claude Desktop, ir em **Configurações** (o ícone de engrenagem) →
-   **Extensões**, e arrastar o arquivo `Jurisprudencia-TJRO.mcpb` para dentro
-   dessa janela com o mouse.
+**4. Responda a uma pergunta (só na primeira vez)**
 
-### Passo 3 — Confirme e teste
+O site do TJRO às vezes recusa pesquisas feitas por programas. O Claude vai perguntar se você autoriza que a
+extensão se apresente ao site **como um navegador comum**, o que costuma evitar a recusa.
 
-1. Se o Claude Desktop pedir para **reiniciar**, feche e abra o programa de novo.
-2. Comece uma **conversa nova** (bem importante: se você estava numa conversa
-   já aberta antes de instalar, abra outra).
-3. Digite algo como:
-   > *pesquise no TJRO acórdãos sobre dano moral por negativação indevida*
-4. O Claude deve perguntar se pode usar a ferramenta de pesquisa do TJRO — é
-   sinal de que funcionou. Autorize, e a busca aparece na conversa.
+- Responda **"sim, autorizo"** para liberar. Há um risco: o tribunal pode entender como uso indevido e bloquear a internet
+  do seu escritório. A decisão e a responsabilidade são suas.
+- Responda **"não"** para a extensão continuar se declarando como programa. Ela pode ser recusada pelo site.
 
-**Pronto.** Você não precisa instalar mais nada além do Claude Desktop — o
-programa já traz tudo que a extensão precisa para rodar.
+A resposta fica gravada. Para mudar depois, peça ao Claude: *mude a identificação da extensão do TJRO para navegador*
+(ou *para honesta*), ou use a chave em Configurações, Extensões, Jurisprudência TJRO.
 
-> Funciona em computador **Mac ou Windows**. Em celular ou tablet, e no Claude
-> pelo site (sem instalar o programa), esta pesquisa não funciona — veja por quê
-> em ["Onde funciona"](#onde-funciona) mais abaixo.
-
-## Algo deu errado? Veja aqui antes de pedir ajuda
+## Algo deu errado?
 
 | O que aconteceu | O que fazer |
 |---|---|
-| Baixei um arquivo, mas quando abro vira uma **pasta cheia de arquivos**, e não a tela de instalação | Você baixou o arquivo errado (o código-fonte, não o instalador). Volte ao topo desta página e use o botão **"CLIQUE AQUI PARA BAIXAR"**. |
-| Dei dois cliques no `.mcpb` e **não abriu nada** | Tente o caminho alternativo do Passo 2: abra o Claude Desktop → Configurações → Extensões, e arraste o arquivo para essa janela. |
-| Instalei, mas quando pergunto sobre o TJRO o Claude diz que **não tem essa ferramenta** | Confira se você abriu uma **conversa nova** depois de instalar (conversa antiga não percebe a instalação). Confira também se a extensão aparece **ativada** em Configurações → Extensões. |
-| A pesquisa dá erro dizendo que o portal pediu uma **"verificação de navegador"** | Não é um erro da extensão, nem falta de instalação correta: é o próprio site do TJRO recusando o acesso automático vindo da sua internet. Não adianta tentar de novo na hora — veja a explicação em ["Se a busca parar de funcionar"](#se-a-busca-parar-de-funcionar). |
-| A pesquisa dá erro dizendo que o portal devolveu a **página de bloqueio com um cabeçalho defeituoso** | Mesma situação de sempre (medido em 24/09/2026): o filtro do site do TJRO serve a página de bloqueio às consultas da extensão, com um defeito nos cabeçalhos que o programa não consegue ler. O critério é o nome com que a extensão se identifica. Não é a sua internet nem excesso de pesquisas; esperar não resolve. Veja ["Se a busca parar de funcionar"](#se-a-busca-parar-de-funcionar). |
-| Não tenho o Claude Desktop, só uso pelo site (navegador) ou pelo celular | Essa pesquisa **não funciona** nesses casos — precisa ser o programa instalado no computador. Veja ["Onde funciona"](#onde-funciona). |
-| Nenhuma linha acima resolveu | Peça ajuda a alguém com mais prática em informática do escritório, mostrando esta tabela — ou [abra uma issue](../../issues) aqui no GitHub descrevendo o que aconteceu. |
+| Abriu uma pasta cheia de arquivos | Você baixou o arquivo errado. Use o botão do passo 1. |
+| Dois cliques e nada abriu | Use o caminho alternativo do passo 2. |
+| O Claude diz que não tem a ferramenta | Abra uma **conversa nova** e confira se a extensão está **ativada** em Configurações, Extensões. |
+| A pesquisa falha com "verificação de navegador" ou "página de bloqueio" | O site recusou o acesso. Veja ["Se a busca parar de funcionar"](#se-a-busca-parar-de-funcionar). |
+| Uso o Claude só pelo site ou pelo celular | Não funciona. Precisa do programa no computador. |
+| Nada resolveu | Mostre esta tabela a alguém do escritório ou [abra uma issue](../../issues). |
 
 ## Onde funciona
 
-A extensão roda **no seu computador**: é ele que consulta o portal do TJRO. Por
-isso ela só aparece onde o Claude também roda instalado na máquina.
-
-| Onde | Funciona? |
-|---|---|
-| Claude Desktop, conversa normal | Sim |
-| Claude Desktop, modo Cowork (inclusive tarefas agendadas) | Sim — o Cowork enxerga as extensões instaladas no Desktop |
-| Claude Code | Sim, registrando o servidor manualmente (ver [Desenvolvimento](#desenvolvimento)) |
-| claude.ai no navegador | **Não** |
-| App do Claude no celular | **Não** |
-
-**Por que não no navegador nem no celular:** ali o Claude só usa conectores
-hospedados na internet, com endereço público. Para isso a extensão teria de rodar
-num servidor central, e as buscas de todos os usuários sairiam do mesmo IP — o
-bloqueio anti-automação do portal do TJRO derrubaria esse servidor em pouco tempo,
-e contorná-lo seria burlar a proteção do tribunal. Rodar em cada computador, com
-limite de ritmo próprio, é o que mantém a pesquisa estável e respeitosa com o portal.
-
-Uma skill que você suba no claude.ai continua funcionando no navegador, mas **sem**
-esta pesquisa: a jurisprudência do TJRO precisa ser buscada no Desktop (ou no Claude Code).
+Só no **Claude Desktop** (e no Claude Code), no computador. **Não funciona** no claude.ai pelo navegador nem no celular.
 
 ## Como usar
 
@@ -505,120 +457,20 @@ a grafia exata do campo "Assunto:" de um resultado.
 
 ## Se a busca parar de funcionar
 
-_Desde a 1.11.0, a pausa depois de um bloqueio é por identificação: a extensão pública (que se identifica como extensão)
-e uma build que se identifique como navegador não se travam uma à outra. O volume de consultas continua somado, porque
-o IP é o mesmo. `diagnostico_ritmo_tjro` mostra qual identificação esta instalação usa._
+O site do TJRO tem um filtro de segurança, e às vezes ele recusa a pesquisa. Há dois casos.
 
+**1. A mensagem fala em "verificação de navegador".** O site exigiu um teste que só um navegador faz. Esperar não resolve, e a
+extensão não consegue fazer esse teste. O que fazer: tentar em outra internet (outro Wi-Fi, ou o celular como roteador), usar o
+site do TJRO direto no navegador enquanto isso, ou pedir a liberação ao tribunal pelo e-mail `suporte@tjro.jus.br`, assunto
+"Acesso Bloqueado", dizendo que é uso próprio, de poucas consultas, sobre dado público.
 
-São dois casos diferentes, e a mensagem de erro agora diz qual é.
+**2. A mensagem fala em "página de bloqueio" ou a extensão foi recusada logo na primeira busca.** Foi a identificação honesta
+da extensão que o site recusou. Se você aceita o risco, autorize que ela se apresente como navegador (passo 4 da instalação).
 
-**1. "Verificação de navegador" (desafio JavaScript).** O filtro de segurança do
-portal (F5/TSPD) exige que o acesso execute um desafio em JavaScript, coisa que só
-navegador faz. **Não é excesso de consultas: esperar não resolve**, e a extensão
-não executa esse desafio (a opção de identificação descrita abaixo não o resolve). Isso varia por rede,
-por provedor e pelo programa que faz o acesso — em 21/09/2026 um usuário em Sergipe
-foi barrado já na primeira busca do dia, enquanto na máquina do autor, no mesmo dia,
-a extensão consultava normalmente e só o `curl` era recusado. O que fazer:
+Por precaução, a extensão pesquisa devagar. Se o site bloquear, ela para sozinha por um tempo e avisa quanto falta. Para
+saber o que está acontecendo, peça ao Claude: *"rode o diagnóstico de ritmo do TJRO"*. Ele não consulta o site.
 
-- **teste em outra rede** (outro Wi-Fi, ou o celular como roteador);
-- **use o portal no navegador** enquanto isso — ele continua aberto a qualquer um;
-- **peça liberação ao tribunal**: `suporte@tjro.jus.br`, assunto "Acesso Bloqueado",
-  citando o endpoint `juris-back.tjro.jus.br/search/varios_parametros/` e dizendo que
-  é uso próprio, de baixo volume, sobre dado público.
-
-Se acontecer com você, [abra uma issue](../../issues) dizendo o estado, o provedor
-e a **versão instalada** (o `diagnostico_ritmo_tjro` mostra na primeira linha): é
-assim que dá para saber o alcance real do filtro.
-
-**⚠️ Situação em 22/09/2026: a extensão está sendo barrada pelo filtro do TJRO
-para todos.** Chegaram relatos de bloqueio logo na 1ª busca (Sergipe e Rondônia),
-e o diagnóstico inicial do autor foi que a causa estava na rede de quem relatou.
-**Esse diagnóstico estava errado**: a comparação foi feita com um cliente diferente
-do que a extensão usa. O teste controlado de 22/09 mostrou a causa real: o filtro
-do portal recusa requisições que se identificam como ferramenta automatizada — e a
-extensão, por princípio, se identifica honestamente. Com a identificação de
-navegador, a mesma requisição passa. Ou seja: não adianta trocar de rede nem
-esperar. **Decisão do autor (22/09/2026):** a extensão continua se identificando honestamente por
-padrão. O caminho principal é pedir ao TJRO a liberação formal do acesso, e enquanto isso a
-pesquisa pelo site (juris.tjro.jus.br) continua funcionando normalmente no navegador.
-**Revisada em 13/10/2026: agora há uma opção, desligada por padrão, para quem decidir assumir o risco** (próxima seção).
-
-### Opção: identificar-se como navegador (por sua conta e risco)
-
-Em Configurações → Extensões → Jurisprudência TJRO há a chave **"Identificar-se como navegador
-(assumo o risco)"**. Desligada (padrão), a extensão se declara ao portal. Ligada, ela se apresenta como um navegador
-comum, o que **pode** passar pelo filtro que recusa a identificação honesta. O que você precisa saber antes de ligar:
-
-- **É um disfarce.** O tribunal pode considerar uso indevido do portal e restringir o acesso, por exemplo bloqueando o IP da sua rede,
-  o que atinge também quem divide a rede com você. O risco é inteiramente seu.
-- **Não muda o ritmo.** O espaçamento mínimo entre consultas, o teto por janela e a pausa depois de um bloqueio continuam valendo.
-- **Não resolve a "verificação de navegador"** (o desafio em JavaScript): esse caso não depende da identificação.
-- **A extensão avisa.** Com a opção ligada, a primeira resposta de cada sessão lembra que a identificação de navegador está ativa e que o
-  risco é seu, e o `diagnostico_ritmo_tjro` mostra a identificação em uso. Quando o portal bloqueia com a identificação honesta, a mensagem
-  de erro apresenta essa opção, com o mesmo aviso.
-- **A extensão pergunta antes da primeira consulta.** Se você não ligou a chave e ainda não respondeu, a primeira busca não consulta nada:
-  o Claude lhe explica o risco e pergunta se você aceita. Se disser sim, a extensão passa a se apresentar como navegador, de forma
-  permanente (a resposta fica gravada em `~/.tjro-jurisprudencia-mcp-identificacao.json`). Se disser não, ela continua se declarando e a
-  pergunta não se repete. Quem grava a resposta é a ferramenta `configurar_identificacao_tjro`, que o Claude só chama depois de você responder.
-- Para voltar atrás, desligue a chave ou peça ao Claude `configurar_identificacao_tjro` com a escolha "honesta". Quem usa pela linha de comando pode definir `TJRO_MCP_IDENTIFICACAO=navegador`.
-
-**Desde a v1.7.10, a própria extensão reconhece essa situação e avisa em linguagem
-simples.** Quando o portal bloqueia, a primeira linha da resposta diz que foi o
-sistema anti-robô do tribunal, e não um erro de quem usa. Se o bloqueio se repete
-com poucas pesquisas e sem nenhuma que tenha dado certo no meio (2 ou mais vezes em
-24 horas, contando todas as conversas abertas no computador), a extensão conclui que
-é sistemático e diz com clareza que esperar não resolve, indicando o site do
-tribunal. Basta uma pesquisa dar certo, em qualquer conversa, para esse diagnóstico
-se desfazer sozinho. Desde a v1.7.8, esses bloqueios não apertam
-mais o limite de ritmo da ferramenta.
-
-**2. Bloqueio por volume ("robotização").** O mesmo filtro bloqueia
-temporariamente quando detecta muitas requisições em pouco tempo —
-mesmo sendo dados públicos. Se isso acontecer, a mensagem de erro vai dizer
-claramente que é um bloqueio por suspeita de automação, não um bug. Não é uma
-falha permanente: costuma liberar sozinho depois de um tempo. A extensão já
-evita insistir durante esse período (ver "Limite de ritmo próprio" acima) — o
-mais eficaz é simplesmente aguardar um pouco antes de tentar de novo, em vez
-de repetir a consulta várias vezes seguidas.
-
-**O limite se ajusta sozinho.** Como não há como saber de antemão o limiar
-exato do filtro do TJRO, a extensão aprende com a experiência: cada vez que um
-bloqueio real acontece, ela torna o próprio limite preventivo mais rígido (a
-janela de "10 consultas" alarga — de 1 minuto para 5, depois 10, até um teto de
-30 minutos); depois de 20 consultas seguidas sem bloqueio, ela afrouxa um degrau.
-O espaçamento mínimo entre consultas (7 segundos) foi medido em 23/09/2026: 125
-consultas em 16 minutos, a 6 s ou mais uma da outra, passaram sem bloqueio; a 5 s
-o TJRO bloqueou. O que dispara o filtro é o pico curto, não o volume. Esse aprendizado fica salvo em `~/.tjro-jurisprudencia-mcp-estado.json`
-para não ser esquecido a cada reinício do Claude Desktop. O arquivo guarda só
-números de controle (nível atual, horários das últimas consultas e um histórico
-curto dos bloqueios) — **nenhum termo de pesquisa, processo ou dado de cliente**.
-
-**Descubra o que aconteceu.** A ferramenta `diagnostico_ritmo_tjro` responde
-"por que parou?" sem fazer nenhuma consulta ao portal: mostra o nível atual, o
-quanto do orçamento já foi usado, se há bloqueio em curso (e quanto falta para
-liberar) e o histórico de bloqueios com o contexto de cada um — quantas
-consultas houve no minuto anterior, o intervalo entre elas e qual operação
-disparou. Com isso dá para separar dois casos que se parecem: bloqueio causado
-por rajada sua (espaçar resolve) e bloqueio que veio com pouquíssimo tráfego
-desta máquina (a causa está fora do alcance da extensão — outro equipamento no
-mesmo IP, ou o portal apertando o filtro). Basta pedir ao Claude: *"rode o
-diagnóstico de ritmo do TJRO"*.
-
-**Três limitações honestas:** (1) o orçamento coordena processos da mesma
-**máquina** — dois advogados do mesmo escritório, em computadores diferentes,
-saem pelo mesmo IP público e não há como coordenar isso sem um servidor central;
-(2) se o arquivo de estado não puder ser gravado (disco cheio, pasta pessoal
-somente-leitura), cada processo passa a contar sozinho em memória — o limite
-continua valendo, mas deixa de ser compartilhado. Nesse caso o
-`diagnostico_ritmo_tjro` avisa em vez de dizer que está tudo certo; (3) a
-coordenação só enxerga outras cópias **desta mesma extensão** na máquina — um
-script separado (seu ou de outra pessoa) que fale com o portal do TJRO por
-fora dela mantém seu próprio controle, sem visibilidade sobre o desta. Rodar
-os dois ao mesmo tempo na mesma máquina soma dois orçamentos independentes no
-mesmo IP; não registre as duas coisas simultaneamente.
-
-Apagar `~/.tjro-jurisprudencia-mcp-estado.json` zera o aprendizado (nível,
-histórico de bloqueios e orçamento em curso) — útil se quiser recomeçar do zero.
+Se continuar, [abra uma issue](../../issues) dizendo a versão instalada (o diagnóstico mostra na primeira linha).
 
 ## Segurança e auditoria
 

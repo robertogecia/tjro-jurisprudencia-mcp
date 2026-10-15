@@ -4,6 +4,7 @@ Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
 ## v1.35.0 (15/10/2026): correções vindas de uma jurimetria de honorários da 1ª Câmara Cível
 
+- **README reescrito para advogados leigos.** Instalação em 4 passos curtos, com o passo 4 explicando a pergunta da primeira pesquisa (autorizar ou não que a extensão se apresente como navegador, com o risco dito claramente e como mudar depois). Tabela de problemas e seção "Onde funciona" encurtadas, e a seção "Se a busca parar de funcionar" sem detalhes técnicos.
 - **Data da sessão ao lado da data do índice.** O fecho do acórdão ("Porto Velho, 28 de agosto de 2026") traz a data da sessão; o índice traz a data do documento no sistema, que é a usada pela citação padrão do TJRO. Nos 412 acórdãos do cache com data no fecho, 398 diferem, e em 397 o fecho vem antes (mediana de 6 dias). O inteiro teor e a busca mostram as duas lado a lado.
 - **"RECURSO PROVIDO PARCIALMENTE" agora é parcialmente provido.** O rotulador só reconhecia a ordem "parcialmente provido"; a inversa saía como "provido". Nenhum rótulo dos 4.070 recibos mudou (os 26 que têm a forma inversa também têm a usual), mas a ementa nova que só tiver a inversa não é mais rotulada errado.
 - **Julgamentos do mesmo número com resultados diferentes.** Quando dois julgamentos sob o mesmo número declaram provido, parcialmente provido ou desprovido diferentes, o aviso diz qual é qual, com id e data. Embargos rejeitados depois da apelação provida não disparam (é o normal).
