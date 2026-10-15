@@ -2213,7 +2213,7 @@ import pathx from "node:path";
 test("HTTP 500 em consulta grande ganha a dica de reduzir; consulta pequena ou outro erro, não", () => {
   const g3 = [["a", "b", "c", "d"], ["e", "f", "g", "h"], ["i", "j", "k"]];
   assert.equal(contaTermosDaConsulta(g3), 11);
-  assert.match(dicaConsultaGrande("HTTP 500", g3), /3 grupos, 11 termos.*até 2 grupos/);
+  assert.match(dicaConsultaGrande("HTTP 500", g3), /3 grupos, 11 termos.*2 grupos de poucos termos/);
   assert.equal(dicaConsultaGrande("HTTP 500", [["a", "b"], ["c"]]), "");
   assert.equal(dicaConsultaGrande("tempo esgotado", g3), "");
   assert.match(dicaConsultaGrande("HTTP 500", [["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]]), /1 grupos, 10 termos/);
