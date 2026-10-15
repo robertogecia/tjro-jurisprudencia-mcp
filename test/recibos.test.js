@@ -101,3 +101,23 @@ test("buscarRecibos (v1.15.0): filtro por relator (parte do nome, sem acento), d
   assert.ok(out.includes("id 1 "), out);
   assert.match(buscarRecibos("", null, 10, pasta, { relator: "Sicrano" }), /0 de 3 documento/);
 });
+
+// v1.37.0 — E de todas as palavras deu zero: ranking BM25 dos que têm mais delas (consulta em linguagem natural)
+import { buscarRecibos as _buscarRanq } from "../server/recibos.js";
+import fs2 from "node:fs";
+import os2 from "node:os";
+import path2 from "node:path";
+test("buscarRecibos: zero no E com 3+ palavras devolve ranking BM25 e avisa; o E que acha continua igual", () => {
+  const d = fs2.mkdtempSync(path2.join(os2.tmpdir(), "rank recibos "));
+  const mk = (id, t) => fs2.writeFileSync(path2.join(d, `${id}.json`), JSON.stringify({ id_documento: id, nr_processo: `7000${id}01202582200010`.slice(0, 20), tipo: "ACÓRDÃO", data_julgamento: "01/02/2026", classe: "APELAÇÃO CÍVEL", texto: t }));
+  mk("11", "EMENTA I. CASO EM EXAME 1. Aposentado contesta desconto de cartão de crédito consignado com reserva de margem sem informação clara.");
+  mk("22", "EMENTA I. CASO EM EXAME 1. Locatário discute multa rescisória em contrato de locação de imóvel comercial.");
+  mk("33", "EMENTA I. CASO EM EXAME 1. Servidor pede licença-prêmio em pecúnia por aposentadoria.");
+  const r = buscarRecibos("aposentado cartão consignado margem informação bancária", null, 3, d);
+  assert.match(r, /nenhum dos 3 documento\(s\).*tem TODAS as palavras.*abaixo, os \d+ que têm MAIS delas/);
+  assert.ok(r.indexOf("id 11") > 0 && (r.indexOf("id 22") < 0 || r.indexOf("id 11") < r.indexOf("id 22")));
+  const e = buscarRecibos("cartão consignado", null, 3, d);
+  assert.match(e, /1 de 3 documento\(s\) já lidos nesta máquina atendem/);
+  assert.doesNotMatch(e, /MAIS delas/);
+  assert.doesNotMatch(buscarRecibos("licença prêmio", [["pecúnia"]], 3, d), /MAIS delas/);
+});

@@ -407,12 +407,13 @@ server.registerTool(
       id_documento: z.string().optional().describe("Id do documento (id_processo_documento) do julgado já lido. Preferível ao número."),
       nr_processo: z.string().optional().describe("Número CNJ; sem id, usa o ACÓRDÃO mais recente do processo nos recibos."),
       fatos_do_caso: z.string().max(4000).optional().describe("Fatos materiais do SEU caso, em poucas linhas, para comparar com o precedente. Não é gravado nem enviado a lugar nenhum."),
+      formato: z.enum(["completo", "ficha"]).optional().describe("\"completo\" (padrão): resumo de 5 linhas no topo e 6 seções. \"ficha\": rascunho JSON da ficha de precedente (contrato do pesquisador-juridico), com os campos que o texto permite ler; o resto fica vazio e verificacao sai \"não conferido\"."),
     },
     annotations: { title: "Distinguir e checar superação (TJRO)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   async (a) => {
     if (!a.id_documento && !a.nr_processo) return { content: [{ type: "text", text: "Informe id_documento ou nr_processo de um julgado já lido (obter_inteiro_teor_tjro grava o recibo)." }], isError: true };
-    return { content: [{ type: "text", text: await comAvisos(limitarSaida(distinguir({ id_documento: a.id_documento || "", nr_processo: a.nr_processo || "", fatos_do_caso: a.fatos_do_caso || "" }))) }] };
+    return { content: [{ type: "text", text: await comAvisos(limitarSaida(distinguir({ id_documento: a.id_documento || "", nr_processo: a.nr_processo || "", fatos_do_caso: a.fatos_do_caso || "", formato: a.formato || "completo" }))) }] };
   }
 );
 

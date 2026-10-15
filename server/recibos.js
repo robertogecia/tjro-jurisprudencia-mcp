@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { dirRecibos, cnj, link, relator, extrairOrgaoComOrigem, extrairRelatorDoTexto } from "./lib.js";
 import { norm1, camposAlheios, CUSTODIA_VERSAO } from "./custodia.js";
+import { rankearPorConsulta } from "./vocabulario.js";
 
 // memo por (arquivo, mtime): 600+ recibos de até 100 KB não se releem a cada chamada.
 const MEMO = new Map();
@@ -116,10 +117,18 @@ export function buscarRecibos(consulta, grupos, limite = 10, pasta = dirRecibos(
     achados.push([peso, dataIso(r.data_julgamento), r]);
   }
   achados.sort((a, b) => (b[0] - a[0]) || (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0));
+  // E de todas as palavras deu zero com consulta em linguagem natural: devolve os que têm MAIS delas (ranking BM25), dizendo isso
+  let ranqueado = false;
+  if (!achados.length && !gs.length && !dig && !idDoc && palavras.length >= 3 && todos.length) {
+    const rk = rankearPorConsulta(consulta, todos, lim);
+    if (rk.length) { ranqueado = true; for (const [r, sc] of rk) achados.push([sc, dataIso(r.data_julgamento), r]); }
+  }
   const filtroTxt = [dig ? `processo ${dig.length === 20 ? cnj(dig) : dig + "…"}` : "", idDoc ? `id ${idDoc}` : "", relN ? `relator «${relatorFiltro.trim()}»` : ""].filter(Boolean).join(", ");
   const termosMostrados = [...palavras, ...gs.flat()].join(", ") || "(sem termos)";
   const linhas = [
-    `**Recibos locais do TJRO — ${achados.length} de ${totalGeral} documento(s) já lidos nesta máquina atendem a «${termosMostrados}»${filtroTxt ? ` em ${filtroTxt}` : ""} · ZERO requisição ao portal**`,
+    ranqueado
+      ? `**Recibos locais do TJRO — nenhum dos ${totalGeral} documento(s) já lidos tem TODAS as palavras de «${termosMostrados}»; abaixo, os ${achados.length} que têm MAIS delas (ranking BM25 sobre a ementa, palavras e pares vizinhos; em amostra nova de 20 consultas em linguagem natural, pôs o julgado certo no top 10 em 16 e no top 3 em 12; o E de todas as palavras deu zero nas 20) · ZERO requisição ao portal**`
+      : `**Recibos locais do TJRO — ${achados.length} de ${totalGeral} documento(s) já lidos nesta máquina atendem a «${termosMostrados}»${filtroTxt ? ` em ${filtroTxt}` : ""} · ZERO requisição ao portal**`,
     "⚠️ Isto NÃO é pesquisa no acervo do TJRO: só olha o que obter_inteiro_teor_tjro já trouxe para esta máquina. Zero aqui NUNCA é \"não localizado\" — para isso, buscar_jurisprudencia_tjro. Classe e câmara do índice só existem em recibos gravados a partir da v1.10.0; nos antigos, a câmara vem do fecho do texto.",
     "",
   ];

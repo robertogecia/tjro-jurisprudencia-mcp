@@ -11,7 +11,7 @@ import { norm1, faixasAlheias } from "./custodia.js";
 import { teseDaEmenta, fatosDoJulgado, secoesDaEmenta } from "./posicao.js";
 import { listarRecibos, reciboPorId, recibosDoProcesso, soDigitos } from "./recibos.js";
 import { tokens } from "./similares.js";
-import { fold, ancoras, frasesDoTexto, cnj, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO, dataDoFecho, VERSAO, dirCache } from "./lib.js";
+import { fold, ancoras, frasesDoTexto, cnj, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO, dataDoFecho, VERSAO, dirCache, extrairOrgaoComOrigem, extrairRelatorDoTexto } from "./lib.js";
 import { STOP_SIM } from "./similares.js";
 
 // ------------------------------------------------------------------- natureza ---
@@ -274,7 +274,28 @@ function escolherRecibo(id, nr, pasta) {
 }
 
 /** Ficha para distinguishing, superação e leading case — 100% local (recibos), zero requisição ao portal. */
-export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso = "", pasta } = {}) {
+/** Rascunho da "ficha de precedente" (contrato do pesquisador-juridico), só com o que o texto do recibo permite ler. Campos que dependem de
+ * leitura ou de decisão do advogado ficam vazios: `sustenta`, `trecho`, `chave`, `link` (o recibo não guarda os parâmetros do portal e link
+ * nunca se fabrica), `relator_para_acordao`. `verificacao` sai "não conferido": quem confere é o pesquisador-juridico ou o advogado. */
+function fichaDePrecedente({ r, t, ementa, tese, fonteSec, sessao, pasta }) {
+  const lit = (x, n) => String(x || "").replace(/[ \t\n\r\f\v]+/g, " ").trim().slice(0, n);
+  const ob = extrairOrgaoComOrigem(t);
+  const disp = secoesDaEmenta(fonteSec, 0, Math.min(fonteSec.length, 15000)).find((x) => x.nome === "dispositivo e tese" || x.nome === "dispositivo");
+  const outras = recibosDoProcesso(r.nr_processo || "", pasta).filter((x) => String(x.id_documento) !== String(r.id_documento))
+    .map((x) => ({ id_documento: String(x.id_documento), tipo: x.tipo, julgamento: isoBr(x.data_julgamento) || null }));
+  const ficha = {
+    chave: "", numero: cnj(r.nr_processo || ""), tribunal: "TJRO", orgao: (ob && ob.orgao) || "", relator: extrairRelatorDoTexto(t) || "",
+    relator_para_acordao: "", julgamento: isoBr(sessao) || isoBr(r.data_julgamento) || "", id_documento: String(r.id_documento), link: "",
+    outras_decisoes_no_mesmo_numero: outras, dispositivo: disp ? lit(fonteSec.slice(disp.a, disp.b), 900) : "", tese: tese ? tese.texto : "",
+    ementa: lit(ementa ? ementa.texto : r.tipo === "EMENTA" ? t : "", 3000), trecho: "", sustenta: "", verificado_em: new Date().toISOString().slice(0, 10),
+    verificacao: "não conferido",
+    _ferramenta: { natureza: naturezaDoJulgado(r, t).replace(/^🏛️ NATUREZA: /, "").slice(0, 160), observacao: "Rascunho do distinguir_tjro: órgão e relator lidos do texto do recibo; confira no inteiro teor (relator para o acórdão, votação, link) antes de usar." },
+  };
+  return ["# Rascunho de ficha de precedente (contrato do pesquisador-juridico)",
+    "_Campos vazios dependem de leitura ou de decisão sua. `verificacao` sai \"não conferido\": só vira \"inteiro teor lido\" depois que alguém lê. Para depositar no segundo-cerebro, só com a sua confirmação._", "", "```json", JSON.stringify(ficha, null, 2), "```"].join("\n");
+}
+
+export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso = "", pasta, formato = "completo" } = {}) {
   DISCO = !pasta;
   const r = escolherRecibo(String(id_documento || "").trim(), nr_processo, pasta);
   if (!r) return `Sem recibo local de ${id_documento ? `id ${id_documento}` : cnj(nr_processo || "") || "?"}. Leia o julgado antes com obter_inteiro_teor_tjro (grava o recibo) e repita; esta ferramenta não consulta o portal.`;
@@ -295,6 +316,7 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   const razoes = secoesDaEmenta(fonteSec, 0, Math.min(fonteSec.length, 12000)).find((x) => x.nome === "razoes de decidir");
   if (razoes) P(`- **Razões de decidir** (seção III da ementa, literal): «${fonteSec.slice(razoes.a, razoes.b).replace(/[ \t\n\r\f\v]+/g, " ").trim().slice(0, 900)}»`);
   const res = rotulo(r);
+  if (formato === "ficha") return fichaDePrecedente({ r, t, ementa, tese, fonteSec, sessao, pasta });
   if (res) P(`- **Resultado declarado:** ${res}.`);
   if (!tese && !razoes) P("- Sem tese nem seção \"razões de decidir\" no modelo do CNJ: a ratio tem de ser extraída do voto pela leitura (fundamento sem o qual o resultado mudaria, art. 489, § 1º, V).");
   P("- Fundamento que só reforça (\"ainda que assim não fosse\") é obiter, não ratio: `verificar_citacao_tjro` marca OBITER DICTUM? na frase.");
@@ -304,8 +326,9 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   P(fatos ? `- (${fatos.onde}) «${fatos.texto.replace(/[ \t\n\r\f\v]+/g, " ").trim().slice(0, 1200)}»` : "- Sem seção de fatos reconhecível; leia o relatório no inteiro teor.");
   if (fatos && /relat/.test(fatos.onde)) P("  ⚠️ É o relatório: narra pedido e alegações, não fato reconhecido pelo julgado.");
   // 3. comparação
+  let cmp = null;
   if (String(fatos_do_caso || "").trim()) {
-    const c = compararFatos(fatos_do_caso, t, r.tipo);
+    const c = (cmp = compararFatos(fatos_do_caso, t, r.tipo));
     P("\n## 3. Seus fatos × o precedente");
     P("_Expressões dos seus fatos (duas palavras vizinhas) e a frase do precedente que as traz, do voto quando há; palavra solta só se longa e no voto. Acerto medido às cegas: expressões 53 de 53 trataram do mesmo fato; palavras soltas, 61 de 75. Ausência de palavra NÃO prova fato diferente: o julgado pode dizer o mesmo com outras palavras. A distinção exige comparar FATOS MATERIAIS e FUNDAMENTOS DETERMINANTES (art. 489, § 1º, VI), e isso é leitura sua._");
     for (const p of [...c.expressoes, ...c.presentes]) P(`- **${p.termo}** (${p.onde}) — «${p.frase}»`);
@@ -346,8 +369,10 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
     P("- **Posteriores do mesmo tema com frase de MUDANÇA DE ENTENDIMENTO** (acerto medido 1 de 9 em amostra nova: quase sempre falso, leia):");
     for (const o of mudam.slice(0, 5)) P(`  - ${linha(o.x)} · «${frasesX(o.x).mudanca[0]}»`);
   }
+  let opostosN = 0;
   if (meuRes) {
     const opostos = similares.filter((o) => o.s >= LIMIAR_MESMA_QUESTAO).filter((o) => { const rx = rotulo(o.x); return rx && OPOSTOS.some(([a, b]) => (a === meuRes && b === rx) || (b === meuRes && a === rx)); });
+    opostosN = opostos.length;
     if (opostos.length) {
       algum = true;
       P(`- **Posteriores do mesmo tema com RESULTADO OPOSTO** (${opostos.length}; núcleo da ementa com semelhança ≥ 0,25: mesma questão jurídica em 34 de 36 pares medidos às cegas; a diferença veio de FATOS diferentes em 32 de 36 e de mudança de entendimento em só 2 de 36. Leia como material de distinguishing; overruling é a exceção):`);
@@ -366,6 +391,15 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   if (lc.ancoras.length) P(`- Precedentes qualificados mais invocados no tema: ${lc.ancoras.map(([a, q]) => `${a} (${q})`).join(", ")}. O leading case de cada um (processo paradigma) se confere no BNP.`);
   if (lc.maisCitados.length) P(`- Julgados mais citados pelos demais do tema (processos distintos que citam): ${lc.maisCitados.map(([c, q]) => `${c} (${q})`).join(", ")}. Mais citado é candidato, não prova: pode só aplicar a tese de outro.`);
   if (!lc.qualificados.length && !lc.ancoras.length && !lc.maisCitados.length) P("- Sem candidato nos recibos locais.");
+  // Camada 1 (resumo progressivo, Forte): 5 linhas no topo, cada uma literal ou contagem; o detalhe fica nas seções
+  const cur = (x, n) => { const y = String(x || "").replace(/[ \t\n\r\f\v]+/g, " ").trim(); if (y.length <= n) return y; const k = y.lastIndexOf(" ", n); return y.slice(0, k > 40 ? k : n) + "…"; };
+  const RES = ["**Resumo (camada 1)** — cada linha é trecho literal ou contagem; o detalhe está nas seções abaixo:"];
+  RES.push(`- Tese: ${tese ? `«${cur(tese.texto, 220)}»` : razoes ? `«${cur(fonteSec.slice(razoes.a, razoes.b), 220)}» (razões de decidir; a ementa não traz tese)` : "sem tese nem razões no modelo do CNJ (seção 1)"}`);
+  RES.push(`- Fatos do julgado: ${fatos ? `«${cur(fatos.texto, 200)}»` : "sem seção reconhecível (seção 2)"}`);
+  if (cmp) RES.push(`- Seus fatos: ${cmp.expressoes.length} expressão(ões) deles aparece(m) no precedente; ele NÃO menciona: ${cmp.ausentes.slice(0, 6).join(", ") || "nenhum termo seu"} (seção 3)`);
+  RES.push(`- Superação: ${citam.length} julgado(s) posterior(es) citam este processo (${citam.filter((x) => frasesX(x).distincao.length).length} com frase de distinção); ${mudam.length} do mesmo tema com frase de mudança (quase sempre falsa); ${opostosN} do mesmo tema com resultado oposto (em regra, fato diferente) (seção 5)`);
+  RES.push(`- Leading case: ${lc.qualificados[0] ? `${lc.qualificados[0].nr} · id ${lc.qualificados[0].id}` : "sem candidato nos recibos"} (seção 6)`);
+  L.splice(3, 0, "", ...RES);
   P(`\n_Tema = este julgado + até 80 recibos com vocabulário parecido (semelhança do núcleo da ementa ≥ 0,2). Recibo é só o que esta máquina já leu, não o acervo do TJRO._`);
   gravarDeriv();
   return L.join("\n");

@@ -76,3 +76,39 @@ test("fatos do julgado: relator vencido no fecho gera aviso (B8)", () => {
   const t = "RELATÓRIO Trata-se de agravo regimental do Município contra decisão que indeferiu a inicial. VOTO Nego provimento. É como voto. Acordam os Magistrados do Tribunal Pleno do Tribunal de Justiça do Estado de Rondônia, em, AGRAVO PROVIDO, POR MAIORIA, VENCIDOS A RELATORA E O DESEMBARGADOR FULANO.";
   assert.match(fatosDoJulgado(t, "ACÓRDÃO").onde, /relator VENCIDO/);
 });
+
+// v1.37.0 — resumo em camadas e rascunho de ficha (CODE: Destilar e Expressar)
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { distinguir } from "../server/precedentes.js";
+function pastaComRecibos() {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "prec recibos "));
+  const ementa = "EMENTA I. CASO EM EXAME 1. Apelação contra sentença que julgou improcedente ação sobre cartão de crédito consignado. II. QUESTÃO EM DISCUSSÃO 2. validade. III. RAZÕES DE DECIDIR 3. dever de informação. IV. DISPOSITIVO E TESE 4. Recurso desprovido. Tese de julgamento: 1) A contratação exige informação clara. Acordam os Magistrados da 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, em, RECURSO NÃO PROVIDO À UNANIMIDADE. Porto Velho, 5 de dezembro de 2025";
+  fs.writeFileSync(path.join(d, "100.json"), JSON.stringify({ id_documento: "100", nr_processo: "70000010120208220001", tipo: "ACÓRDÃO", data_julgamento: "05/12/2025", classe: "APELAÇÃO CÍVEL", texto: "RELATÓRIO Apelação. VOTO O cartão consignado exige informação. " + ementa }));
+  return d;
+}
+test("distinguir: resumo de 5 linhas no topo, cada linha literal do julgado", () => {
+  const pasta = pastaComRecibos();
+  const o = distinguir({ id_documento: "100", fatos_do_caso: "cartão consignado sem informação", pasta });
+  const topo = o.slice(0, o.indexOf("## 1."));
+  assert.match(topo, /\*\*Resumo \(camada 1\)\*\*/);
+  assert.match(topo, /- Tese: «1\) A contratação exige informação clara/);
+  assert.match(topo, /- Fatos do julgado: «/);
+  assert.match(topo, /- Seus fatos: \d+ expressão/);
+  assert.match(topo, /- Superação: 0 julgado/);
+  assert.match(topo, /- Leading case: sem candidato/);
+});
+test("distinguir formato ficha: JSON do contrato, campos de decisão vazios, verificação não conferida, sem link fabricado", () => {
+  const pasta = pastaComRecibos();
+  const o = distinguir({ id_documento: "100", formato: "ficha", pasta });
+  const j = JSON.parse(o.slice(o.indexOf("```json") + 7, o.lastIndexOf("```")));
+  assert.equal(j.numero, "7000001-01.2020.8.22.0001");
+  assert.equal(j.tribunal, "TJRO");
+  assert.equal(j.id_documento, "100");
+  assert.equal(j.julgamento, "2025-12-05");
+  assert.equal(j.verificacao, "não conferido");
+  assert.equal(j.link, "");
+  assert.equal(j.sustenta, "");
+  assert.match(j.tese, /A contratação exige informação clara/);
+});

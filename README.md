@@ -54,6 +54,8 @@ Ele mostra, sem consultar o site de novo:
 - quais pontos dos **seus fatos** aparecem ou não no julgado;
 - **sinais de superação** em decisões posteriores e o **leading case** do tema.
 
+O resultado abre com um **resumo de 5 linhas**; o detalhe vem logo abaixo. Se pedir `formato: ficha`, sai um rascunho da ficha de precedente para você conferir e guardar.
+
 A ferramenta não decide se o caso é diferente ou se o precedente caiu: isso é com você, depois de ler.
 
 ## Algo deu errado?

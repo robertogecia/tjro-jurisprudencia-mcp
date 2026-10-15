@@ -167,3 +167,47 @@ export function termosQueDistinguem(hits, idAlvo, { consulta = "", grupos = null
     .map(([w, c]) => [w, q6((1 + Math.log(c)) * idf(w))])
     .sort((a, b) => b[1] - a[1] || ordem(a[0], b[0])).slice(0, 8).map(([w]) => forma.get(w));
 }
+
+// ---- ranking BM25 de recibos por uma consulta em linguagem natural (usado por buscar_recibos_tjro quando o E de todas as palavras dá zero) ----
+// Medido em 15/10/2026: o E de todas as palavras deu ZERO em 40 relatos de fatos escritos por modelo (20 + 20 de amostra nova). Este
+// ranking (palavras + pares vizinhos, sobre a ementa) pôs o acórdão de origem no top 10 em 17 de 20 na amostra de escolha e em 16 de 20
+// (top 3: 12) na amostra nova; sem os pares, 15 de 20; só as 5 ou 8 palavras de maior idf, 5 e 9 de 20 (cortar a consulta piora). Literatura: BM25 é linha de base forte em recuperação de casos (COLIEE) e a consulta booleana
+// sofre com vocabulário diferente (Blair e Maron, 1985).
+const IDX_RANK = new Map();
+function docRank(r) {
+  const k = `${r.id_documento}:${(r.texto || "").length}`;
+  let v = IDX_RANK.get(k);
+  if (!v) {
+    if (IDX_RANK.size > 20000) IDX_RANK.clear();
+    const t = tokens(semCabecalho(r.texto).slice(0, 6000));
+    const tf = new Map(), tfb = new Map();
+    for (const w of t) tf.set(w, (tf.get(w) || 0) + 1);
+    for (let i = 0; i + 1 < t.length; i++) { const b = `${t[i]}_${t[i + 1]}`; tfb.set(b, (tfb.get(b) || 0) + 1); }
+    v = { len: t.length, tf, tfb };
+    IDX_RANK.set(k, v);
+  }
+  return v;
+}
+export function rankearPorConsulta(consulta, recibos, limite = 10) {
+  const q = tokens(String(consulta || ""));
+  if (q.length < 3 || !recibos.length) return [];
+  const qb = [];
+  for (let i = 0; i + 1 < q.length; i++) qb.push(`${q[i]}_${q[i + 1]}`);
+  const docs = recibos.map((r) => ({ r, d: docRank(r) }));
+  const N = docs.length, avg = docs.reduce((a, x) => a + x.d.len, 0) / N || 1;
+  const df = new Map(), dfb = new Map();
+  for (const w of new Set(q)) { let c = 0; for (const x of docs) if (x.d.tf.has(w)) c++; df.set(w, c); }
+  for (const w of new Set(qb)) { let c = 0; for (const x of docs) if (x.d.tfb.has(w)) c++; dfb.set(w, c); }
+  const K = 1.2, B = 0.75;
+  const peso = (f, L) => (f * (K + 1)) / (f + K * (1 - B + (B * L) / avg));
+  const out = [];
+  for (const { r, d } of docs) {
+    let sc = 0;
+    for (const w of new Set(q)) { const f = d.tf.get(w); if (f) sc += Math.log(1 + (N - df.get(w) + 0.5) / (df.get(w) + 0.5)) * peso(f, d.len); }
+    for (const w of new Set(qb)) { const f = d.tfb.get(w); if (f) sc += 1.5 * Math.log(1 + (N - dfb.get(w) + 0.5) / (dfb.get(w) + 0.5)) * peso(f, d.len); }
+    if (sc > 0) out.push([r, q6(sc)]);
+  }
+  const dt = (r) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(String(r.data_julgamento || "")); return m ? `${m[3]}${m[2]}${m[1]}` : ""; };
+  out.sort((a, b) => b[1] - a[1] || (dt(b[0]) > dt(a[0]) ? 1 : dt(b[0]) < dt(a[0]) ? -1 : 0) || ordem(String(a[0].id_documento), String(b[0].id_documento)));
+  return out.slice(0, limite);
+}
