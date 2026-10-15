@@ -66,6 +66,10 @@ const RE_INICIO_ATRIB = new RegExp(
   String.raw`)`);
 const RE_TEM_JULGAMENTO = /\b(?:rel\b|rel\.|rela|relator|relatora|relatoria|julgad|julg\.|julgamento|j\.|dje?n?\b|dj\b|publicad|publicacao)/;
 // "STJ - REsp 1.234/SP, Rel. …" sem parênteses (formato de alguns repositórios)
+// v1.34.0: citação no formato do PJe, sem parênteses ("…Processo nº 7007178-54.2017.8.22.0014, 2ª Câmara Cível…, Relator(a) do
+// Acórdão: FULANO Data de julgamento: 10/06/2021."). Sem ela, o bloco da ementa transcrita não tinha fim e o seguinte o
+// atravessava, marcando como transcrição a voz do relator (relato de uso de 13/10/2026, id 26358276).
+const RE_ATRIB_PJE = /\bprocesso\s+n\S{0,2}\s*\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}[^]{0,300}?\bdata de julgamento:?\s*\d{1,2}\/\d{1,2}\/\d{4}\.?/g;
 const RE_ATRIB_SOLTA = /\b(?:tj-?[a-z]{2}|tjro|stj|stf)\s*[-,]\s*(?:resp|aresp|agint|agrg|edcl|re|are|hc|rhc|apelacao|ac|ai)\b[^.\n]{0,200}\brel\b/g;
 
 /** Parênteses de atribuição em [ini, fim): [[início, fim-exclusivo], …] em ordem. */
@@ -90,6 +94,12 @@ export function atribuicoes(tn, ini = 0, fim = tn.length) {
     const pt = tn.indexOf(". ", m.index + m[0].length);
     out.push([m.index, pt >= 0 && pt - m.index < 400 ? pt + 1 : m.index + m[0].length]);
   }
+  const rp = new RegExp(RE_ATRIB_PJE.source, "g");
+  rp.lastIndex = ini;
+  for (let m; (m = rp.exec(tn)) && m.index < fim;) {
+    if (out.some(([x, y]) => m.index < y && m.index + m[0].length > x)) continue;
+    out.push([m.index, m.index + m[0].length]);
+  }
   return out.sort((x, y) => x[0] - y[0]);
 }
 
@@ -97,7 +107,7 @@ export function atribuicoes(tn, ini = 0, fim = tn.length) {
 // Onde começa um bloco transcrito. A posição que conta é o FIM do marcador: o texto
 // que vem depois é do outro julgado.
 const RE_ABRE_BLOCO = new RegExp(
-  String.raw`\bementa\s*[:.-]|\bementa\b(?=\s+(?!id\b)[a-z])|\bacordao\s*:|\bsumula\s+(?:vinculante\s+)?n?\.?\s*\d+\s*[:-]` +
+  String.raw`\bementa\s*[:.-]|\bementa\b(?=\s+(?!id\b)[a-z])|(?<!relator\(a\) do )(?<!relator do )\bacordao\s*:|\bsumula\s+(?:vinculante\s+)?n?\.?\s*\d+\s*[:-]` +
   String.raw`|\b(?:transcrevo|in verbis|verbis|litteris|nos seguintes termos|assim (?:decidiu|se manifestou|ementado))\b\s*:?` +
   String.raw`|\b(?:vejamos|veja-se|confira-se|elucida-se|observe-se|transcreve-se|destaco|assim ementad[oa]|confiram-se|colaciono|colaciona-se|cito|cita-se|a saber|a proposito|exemplificativamente` +
   String.raw`|seguintes?(?: teor| julgados?| precedentes?| ementas?| termos)?|nesse sentido|neste sentido|nessa linha|na mesma linha` +

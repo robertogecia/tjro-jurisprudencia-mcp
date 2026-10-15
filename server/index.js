@@ -32,6 +32,7 @@ import {
   gravarEscolha,
   formatTriagem,
   dicaConsultaGrande,
+  linhaDeRitmo,
   limitarSaida,
   lerEscolha,
   modoNavegadorAtivo,
@@ -270,7 +271,7 @@ server.registerTool(
       let texto = formatBusca(data, a.consulta, tipo, ordenacao, pagina, porPagina, filtros, nota, !!a.termo_exato, temGrupos || (Array.isArray(a.excluir) && a.excluir.length) ? corpo.fields.query : "", { modo: a.modo });
       if (a.sugerir_termos)
         texto += blocoVocabulario(sugerirVocabulario((data.hits || {}).hits || [], { consulta: a.consulta, grupos: a.grupos, relator: a.relator }), { relator: a.relator });
-      return { content: [{ type: "text", text: await comAvisos(limitarSaida(texto)) }] };
+      return { content: [{ type: "text", text: await comAvisos(limitarSaida(texto) + linhaDeRitmo()) }] };
     } catch (e) {
       return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e) + dicaConsultaGrande(msgErro(e), a.grupos)) }], isError: true };
     }

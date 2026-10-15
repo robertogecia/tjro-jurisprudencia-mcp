@@ -2,6 +2,16 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.34.0 (14/10/2026): correções vindas do relato de uso de uma pesquisa de litigância de má-fé
+
+- **Falso alerta de TRANSCRIÇÃO corrigido.** O verificador marcava como transcrição a frase do próprio relator quando o voto citava uma ementa no formato do PJe, sem parênteses ("…Processo nº …, Relator(a) do Acórdão: … Data de julgamento: dd/mm/aaaa."). Duas causas: "Relator(a) do Acórdão:" abria bloco e essa citação não fechava bloco, então o bloco seguinte atravessava três parágrafos do relator. Nos 1.672 acórdãos dos recibos, 50 mudaram; a conferência cega e dupla dos 55 trechos que mudaram de lado confirmou 46 de 49 novas transcrições e 5 de 6 devoluções à voz do relator, sem erro confirmado pelos dois rotuladores (concordância 52/55).
+- **Fecho do acórdão cortado agora aparece.** Quando o limite de tamanho corta o acórdão antes do "acordam os Magistrados", o fecho (câmara, votação, resultado) vem logo abaixo do aviso de corte, em trecho literal.
+- **Reemissão do mesmo acórdão.** O PJe às vezes emite o mesmo acórdão duas vezes, com ids e datas diferentes, uma delas sem o voto. Antes saíam como "julgamentos distintos"; agora um aviso REEMISSÃO diz que é o mesmo julgamento (mesmo começo e mesmo fecho), aponta o id mais completo e manda conferir a publicação no PJe. Disparou em 1 de 383 processos do cache, justamente o do relato.
+- **Artigo com algarismos trocados.** O inteiro teor avisa quando o texto cita dois artigos com os mesmos algarismos em outra ordem e sem diploma diferente (ex.: art. 1.103 e art. 1.013 do CPC), e diz quando o número não existe no CPC (acima do art. 1.072). Nos 3.754 recibos: 5 avisos, 4 erros reais de digitação e 1 par legítimo (por isso é "confira", não afirmação).
+- **Julgado recente marcado na busca.** Decisão julgada há até 30 dias leva 🆕: pode ainda não ter sido publicada e cabe embargos.
+- **Placar do limitador no fim da busca.** Quantas consultas ao portal esta máquina fez na janela atual e o nível do limitador, para o agente não estourar o próprio teto por frente sem saber.
+- **Busca sobre má-fé mostra a frase, não um rótulo.** Pedido de rótulo "aplicada / afastada / só citada" medido às cegas (60 frases novas, 2 rotuladores, concordância 58/60): afastada 87%, aplicada 71%, pedido da parte 60%, só citada 50%. Rótulo assim enganaria; em busca que menciona má-fé, cada resultado traz a frase literal sobre litigância de má-fé mais próxima do fim do texto, e quem lê decide.
+
 ## v1.33.0 (14/10/2026): correções vindas do relato de uso de um caso real
 
 Relato de uma sessão que fez jurimetria de um juiz e de um relator (120 consultas em 2 dias, 0 bloqueios abaixo de 7 s). Dos 10 achados, entram os que têm correção segura:
