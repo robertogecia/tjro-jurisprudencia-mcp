@@ -794,7 +794,7 @@ export const contaTermosDaConsulta = (grupos) => (Array.isArray(grupos) ? grupos
 export function dicaConsultaGrande(mensagem, grupos) {
   const nG = Array.isArray(grupos) ? grupos.length : 0, nT = contaTermosDaConsulta(grupos);
   if (!/HTTP 500/.test(String(mensagem || "")) || (nG < 3 && nT < 10)) return "";
-  return ` O portal respondeu 500 a uma consulta grande (${nG} grupos, ${nT} termos): costuma falhar acima de 2 grupos ou cerca de 10 termos. Reduza para até 2 grupos e uns 6 termos, ou divida em duas buscas.`;
+  return ` O portal respondeu 500 a uma consulta grande (${nG} grupos, ${nT} termos): consultas grandes falharam com mais frequência, mas o gatilho exato não está provado (não é pontuação nem só o número de termos). Reduza para 2 grupos de poucos termos, ou divida em duas buscas e junte os resultados.`;
 }
 // Resultado muito grande é desviado pelo cliente para um arquivo que o subagente não lê; corta no limite de um resultado e avisa.
 export const SAIDA_MAX_CHARS = 80000;
