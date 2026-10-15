@@ -1,0 +1,32 @@
+name: instalador
+
+# Testa, em Linux, macOS e Windows, o pacote para o aplicativo Gemini: o instalador baixa a release mais recente do GitHub,
+# instala na pasta pessoal e o teste de 30 segundos confirma que o servidor sobe e lista as ferramentas. Não consulta o tribunal.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "gemini/**"
+      - ".github/workflows/instalador.yml"
+
+jobs:
+  instalar:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Instalar (macOS e Linux)
+        if: runner.os != 'Windows'
+        run: sh gemini/instalar-mac-linux.sh
+      - name: Instalar (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./gemini/instalar-windows.ps1
+      - name: Teste de 30 segundos
+        run: node gemini/testar-servidor.mjs

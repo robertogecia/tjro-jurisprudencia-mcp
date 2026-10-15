@@ -30,7 +30,8 @@ O instalador baixa a versão mais recente do GitHub, instala em `TJRO-Jurisprude
 3. **Nome do servidor:** Jurisprudência TJRO. **Descrição:** pesquisa de jurisprudência do TJRO.
 4. **Comando:** cole a linha que o instalador mostrou.
 5. Sandbox: veja a nota 2 acima.
-6. Avance e faça um teste com uma pergunta genérica, sem caso: "busque jurisprudência do TJRO sobre dano moral por negativação indevida".
+6. Antes, confira que o servidor sobe: no Terminal, `node testar-servidor.mjs` (nesta pasta) deve imprimir "OK: Jurisprudência TJRO … 13 ferramentas". Se falhar, o erro aparece ali.
+7. Avance e faça um teste com uma pergunta genérica, sem caso: "busque jurisprudência do TJRO sobre dano moral por negativação indevida".
 
 ## Instruções para o Gemini (cole nas instruções do app ou de um Gem)
 
