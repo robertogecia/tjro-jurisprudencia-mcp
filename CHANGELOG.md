@@ -2,6 +2,22 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.36.0 (15/10/2026): distinguishing, superação, natureza do julgado e leading case
+
+- **Nova ferramenta `distinguir_tjro`.** Para um julgado já lido nesta máquina, sem consultar o portal, ela monta uma ficha com sete partes:
+  - **Natureza no art. 927 do CPC:** precedente qualificado (IRDR/IAC do TJRO com tese fixada), decisão do Pleno/Órgão Especial, jurisprudência persuasiva de câmara, monocrática ou 1º grau. Quando o acórdão aplica um tema ou súmula, aponta que o vinculante é o precedente, não o acórdão.
+  - **Razão de decidir declarada:** tese e razões de decidir da ementa, mais o resultado, em texto literal.
+  - **Fatos do precedente:** em texto literal.
+  - **Seus fatos × o precedente:** com `fatos_do_caso`, cada termo dos seus fatos ao lado da frase do precedente que o menciona, ou listado como ausente. Os fatos não são gravados.
+  - **Frases candidatas:** trechos em que o julgado aplica precedente, distingue, muda de entendimento ou ressalva posição pessoal.
+  - **Sinais de superação em julgados posteriores:** os que citam o processo, os do mesmo tema com frase de mudança de entendimento e os do mesmo tema com resultado oposto.
+  - **Leading case do tema:** IRDR/IAC com tese, precedentes qualificados mais invocados e julgados mais citados.
+- **O que foi medido às cegas** (Sonnet e Opus, amostra nova):
+  - **Frases candidatas:** ressalva pessoal acertou 7 de 7, distinção 18 de 29, aplicação de precedente 14 de 23 e mudança de entendimento 3 de 9. Como só a ressalva passa, as frases saem como candidatas, com o acerto ao lado, e nunca como rótulo.
+  - **"Mesmo tema":** medido pelo núcleo da ementa. Com semelhança de 0,25 ou mais, era a mesma questão jurídica em 9 de 9 pares; entre 0,20 e 0,24, em 19 de 28. O sinal de resultado oposto exige 0,25.
+- **Nada é decidido pela ferramenta.** Distinção, superação e leading case são conclusões do advogado. A situação de precedente qualificado se confere no BNP.
+- **Base normativa conferida no Planalto:** arts. 927, 947, § 3º, 985, 986 e 489, § 1º, V e VI, do CPC.
+
 ## v1.35.0 (15/10/2026): correções vindas de uma jurimetria de honorários da 1ª Câmara Cível
 
 - **README reescrito para advogados leigos.** Instalação em 4 passos curtos, com o passo 4 explicando a pergunta da primeira pesquisa (autorizar ou não que a extensão se apresente como navegador, com o risco dito claramente e como mudar depois). Tabela de problemas e seção "Onde funciona" encurtadas, e a seção "Se a busca parar de funcionar" sem detalhes técnicos.

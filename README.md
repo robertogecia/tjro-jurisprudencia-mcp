@@ -43,6 +43,19 @@ extensão se apresente ao site **como um navegador comum**, o que costuma evitar
 A resposta fica gravada. Para mudar depois, peça ao Claude: *mude a identificação da extensão do TJRO para navegador*
 (ou *para honesta*), ou use a chave em Configurações, Extensões, Jurisprudência TJRO.
 
+## Distinguir um precedente e ver se ele foi superado
+
+Depois de ler um acórdão, peça ao Claude, por exemplo:
+*use distinguir_tjro no acórdão id 12345, com estes fatos do meu caso: ...*
+
+Ele mostra, sem consultar o site de novo:
+- se o julgado **vincula** (IRDR ou IAC do TJRO) ou é só **jurisprudência**, que convence mas não obriga;
+- a **tese** e os **fatos** do julgado, com as palavras dele;
+- quais pontos dos **seus fatos** aparecem ou não no julgado;
+- **sinais de superação** em decisões posteriores e o **leading case** do tema.
+
+A ferramenta não decide se o caso é diferente ou se o precedente caiu: isso é com você, depois de ler.
+
 ## Algo deu errado?
 
 | O que aconteceu | O que fazer |

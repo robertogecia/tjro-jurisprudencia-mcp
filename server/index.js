@@ -46,6 +46,7 @@ import {
   gravarCacheInteiro,
   notaCache,
 } from "./lib.js";
+import { distinguir } from "./precedentes.js";
 import { consultarProcesso, formatProcesso, ErroProcesso } from "./processo.js";
 import { ordenarPorSimilaridade, notaSimilares } from "./similares.js";
 import { sugerirVocabulario, blocoVocabulario, termosQueDistinguem } from "./vocabulario.js";
@@ -386,6 +387,33 @@ server.registerTool(
     annotations: { title: "Buscar recibos locais do TJRO", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   async (a) => ({ content: [{ type: "text", text: buscarRecibos(a.consulta || "", a.grupos ?? null, a.limite ?? 10, undefined, { nrProcesso: a.nr_processo || "", idDocumento: a.id_documento || "", relator: a.relator || "" }) }] })
+);
+
+server.registerTool(
+  "distinguir_tjro",
+  {
+    title: "Distinguir, checar superação e achar o leading case de um julgado do TJRO",
+    description:
+      "Ficha de um julgado JÁ LIDO nesta máquina (recibo local; ZERO requisição ao portal) para fazer distinguishing e checar overruling: " +
+      "(1) NATUREZA no art. 927 do CPC: precedente qualificado (IRDR/IAC do TJRO com tese fixada), decisão do Pleno/Órgão Especial, jurisprudência persuasiva de câmara, monocrática ou 1º grau; " +
+      "(2) razão de decidir declarada (tese e razões de decidir da ementa, resultado), LITERAL; (3) fatos do precedente, LITERAL; " +
+      "(4) com `fatos_do_caso`, cada termo dos seus fatos ao lado da frase do precedente que o menciona (ausência de palavra não prova fato diferente); " +
+      "(5) frases candidatas em que o julgado aplica precedente, distingue, muda de entendimento ou ressalva posição pessoal, com o acerto medido às cegas; " +
+      "(6) sinais de SUPERAÇÃO em julgados posteriores nos recibos: os que citam este processo, os do mesmo tema com frase de mudança de entendimento ou com resultado oposto; " +
+      "(7) LEADING CASE do tema: IRDR/IAC do TJRO com tese, precedentes qualificados mais invocados e julgados mais citados. " +
+      "NÃO decide nada: distinção, superação e leading case são conclusões do advogado. Situação de precedente qualificado se confere no BNP. " +
+      "Sem recibo, leia antes com obter_inteiro_teor_tjro. `fatos_do_caso` fica só nesta máquina e não é gravado.",
+    inputSchema: {
+      id_documento: z.string().optional().describe("Id do documento (id_processo_documento) do julgado já lido. Preferível ao número."),
+      nr_processo: z.string().optional().describe("Número CNJ; sem id, usa o ACÓRDÃO mais recente do processo nos recibos."),
+      fatos_do_caso: z.string().max(4000).optional().describe("Fatos materiais do SEU caso, em poucas linhas, para comparar com o precedente. Não é gravado nem enviado a lugar nenhum."),
+    },
+    annotations: { title: "Distinguir e checar superação (TJRO)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async (a) => {
+    if (!a.id_documento && !a.nr_processo) return { content: [{ type: "text", text: "Informe id_documento ou nr_processo de um julgado já lido (obter_inteiro_teor_tjro grava o recibo)." }], isError: true };
+    return { content: [{ type: "text", text: await comAvisos(limitarSaida(distinguir({ id_documento: a.id_documento || "", nr_processo: a.nr_processo || "", fatos_do_caso: a.fatos_do_caso || "" }))) }] };
+  }
 );
 
 server.registerTool(
