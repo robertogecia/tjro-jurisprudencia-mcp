@@ -112,3 +112,13 @@ test("distinguir formato ficha: JSON do contrato, campos de decisão vazios, ver
   assert.equal(j.sustenta, "");
   assert.match(j.tese, /A contratação exige informação clara/);
 });
+
+test("IRDR: a tese termina antes dos dispositivos citados e da causa piloto (verificação de 15/10/2026)", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "irdr recibos "));
+  const em = "EMENTA I. CASO EM EXAME 1. IRDR sobre cartão consignado. II. QUESTÃO EM DISCUSSÃO 2. validade. III. RAZÕES DE DECIDIR 3. informação. IV. DISPOSITIVO E TESE 4. Incidente julgado. Tese de julgamento: 1) A contratação exige informação clara. 2) O contrato anulado gera restituição em dobro. Dispositivos relevantes citados: CDC, art. 6º, III. Jurisprudência relevante citada: STJ, AgRg no REsp 1. CAUSA PILOTO Autos n. 7033860-41.2024.8.22.0001 RELATÓRIO ADMILSON recorre da sentença. VOTO Nego provimento. ".concat("texto da causa piloto ".repeat(300));
+  fs.writeFileSync(path.join(d, "700.json"), JSON.stringify({ id_documento: "700", nr_processo: "08000010120258220000", tipo: "ACÓRDÃO", data_julgamento: "05/12/2025", classe: "INCIDENTE DE RESOLUÇÃO DE DEMANDAS REPETITIVAS", texto: "RELATÓRIO IRDR. VOTO Fixa-se a seguinte tese. " + em }));
+  const o = distinguir({ id_documento: "700", pasta: d });
+  const linha = o.split("\n").find((l) => l.startsWith("- **Tese da ementa**")) || "";
+  assert.match(linha, /restituição em dobro/);
+  assert.doesNotMatch(linha, /CAUSA PILOTO|Dispositivos relevantes|texto da causa piloto/);
+});

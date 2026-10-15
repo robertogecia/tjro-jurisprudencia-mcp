@@ -310,7 +310,13 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   const ementa = doProc.find((x) => x.tipo === "EMENTA");
   // precedente qualificado: a tese é o que vincula, vem inteira (teto 15000); nos demais, o corte de sempre
   const tetoTese = /resolucao de demandas repetitivas|\birdr\b|assuncao de competencia/.test(fold(r.classe || "")) ? 15000 : undefined;
-  const tese = teseDaEmenta(r.tipo === "EMENTA" ? t : (ementa || {}).texto || "", tetoTese) || teseDaEmenta(t, tetoTese);
+  let tese = teseDaEmenta(r.tipo === "EMENTA" ? t : (ementa || {}).texto || "", tetoTese) || teseDaEmenta(t, tetoTese);
+  // Verificação de 15/10/2026 (chamada real no IRDR 15): com o teto alto, a "tese" levava junto a causa piloto inteira (14 mil caracteres).
+  // A tese termina onde começam os dispositivos citados, a jurisprudência citada ou a causa piloto.
+  if (tese && tetoTese) {
+    const k = tese.texto.search(/\s(?:Dispositivos relevantes citados|Jurisprud[êe]ncia relevante citada|CAUSA PILOTO)\b/);
+    if (k > 0) tese = { ...tese, texto: tese.texto.slice(0, k).trim(), completa: true };
+  }
   if (tese) P(`- **Tese da ementa** (literal${tese.completa ? "" : ", cortada"}): «${tese.texto}»`);
   const fonteSec = ementa ? ementa.texto : t;
   const razoes = secoesDaEmenta(fonteSec, 0, Math.min(fonteSec.length, 12000)).find((x) => x.nome === "razoes de decidir");
