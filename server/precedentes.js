@@ -73,30 +73,68 @@ export function termosDosFatos(fatos, max = 25) {
   }
   return out;
 }
-/** Para cada termo dos fatos do caso, a frase do precedente (voz do próprio julgado, fora de transcrição) em que aparece,
- * ou ausência. Ausência de palavra NÃO prova fato diferente: o julgado pode dizer o mesmo com outras palavras. */
+/** Expressões dos fatos: pares de palavras de conteúdo vizinhas (só palavra vazia entre elas), com a grafia original. */
+export function expressoesDosFatos(fatos, max = 20) {
+  const ws = String(fatos || "").split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const out = [];
+  let ant = null;
+  for (const w of ws) {
+    const f = fold(w);
+    if (f.length < 4 || /^\d+$/.test(f) || STOP_SIM.has(f)) continue;
+    if (ant && !out.some((e) => e.a === ant.f && e.b === f)) out.push({ a: ant.f, b: f, rotulo: `${ant.w} … ${w}`, wb: w });
+    ant = { f, w };
+    if (out.length >= max) break;
+  }
+  return out;
+}
+const raizDe = (t) => (t.length > 6 ? t.slice(0, t.length - 2) : t);
+/** Fatos do caso × precedente, em duas camadas: (1) EXPRESSÕES (duas palavras vizinhas dos seus fatos, no máximo duas palavras
+ * entre elas no julgado), preferindo a frase do VOTO à do relatório; (2) palavra solta só com 6+ letras e só no voto, porque palavra
+ * curta e genérica ("comum", "banco") casou com "prazo comum" e "FEBRABAN" no teste de 15/10/2026. Cada frase diz de onde vem:
+ * relatório narra pedido e alegação; voto é o que o julgado afirma. Ausência de palavra NÃO prova fato diferente. */
 export function compararFatos(fatos, texto, tipo = "ACÓRDÃO") {
   const t = String(texto || "");
   const fx = faixasAlheias(t, tipo);
   const fora = (i) => !fx.transcritas.some(([a, b]) => i >= a && i < b);
-  const frases = [];
   // o cabeçalho (partes, advogados, gabinete) não é fato do julgado: começa no RELATÓRIO quando ele vem no início
   const rel = t.slice(0, 4000).search(/\bRELAT[ÓO]RIO\b/);
-  let pos = rel > 0 ? rel : 0;
+  const ini = rel > 0 ? rel : 0;
+  const mv = t.slice(ini + 9).search(/\bVOTO\b|[ÉE] o relat[óo]rio|\bFUNDAMENTA[ÇC][ÃA]O\b/);
+  const voto = rel >= 0 && mv >= 0 ? ini + 9 + mv : -1;
+  const onde = (i) => (voto < 0 ? "texto" : i >= voto ? "voto" : "relatório: narra alegação, não fato reconhecido");
+  const frases = [];
+  let pos = ini;
   for (const f of frasesDoTexto(t)) {
     const i = t.indexOf(f, pos);
     if (i >= 0) pos = i + f.length;
     if (i >= 0 && fora(i)) frases.push({ i, f, x: fold(f) });
   }
+  const achar = (re, soVoto) => {
+    const cand = frases.filter((x) => re.test(x.x));
+    const v = cand.find((x) => voto >= 0 && x.i >= voto);
+    return v || (soVoto ? null : cand[0]) || null;
+  };
+  const lit = (fr) => fr.f.replace(/[ \t\n\r\f\v]+/g, " ").trim().slice(0, 300);
+  const expressoes = [], cobertos = new Set();
+  for (const e of expressoesDosFatos(fatos)) {
+    const re = new RegExp(`\\b${raizDe(e.a)}\\w*(?:\\W+\\w+){0,2}?\\W+${raizDe(e.b)}\\w*`);
+    const fr = achar(re, false);
+    if (!fr) continue;
+    const ult = expressoes[expressoes.length - 1];
+    // expressões encadeadas na mesma frase viram uma linha só ("cartão … crédito … reserva … margem")
+    if (ult && ult.frase === lit(fr) && ult.fim === e.a) { ult.termo += ` … ${e.wb}`; ult.fim = e.b; }
+    else expressoes.push({ termo: e.rotulo, frase: lit(fr), onde: onde(fr.i), fim: e.b });
+    cobertos.add(e.a); cobertos.add(e.b);
+  }
   const presentes = [], ausentes = [];
   for (const termo of termosDosFatos(fatos)) {
-    const raiz = termo.length > 6 ? termo.slice(0, termo.length - 2) : termo;
-    const re = new RegExp(`\\b${raiz}\\w*`);
-    const fr = frases.find((x) => re.test(x.x));
-    if (fr) presentes.push({ termo, frase: fr.f.replace(/[ \t\n\r\f\v]+/g, " ").trim().slice(0, 300) });
-    else ausentes.push(termo);
+    if (cobertos.has(termo)) continue;
+    const re = new RegExp(`\\b${raizDe(termo)}\\w*`);
+    if (!frases.some((x) => re.test(x.x))) { ausentes.push(termo); continue; }
+    const fr = termo.length >= 6 ? achar(re, true) : null;
+    if (fr) presentes.push({ termo, frase: lit(fr), onde: onde(fr.i) });
   }
-  return { presentes, ausentes };
+  return { expressoes: expressoes.map(({ fim, ...x }) => x), presentes, ausentes };
 }
 
 
@@ -117,6 +155,8 @@ const RE_RESSALVA = /\b(?:ressalvad\w+ (?:o )?(?:meu|minha) (?:entendimento|posi
 const RE_APLICA = /\b(?:tese (?:juridica )?(?:fixada|firmada)|em (?:observancia|atencao|cumprimento|obediencia) (?:a|ao) (?:tese|tema|irdr|iac|sumula|precedente)|aplicacao (?:da tese|do tema|do irdr|do iac|do precedente)|(?:conforme|consoante|nos termos d\w) (?:o |a )?(?:tema|irdr|iac) (?:n\w* )?\d)/;
 const RE_DISTINCAO = /\b(?:distinguishing|distincao|distinguir|distingue|inaplic\w+|nao se (?:aplica|amolda|ajusta|enquadra|subsume)|afast\w+ (?:a )?(?:aplicacao|incidencia)|(?:hipotese|situacao|caso) (?:fatica |concreto )?(?:diversa|distinta|diverso|distinto)|peculiar\w*|diferentemente)\b/;
 const RE_OBJ = new RegExp(`\\b${OBJ}\\b`);
+// "tese fixada" sozinha descreve o precedente; aplicação exige o verbo (teste de 15/10/2026, IRDR 15)
+const RE_VERBO_APLICA = /\b(?:aplic\w+|incid\w+|observ\w+|segu\w+|adot\w+|nos termos|conforme|consoante|em cumprimento|vincul\w+|amold\w+|enquadr\w+|subsum\w+)\b/;
 /** Frases candidatas, na voz do próprio julgado (fora de transcrição, voto divergente e declaração de voto). */
 export function frasesDePrecedente(texto, tipo = "ACÓRDÃO", max = 3) {
   const t = String(texto || "");
@@ -134,7 +174,7 @@ export function frasesDePrecedente(texto, tipo = "ACÓRDÃO", max = 3) {
     if (RE_RESSALVA.test(x)) out.ressalva.push(lit);
     else if (RE_MUDANCA.test(x) && !RE_NEGA.test(x) && !RE_PARTE.test(x)) out.mudanca.push(lit);
     else if (RE_DISTINCAO.test(x) && RE_OBJ.test(x) && !RE_PARTE.test(x) && !/condic\w+ economic|quantum|doutrina/.test(x)) out.distincao.push(lit);
-    else if (RE_APLICA.test(x) && !RE_PARTE.test(x)) out.aplicacao.push(lit);
+    else if (RE_APLICA.test(x) && RE_VERBO_APLICA.test(x) && !RE_PARTE.test(x)) out.aplicacao.push(lit);
   }
   for (const k of Object.keys(out)) out[k] = out[k].slice(0, max);
   return out;
@@ -196,8 +236,9 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   if (String(fatos_do_caso || "").trim()) {
     const c = compararFatos(fatos_do_caso, t, r.tipo);
     P("\n## 3. Seus fatos × o precedente");
-    P("_Para cada termo dos fatos que você deu, a primeira frase do precedente (voz do julgado) que o menciona. Ausência de palavra NÃO prova fato diferente: o julgado pode dizer o mesmo com outras palavras. A distinção exige comparar FATOS MATERIAIS e FUNDAMENTOS DETERMINANTES (art. 489, § 1º, VI), e isso é leitura sua._");
-    for (const p of c.presentes) P(`- **${p.termo}** — «${p.frase}»`);
+    P("_Expressões dos seus fatos (duas palavras vizinhas) e a frase do precedente que as traz, do voto quando há; palavra solta só se longa e no voto. Ausência de palavra NÃO prova fato diferente: o julgado pode dizer o mesmo com outras palavras. A distinção exige comparar FATOS MATERIAIS e FUNDAMENTOS DETERMINANTES (art. 489, § 1º, VI), e isso é leitura sua._");
+    for (const p of [...c.expressoes, ...c.presentes]) P(`- **${p.termo}** (${p.onde}) — «${p.frase}»`);
+    if (!c.expressoes.length && !c.presentes.length) P("- Nenhuma expressão dos seus fatos aparece no precedente.");
     if (c.ausentes.length) P(`- Não mencionados no texto do precedente: ${c.ausentes.join(", ")}.`);
   }
   // 4. frases do próprio julgado
@@ -207,7 +248,7 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   P("\n## 4. O que o próprio julgado diz sobre precedentes (frases candidatas)");
   if (!tem) P("- Nenhuma frase candidata.");
   for (const k of ["aplicacao", "distincao", "mudanca", "ressalva"])
-    for (const f of fr[k]) P(`- ${rot[k]} (acerto medido ${ACERTO_FRASES[k]}): «${f}»`);
+    for (const f of fr[k]) P(`- ${rot[k]} (acerto medido ${ACERTO_FRASES[k]}${k === "aplicacao" ? ", na regra anterior, mais frouxa" : ""}): «${f}»`);
   // 5. superação depois dele
   P("\n## 5. Superação (overruling): sinais em julgados POSTERIORES nos recibos locais");
   const iso = isoBr(r.data_julgamento), meu = cnj(r.nr_processo || ""), meusDig = soDigitos(r.nr_processo);

@@ -4,6 +4,9 @@ Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
 ## v1.36.0 (15/10/2026): distinguishing, superação, natureza do julgado e leading case
 
+- `distinguir_tjro`, comparação de fatos: compara EXPRESSÕES dos seus fatos (palavras vizinhas, encadeadas numa linha quando caem na mesma frase), prefere a frase do voto e diz se ela vem do voto ou do relatório (alegação). Palavra solta só com 6+ letras e no voto: no teste ao vivo, "comum" e "banco" pescavam "prazo comum" e "FEBRABAN".
+- Frase de "aplica precedente qualificado" agora exige verbo de aplicação; "tese fixada" sozinha descreve, não aplica.
+
 - **Nova ferramenta `distinguir_tjro`.** Para um julgado já lido nesta máquina, sem consultar o portal, ela monta uma ficha com sete partes:
   - **Natureza no art. 927 do CPC:** precedente qualificado (IRDR/IAC do TJRO com tese fixada), decisão do Pleno/Órgão Especial, jurisprudência persuasiva de câmara, monocrática ou 1º grau. Quando o acórdão aplica um tema ou súmula, aponta que o vinculante é o precedente, não o acórdão.
   - **Razão de decidir declarada:** tese e razões de decidir da ementa, mais o resultado, em texto literal.

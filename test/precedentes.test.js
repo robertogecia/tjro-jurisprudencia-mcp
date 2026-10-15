@@ -22,7 +22,7 @@ test("citações e leading case contam processos distintos que citam", () => {
 test("comparar fatos: frase do julgado para o termo presente; ausente listado", () => {
   const t = "RELATÓRIO Trata-se de apelação. VOTO O aposentado sofreu descontos no benefício sem contrato assinado. Recurso provido.";
   const c = compararFatos("descontos em benefício de aposentado analfabeto", t);
-  assert.ok(c.presentes.some((p) => p.termo === "descontos" && /sofreu descontos/.test(p.frase)));
+  assert.ok(c.expressoes.some((p) => /descontos … benefício/.test(p.termo) && /sofreu descontos/.test(p.frase) && p.onde === "voto"));
   assert.ok(c.ausentes.includes("analfabeto"));
   assert.deepEqual(termosDosFatos("o banco e o banco"), ["banco"]);
 });
@@ -35,4 +35,19 @@ test("frases candidatas: ressalva, mudança, distinção; argumento da parte nã
   assert.match(f.mudanca[0], /Revejo meu entendimento/);
   assert.match(f.distincao[0], /Tema 1061 não se aplica/);
   assert.ok(!f.distincao.some((x) => /apelante defende/.test(x)));
+});
+
+test("comparar fatos (teste ao vivo de 15/10/2026): palavra curta genérica não pesca frase; voto antes do relatório", () => {
+  const t = "RELATÓRIO O autor alega cartão de crédito consignado sem informação. Houve prazo comum. A FEBRABAN ingressou. " +
+    "VOTO O banco contratou cartão de crédito com reserva de margem consignável sem informar o consumidor. Recurso provido.";
+  const c = compararFatos("aposentado contratou empréstimo comum, mas o banco lançou cartão de crédito com reserva de margem", t);
+  const cc = c.expressoes.find((e) => /cartão … crédito/.test(e.termo));
+  assert.equal(cc.onde, "voto");
+  assert.match(cc.frase, /reserva de margem/);
+  assert.ok(!c.presentes.some((p) => p.termo === "comum" || p.termo === "banco"));
+});
+
+test("aplicação exige verbo: frase que só descreve a tese fixada não conta", () => {
+  const f = frasesDePrecedente("RELATÓRIO x. VOTO A tese fixada no IRDR tem efeito expansivo. Aplica-se a tese fixada no IRDR 15 ao caso. Fim.");
+  assert.deepEqual(f.aplicacao, ["Aplica-se a tese fixada no IRDR 15 ao caso."]);
 });
