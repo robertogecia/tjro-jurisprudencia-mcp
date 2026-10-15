@@ -11,6 +11,7 @@ Conferência dos 20 itens de 08/10/2026 e novas hipóteses, todas medidas às ce
 - **Mesmo tema:** o núcleo da ementa lia só os 15.000 primeiros caracteres e podia pegar a ementa citada; agora usa a ementa do próprio acórdão. Com isso, "resultado oposto" com semelhança de 0,25 ou mais tratou da mesma questão em 34 de 36 pares; a diferença veio de fatos diferentes em 32 de 36 e de mudança de entendimento em 2 de 36. A saída diz isso: é material de distinguishing, e overruling é exceção.
 - **Distinguishing:** os termos dos seus fatos que o precedente não menciona saem como primeiro candidato a distinção (nos casos de teste, o fato que mudava a solução apareceu ali em 10 de 10).
 - **Velocidade:** `distinguir_tjro` guarda o que calcula de cada recibo; da segunda chamada em diante cai de 0,8 s para 0,05 s.
+- **`sugerir_termos`:** no acórdão do TJRO a ementa vem no fim, e o vocabulário saía do cabeçalho (gabinete, endereço, advogados, OAB) e do relatório. Agora lê a ementa do próprio acórdão, descarta fórmulas de redação e termos com algarismo, e mostra só pares de palavras (palavra solta era útil em 18 de 222). Na validação cega em 30 páginas novas, a parte útil subiu de 22% para 45%, com mais termos úteis no total (86 contra 75).
 - Testado e descartado: exigir que a palavra solta apareça duas vezes no voto (acerto igual, cerca de 80%, com 1, 2 ou 3+ ocorrências).
 
 ## v1.36.0 (15/10/2026): distinguishing, superação, natureza do julgado e leading case

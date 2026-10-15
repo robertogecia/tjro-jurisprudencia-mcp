@@ -13,20 +13,28 @@ const STOP = new Set([...STOP_SIM].map(dobra));
 const ROMANO = /^[ivxlcdm]+$/;
 // Medido às cegas em 14/10/2026 (40 páginas, 733 itens): 16% das sugestões eram ruído (nomes de magistrados, endereço do fórum) e 25% genéricas
 // (fórmulas do cabeçalho do acórdão). Ficam fora: palavras de cabeçalho/fórmula e os nomes de quem assina (campos de relator e presidente da página).
-const FORMULAS = new Set("gabinete avenida pinheiro machado bairro forum fórum distribuicao distribuição vistos relatados discutidos notas taquigraficas taquigráficas desembargadores desembargador desembargadora turma inominado inominados juizado juizados presidente relator relatora julgamentos julgamento acordam acórdão acordao unanimidade sessao sessão virtual ordinaria ordinária extraordinaria data".split(" ").map((w) => w.normalize("NFD").replace(/\p{M}/gu, "")));
+const FORMULAS = new Set("poder judiciario classe procedimento polo ativo passivo vieram conclusos decido replica relatorio relatório narrou narra narrando alegou alega alegando afirmou afirma afirmando requereu requer requerendo sustentou sustenta sustentando pleiteando pleiteia pleiteou postulou postula aduziu aduz colaciono transcrevo preceitua apresentadas contrarrazoes contrarrazões questoes questões discussao discussão exame decidir razoes razões dispositivo ementa olaria camacho impar ímpar advogado advogados advogada procurador procuradora patrono gabinete avenida pinheiro machado bairro forum fórum distribuicao distribuição vistos relatados discutidos notas taquigraficas taquigráficas desembargadores desembargador desembargadora turma inominado inominados juizado juizados presidente relator relatora julgamentos julgamento acordam acórdão acordao unanimidade sessao sessão virtual ordinaria ordinária extraordinaria data".split(" ").map((w) => w.normalize("NFD").replace(/\p{M}/gu, "")));
 /** [[palavra sem acento, palavra como escrita]] (4+ letras, sem número, sem palavra de ligação, sem algarismo romano). */
 /** Começa na palavra "Ementa" quando ela aparece nos primeiros 3.000 caracteres (acórdão abre com cabeçalho, gabinete e nomes). */
+// 15/10/2026 (medição cega: 30% dos termos úteis): no acórdão do TJRO a ementa vem no FIM; antes, sem "Ementa" no começo, o vocabulário
+// saía do cabeçalho (gabinete, endereço, advogados, OAB) e do relatório. Agora: a última "EMENTA" em caixa alta antes do fecho; senão,
+// "Ementa" no começo; senão, o RELATÓRIO.
 export const semCabecalho = (texto) => {
   const t = String(texto || "");
   const m = /\bementa\b/i.exec(t.slice(0, 3000));
-  return m ? t.slice(m.index) : t;
+  if (m) return t.slice(m.index);
+  let u = -1;
+  for (const x of t.matchAll(/\bEMENTA\b/g)) u = x.index;
+  if (u > 0) return t.slice(u);
+  const r = /\bRELAT[ÓO]RIO\b/.exec(t);
+  return r ? t.slice(r.index) : t;
 };
 export function palavras(texto) {
   const out = [];
   for (const w of String(texto || "").toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
     if (w.length < 4) continue;
     const f = dobra(w);
-    if (f.length < 4 || /^\d+$/.test(f) || !/^[a-z0-9]+$/.test(f) || STOP.has(f) || FORMULAS.has(f) || ROMANO.test(f)) continue;
+    if (f.length < 4 || /\d/.test(f) || !/^[a-z]+$/.test(f) || STOP.has(f) || FORMULAS.has(f) || ROMANO.test(f)) continue;
     out.push([f, w]);
   }
   return out;
@@ -41,7 +49,7 @@ export const radicalDe = (w) => {
 
 export const CABECA_CHARS = 4000;       // só o começo do documento (ementa/relatório): o voto inteiro traria o vocabulário de toda a causa
 const CORPUS_MIN = 300, MEMO_MS = 15 * 60 * 1000;                 // abaixo disso a "raridade" no corpus não diz nada
-const TERMOS_MAX = 8, PARES_MAX = 5, TRIOS_MAX = 6, VARIANTES_MAX = 4, PAGINA_MIN = 8;
+const TERMOS_MAX = 8, PARES_MAX = 8, TRIOS_MAX = 6, VARIANTES_MAX = 4, PAGINA_MIN = 8;
 const ordem = (a, b) => (a < b ? -1 : a > b ? 1 : 0);   // ordem de código, igual ao sorted() do Python
 const q6 = (x) => Math.round(x * 1e6);                   // log() de V8 e do libm podem diferir no último bit: compara quantizado
 
@@ -133,7 +141,7 @@ export function blocoVocabulario(res, { relator = "" } = {}) {
     return `\n**Vocabulário:** só ${res.n} documento(s) na página; são poucos para sugerir termos (use \`por_pagina\` maior, com a mesma consulta).\n`;
   const L = [`\n**Vocabulário das ementas desta página** (${res.n} documentos${res.temCorpus ? `; raridade medida em ${res.N} documentos já lidos nesta máquina` : "; corpus local pequeno demais para medir raridade"}; zero consulta extra). Sugestão para a próxima rodada, indício e não conclusão.`];
   const fmt = (l) => l.map(([t, c]) => `${t} (${c}/${res.n})`).join(", ");
-  if (res.caract.length) L.push(`- Termos característicos (frequentes aqui e raros no corpus): ${fmt(res.caract)}`);
+  // 15/10/2026 (validação cega, 30 páginas novas): palavra solta útil em 18 de 222; par de palavras em 54 de 122. Só os pares saem.
   if (res.pares.length) L.push(`- Pares de palavras que se repetem: ${res.pares.map(([t, c]) => `«${t}» (${c}/${res.n})`).join(", ")}`);
   if (res.trios && res.trios.length) L.push(`- Expressões recorrentes${relator ? ` de ${relator}` : ""} (3 palavras em sequência, sem as de ligação): ${res.trios.map(([t, c]) => `«${t}» (${c}/${res.n})`).join(", ")}`);
   for (const v of res.variantes) L.push(`- Variantes de «${v.termo}» nos resultados: ${fmt(v.variantes)}; para pegar todas, \`${v.radical}*\` em \`grupos\``);

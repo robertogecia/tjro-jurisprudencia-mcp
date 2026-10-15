@@ -38,7 +38,7 @@ test("sugerirVocabulario: página pequena e corpus pequeno não inventam sugest�
 test("blocoVocabulario: texto com contagem x/n e a instrução de uso; expressões do relator só com relator", () => {
   const sem = blocoVocabulario(sugerirVocabulario(hits, { consulta: "" }, corpusGrande));
   assert.match(sem, /\*\*Vocabulário das ementas desta página\*\* \(12 documentos; raridade medida em 400 documentos/);
-  assert.match(sem, /negativação \(12\/12\)/);
+  assert.doesNotMatch(sem, /Termos característicos/); // só os pares saem desde 15/10/2026 (palavra solta útil em 18 de 222)
   assert.doesNotMatch(sem, /Expressões recorrentes/);
   const com = blocoVocabulario(sugerirVocabulario(hits, { relator: "Fulano" }, corpusGrande), { relator: "Fulano" });
   assert.match(com, /Expressões recorrentes de Fulano/);
