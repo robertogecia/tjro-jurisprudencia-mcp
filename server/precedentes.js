@@ -87,7 +87,8 @@ export function expressoesDosFatos(fatos, max = 20) {
   }
   return out;
 }
-const raizDe = (t) => (t.length > 6 ? t.slice(0, t.length - 2) : t);
+// verbo no pretérito ("contratou") fica inteiro: a raiz curta casava com o substantivo ("contrato em empréstimo")
+const raizDe = (t) => (/(?:ou|aram|eram|iram)$/.test(t) ? t : t.length > 6 ? t.slice(0, t.length - 2) : t);
 /** Fatos do caso × precedente, em duas camadas: (1) EXPRESSÕES (duas palavras vizinhas dos seus fatos, no máximo duas palavras
  * entre elas no julgado), preferindo a frase do VOTO à do relatório; (2) palavra solta só com 6+ letras e só no voto, porque palavra
  * curta e genérica ("comum", "banco") casou com "prazo comum" e "FEBRABAN" no teste de 15/10/2026. Cada frase diz de onde vem:
@@ -141,8 +142,10 @@ export function compararFatos(fatos, texto, tipo = "ACÓRDÃO") {
 // ------------------------------------------------------------ frases candidatas ---
 // Medidas às cegas (15/10/2026, 2 rotuladores Sonnet e Opus, amostra NOVA de 64 frases, concordância 61/64): distinção 18/29,
 // aplicação de precedente qualificado 14/23, mudança de entendimento 3/9; ressalva pessoal 7/7 (1ª amostra). Nenhuma passa como
+// Aplicação remedida em 15/10/2026 (amostra nova de 40, concordância 37/40): 26 de 37; exigir verbo de aplicação foi testado e
+// descartado, porque as 10 frases que ele cortava eram todas aplicação para os dois rotuladores.
 // RÓTULO: saem como FRASES CANDIDATAS, literais, com o acerto medido ao lado; quem lê decide.
-export const ACERTO_FRASES = { distincao: "18 de 29", aplicacao: "14 de 23", mudanca: "3 de 9", ressalva: "7 de 7" };
+export const ACERTO_FRASES = { distincao: "18 de 29", aplicacao: "26 de 37", mudanca: "3 de 9", ressalva: "7 de 7" };
 const OBJ = "(?:tema|sumula|precedente|tese|irdr|iac|paradigma|julgado|acordao|entendimento firmado|orientacao firmada|jurisprudencia)";
 const RE_MUDANCA = new RegExp("\\b(?:overruling|revisao (?:da|de) tese|superacao (?:do|da|de) (?:precedente|entendimento|tese|jurisprudencia|orientacao)|" +
   "(?:revejo|reviso|revisito|altero|modifico|readequo|realinho|reformulo|supero|mudo|retifico) (?:\\w+ ){0,2}(?:meu |o meu |o |este |esse |aquele )?(?:entendimento|posicionamento|orientacao|posicao)|" +
@@ -155,8 +158,6 @@ const RE_RESSALVA = /\b(?:ressalvad\w+ (?:o )?(?:meu|minha) (?:entendimento|posi
 const RE_APLICA = /\b(?:tese (?:juridica )?(?:fixada|firmada)|em (?:observancia|atencao|cumprimento|obediencia) (?:a|ao) (?:tese|tema|irdr|iac|sumula|precedente)|aplicacao (?:da tese|do tema|do irdr|do iac|do precedente)|(?:conforme|consoante|nos termos d\w) (?:o |a )?(?:tema|irdr|iac) (?:n\w* )?\d)/;
 const RE_DISTINCAO = /\b(?:distinguishing|distincao|distinguir|distingue|inaplic\w+|nao se (?:aplica|amolda|ajusta|enquadra|subsume)|afast\w+ (?:a )?(?:aplicacao|incidencia)|(?:hipotese|situacao|caso) (?:fatica |concreto )?(?:diversa|distinta|diverso|distinto)|peculiar\w*|diferentemente)\b/;
 const RE_OBJ = new RegExp(`\\b${OBJ}\\b`);
-// "tese fixada" sozinha descreve o precedente; aplicação exige o verbo (teste de 15/10/2026, IRDR 15)
-const RE_VERBO_APLICA = /\b(?:aplic\w+|incid\w+|observ\w+|segu\w+|adot\w+|nos termos|conforme|consoante|em cumprimento|vincul\w+|amold\w+|enquadr\w+|subsum\w+)\b/;
 /** Frases candidatas, na voz do próprio julgado (fora de transcrição, voto divergente e declaração de voto). */
 export function frasesDePrecedente(texto, tipo = "ACÓRDÃO", max = 3) {
   const t = String(texto || "");
@@ -174,7 +175,7 @@ export function frasesDePrecedente(texto, tipo = "ACÓRDÃO", max = 3) {
     if (RE_RESSALVA.test(x)) out.ressalva.push(lit);
     else if (RE_MUDANCA.test(x) && !RE_NEGA.test(x) && !RE_PARTE.test(x)) out.mudanca.push(lit);
     else if (RE_DISTINCAO.test(x) && RE_OBJ.test(x) && !RE_PARTE.test(x) && !/condic\w+ economic|quantum|doutrina/.test(x)) out.distincao.push(lit);
-    else if (RE_APLICA.test(x) && RE_VERBO_APLICA.test(x) && !RE_PARTE.test(x)) out.aplicacao.push(lit);
+    else if (RE_APLICA.test(x) && !RE_PARTE.test(x)) out.aplicacao.push(lit);
   }
   for (const k of Object.keys(out)) out[k] = out[k].slice(0, max);
   return out;
@@ -218,7 +219,9 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   P("\n## 1. Razão de decidir: o que o julgado declara (candidatos literais)");
   const doProc = recibosDoProcesso(r.nr_processo || "", pasta).filter((x) => x.data_julgamento === r.data_julgamento);
   const ementa = doProc.find((x) => x.tipo === "EMENTA");
-  const tese = teseDaEmenta(r.tipo === "EMENTA" ? t : (ementa || {}).texto || "") || teseDaEmenta(t);
+  // precedente qualificado: a tese é o que vincula, vem inteira (teto 15000); nos demais, o corte de sempre
+  const tetoTese = /resolucao de demandas repetitivas|\birdr\b|assuncao de competencia/.test(fold(r.classe || "")) ? 15000 : undefined;
+  const tese = teseDaEmenta(r.tipo === "EMENTA" ? t : (ementa || {}).texto || "", tetoTese) || teseDaEmenta(t, tetoTese);
   if (tese) P(`- **Tese da ementa** (literal${tese.completa ? "" : ", cortada"}): «${tese.texto}»`);
   const fonteSec = ementa ? ementa.texto : t;
   const razoes = secoesDaEmenta(fonteSec, 0, Math.min(fonteSec.length, 12000)).find((x) => x.nome === "razoes de decidir");
@@ -248,7 +251,7 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   P("\n## 4. O que o próprio julgado diz sobre precedentes (frases candidatas)");
   if (!tem) P("- Nenhuma frase candidata.");
   for (const k of ["aplicacao", "distincao", "mudanca", "ressalva"])
-    for (const f of fr[k]) P(`- ${rot[k]} (acerto medido ${ACERTO_FRASES[k]}${k === "aplicacao" ? ", na regra anterior, mais frouxa" : ""}): «${f}»`);
+    for (const f of fr[k]) P(`- ${rot[k]} (acerto medido ${ACERTO_FRASES[k]}): «${f}»`);
   // 5. superação depois dele
   P("\n## 5. Superação (overruling): sinais em julgados POSTERIORES nos recibos locais");
   const iso = isoBr(r.data_julgamento), meu = cnj(r.nr_processo || ""), meusDig = soDigitos(r.nr_processo);

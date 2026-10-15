@@ -47,7 +47,7 @@ test("comparar fatos (teste ao vivo de 15/10/2026): palavra curta genérica não
   assert.ok(!c.presentes.some((p) => p.termo === "comum" || p.termo === "banco"));
 });
 
-test("aplicação exige verbo: frase que só descreve a tese fixada não conta", () => {
-  const f = frasesDePrecedente("RELATÓRIO x. VOTO A tese fixada no IRDR tem efeito expansivo. Aplica-se a tese fixada no IRDR 15 ao caso. Fim.");
-  assert.deepEqual(f.aplicacao, ["Aplica-se a tese fixada no IRDR 15 ao caso."]);
+test("verbo no pretérito não casa com substantivo de mesma raiz", () => {
+  const c = compararFatos("contratou empréstimo", "RELATÓRIO x. VOTO A conversão do contrato em empréstimo consignado. Fim.");
+  assert.equal(c.expressoes.length, 0);
 });
