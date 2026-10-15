@@ -4,11 +4,14 @@
 // Base normativa conferida no Planalto (15/10/2026): art. 927 (o que se observa), art. 947 §3º (IAC vincula salvo revisão),
 // art. 985 (IRDR vale para todos os processos do tribunal, salvo revisão, art. 986), art. 489 §1º V e VI (fundamentos
 // determinantes; distinção ou superação). Situação de precedente qualificado se confere no BNP do CNJ, não aqui.
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
 import { norm1, faixasAlheias } from "./custodia.js";
 import { teseDaEmenta, fatosDoJulgado, secoesDaEmenta } from "./posicao.js";
 import { listarRecibos, reciboPorId, recibosDoProcesso, soDigitos } from "./recibos.js";
 import { tokens } from "./similares.js";
-import { fold, ancoras, frasesDoTexto, cnj, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO, dataDoFecho } from "./lib.js";
+import { fold, ancoras, frasesDoTexto, cnj, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO, dataDoFecho, VERSAO, dirCache } from "./lib.js";
 import { STOP_SIM } from "./similares.js";
 
 // ------------------------------------------------------------------- natureza ---
@@ -215,8 +218,37 @@ const conj = (t) => new Set(tokens(nucleo(t)));
 // memória por recibo (id + tamanho do texto): o servidor vive a sessão inteira e cada chamada recalculava núcleo, citações e
 // frases de todos os recibos posteriores (0,8 s por chamada com 4.070 recibos; medido em 15/10/2026)
 const MEMO_X = new Map();
+// Disco (só na pasta de recibos padrão): o que se calcula por recibo (núcleo da ementa e citações) vai para um arquivo do cache, para
+// a PRIMEIRA chamada de cada sessão não refazer 2 s de conta (medido em 15/10/2026, 4.070 recibos). A chave do arquivo é a versão
+// do servidor + hash do código que calcula; mudou regra, o arquivo é descartado. Nunca guarda texto de decisão: só tokens e citações.
+let DISCO = false, DERIV_LIDO = false, DERIV_SUJO = false;
+const arqDeriv = () => path.join(dirCache(), "precedentes-derivados.json");
+const assinaturaDeriv = () => crypto.createHash("sha1").update(VERSAO + nucleo.toString() + tokens.toString() + citacoesDoTexto.toString() + secoesDaEmenta.toString()).digest("hex").slice(0, 16);
+function lerDeriv() {
+  if (DERIV_LIDO || !DISCO) return;
+  DERIV_LIDO = true;
+  try {
+    const d = JSON.parse(fs.readFileSync(arqDeriv(), "utf8"));
+    if (d.assinatura !== assinaturaDeriv()) return;
+    for (const [k, v] of Object.entries(d.m)) MEMO_X.set(k, { conj: v.c ? new Set(v.c) : undefined, cit: v.i });
+  } catch { /* sem arquivo ou ilegível: recalcula */ }
+}
+function gravarDeriv() {
+  if (!DISCO || !DERIV_SUJO) return;
+  try {
+    const m = {};
+    for (const [k, v] of MEMO_X) if (v.conj || v.cit) m[k] = { c: v.conj ? [...v.conj] : undefined, i: v.cit };
+    fs.mkdirSync(dirCache(), { recursive: true });
+    const tmp = arqDeriv() + `.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ assinatura: assinaturaDeriv(), m }));
+    fs.renameSync(tmp, arqDeriv());
+    DERIV_SUJO = false;
+  } catch { /* cache é só aceleração */ }
+}
 function memoX(x) {
-  const k = `${x.id_documento}:${(x.texto || "").length}`;
+  lerDeriv();
+  const t = x.texto || "";
+  const k = `${x.id_documento}:${t.length}:${t.charCodeAt(t.length >> 1) || 0}${t.charCodeAt(t.length >> 2) || 0}`;
   let v = MEMO_X.get(k);
   if (!v) {
     if (MEMO_X.size > 20000) MEMO_X.clear();
@@ -225,8 +257,8 @@ function memoX(x) {
   }
   return v;
 }
-const conjX = (x) => (memoX(x).conj ??= conj(x.texto));
-const citX = (x) => (memoX(x).cit ??= citacoesDoTexto(x.texto));
+const conjX = (x) => { const m = memoX(x); if (!m.conj) { m.conj = conj(x.texto); DERIV_SUJO = true; } return m.conj; };
+const citX = (x) => { const m = memoX(x); if (!m.cit) { m.cit = citacoesDoTexto(x.texto); DERIV_SUJO = true; } return m.cit; };
 const frasesX = (x) => (memoX(x).fr ??= frasesDePrecedente(x.texto, x.tipo, 1));
 const jaccard = (a, b) => { let n = 0; for (const x of a) if (b.has(x)) n++; return n / Math.max(1, a.size + b.size - n); };
 const rotulo = (r) => { const ro = resultadoComOrigem(r.texto, r.tipo); const k = rotuloDoConjunto(ro.conjunto, r.classe, ro.embargos); return k ? ROTULOS_RESULTADO[k] : ""; };
@@ -243,6 +275,7 @@ function escolherRecibo(id, nr, pasta) {
 
 /** Ficha para distinguishing, superação e leading case — 100% local (recibos), zero requisição ao portal. */
 export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso = "", pasta } = {}) {
+  DISCO = !pasta;
   const r = escolherRecibo(String(id_documento || "").trim(), nr_processo, pasta);
   if (!r) return `Sem recibo local de ${id_documento ? `id ${id_documento}` : cnj(nr_processo || "") || "?"}. Leia o julgado antes com obter_inteiro_teor_tjro (grava o recibo) e repita; esta ferramenta não consulta o portal.`;
   const t = r.texto, L = [], P = (x) => L.push(x);
@@ -324,7 +357,7 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   if (!algum) P("- Nenhum sinal nos recibos locais. Isso NÃO prova que não foi superado: os recibos são só o que esta máquina já leu.");
   if (meusAnc.length) P(`- Precedentes qualificados que ele aplica (${meusAnc.join(", ")}): situação, revisão e cancelamento se conferem no BNP (\`buscar_precedentes_qualificados\` / \`verificar_precedente_bnp\`), nunca aqui.`);
   P("- Para ampliar além dos recibos: `julgados_que_citam_tjro` (quem cita este processo no portal) e `linha_do_tempo_tjro` (resultado por ano da tese).");
-  P("- Superação só se afirma com o julgado que supera aberto: mesmo órgão ou superior, fundamentação específica (art. 927, § 4º), modulação (§ 3º). Resultado oposto pode ser distinção, não overruling.");
+  P("- Superação só se afirma com o julgado que supera aberto: mesmo órgão ou superior, fundamentação específica (art. 927, § 4º), modulação (§ 3º). Resultado oposto pode ser distinção, não overruling (medido às cegas: julgado que cita o anterior e tem resultado oposto era mudança de entendimento em 3 de 66 casos; em 59 era fato diferente). Overruling de verdade se confirma pela situação do precedente no BNP e pelo julgado que o supera, aberto.");
   // 6. leading case
   P("\n## 6. Leading case do tema (recibos locais)");
   const tema = [r, ...similares.map((o) => o.x), ...todos.filter((x) => !depois.includes(x)).map((x) => ({ x, s: jaccard(A, conjX(x)) })).filter((o) => o.s >= LIMIAR_TEMA).sort((a, b) => b.s - a.s).slice(0, 40).map((o) => o.x)];
@@ -334,6 +367,7 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   if (lc.maisCitados.length) P(`- Julgados mais citados pelos demais do tema (processos distintos que citam): ${lc.maisCitados.map(([c, q]) => `${c} (${q})`).join(", ")}. Mais citado é candidato, não prova: pode só aplicar a tese de outro.`);
   if (!lc.qualificados.length && !lc.ancoras.length && !lc.maisCitados.length) P("- Sem candidato nos recibos locais.");
   P(`\n_Tema = este julgado + até 80 recibos com vocabulário parecido (semelhança do núcleo da ementa ≥ 0,2). Recibo é só o que esta máquina já leu, não o acervo do TJRO._`);
+  gravarDeriv();
   return L.join("\n");
 }
 

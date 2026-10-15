@@ -12,6 +12,10 @@ Conferência dos 20 itens de 08/10/2026 e novas hipóteses, todas medidas às ce
 - **Distinguishing:** os termos dos seus fatos que o precedente não menciona saem como primeiro candidato a distinção (nos casos de teste, o fato que mudava a solução apareceu ali em 10 de 10).
 - **Velocidade:** `distinguir_tjro` guarda o que calcula de cada recibo; da segunda chamada em diante cai de 0,8 s para 0,05 s.
 - **`sugerir_termos`:** no acórdão do TJRO a ementa vem no fim, e o vocabulário saía do cabeçalho (gabinete, endereço, advogados, OAB) e do relatório. Agora lê a ementa do próprio acórdão, descarta fórmulas de redação e termos com algarismo, e mostra só pares de palavras (palavra solta era útil em 18 de 222). Na validação cega em 30 páginas novas, a parte útil subiu de 22% para 45%, com mais termos úteis no total (86 contra 75).
+- **Cache em disco do `distinguir_tjro`:** o que se calcula por recibo (núcleo da ementa e citações, só tokens, nunca texto de decisão) fica num arquivo do cache, invalidado por versão e por hash do código. A conta da primeira chamada de cada sessão caiu de cerca de 2 s para 0,15 a 0,6 s; ler os recibos do disco (cerca de 2 s) continua igual, porque as outras ferramentas também usam.
+- **`sugerir_termos`, segunda rodada:** lista de pares de ruído (institucionais e de fórmula) e de palavras de fórmula; em 40 páginas novas, 51% de termos úteis (121 de 239; 46% sem a lista). Os pares de forma acrescentados no fim não passaram por nova validação.
+- **Overruling por estrutura (julgado posterior cita o anterior + resultado oposto):** testado às cegas em 72 pares: mudança de entendimento em 3 de 66, fato diferente em 59. Refutado como sinal; a saída diz isso.
+- **Perfil do julgador (skill):** a seção 5 usa as mesmas funções e passou a mostrar os acertos novos.
 - Testado e descartado: exigir que a palavra solta apareça duas vezes no voto (acerto igual, cerca de 80%, com 1, 2 ou 3+ ocorrências).
 
 ## v1.36.0 (15/10/2026): distinguishing, superação, natureza do julgado e leading case
