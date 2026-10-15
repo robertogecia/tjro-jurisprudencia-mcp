@@ -2,6 +2,17 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.37.0
+
+Conferência dos 20 itens de 08/10/2026 e novas hipóteses, todas medidas às cegas com dois modelos (Sonnet e Opus).
+
+- **Fatos do julgado:** quando o voto transcreve a ementa de outro processo, a ferramenta pegava o primeiro "caso em exame" (o do processo citado). Agora fica o último fora de transcrição, que é a ementa do próprio acórdão. Mudou o trecho de 498 de 2.382 acórdãos; numa amostra de 30, o trecho novo era o certo em 24, os dois serviam em 4 e o antigo nunca era melhor.
+- **Relator vencido:** quando o fecho diz que o relator ficou vencido, o trecho de fatos avisa que o voto logo após o relatório é o vencido.
+- **Mesmo tema:** o núcleo da ementa lia só os 15.000 primeiros caracteres e podia pegar a ementa citada; agora usa a ementa do próprio acórdão. Com isso, "resultado oposto" com semelhança de 0,25 ou mais tratou da mesma questão em 34 de 36 pares; a diferença veio de fatos diferentes em 32 de 36 e de mudança de entendimento em 2 de 36. A saída diz isso: é material de distinguishing, e overruling é exceção.
+- **Distinguishing:** os termos dos seus fatos que o precedente não menciona saem como primeiro candidato a distinção (nos casos de teste, o fato que mudava a solução apareceu ali em 10 de 10).
+- **Velocidade:** `distinguir_tjro` guarda o que calcula de cada recibo; da segunda chamada em diante cai de 0,8 s para 0,05 s.
+- Testado e descartado: exigir que a palavra solta apareça duas vezes no voto (acerto igual, cerca de 80%, com 1, 2 ou 3+ ocorrências).
+
 ## v1.36.0 (15/10/2026): distinguishing, superação, natureza do julgado e leading case
 
 - Distinção: o marcador tem de estar perto do precedente; súmula citada como fonte de que uma lei não se aplica conta como aplicação; tese da parte não conta. Validada às cegas em amostra nova: 20 de 28 (antes 18 de 29).

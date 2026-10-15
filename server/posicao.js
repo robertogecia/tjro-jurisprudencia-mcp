@@ -3,7 +3,7 @@
 // raciocínio hipotético ou fundamento alternativo (obiter dictum). É um LOCALIZADOR, não um juiz: diz onde a frase está,
 // para o agente preencher `ratio_ou_dictum` da ficha com evidência; decidir se o julgado dependeu dela continua sendo de
 // quem lê o acórdão. Distinguishing não mora aqui: exige os fatos do caso, que o servidor nunca vê.
-import { norm1, RE_OBITER } from "./custodia.js";
+import { norm1, RE_OBITER, faixasAlheias } from "./custodia.js";
 export { RE_OBITER };
 
 // fórmulas que abrem o dispositivo do voto (as frequentes nos 826 recibos: "ante o exposto" 275, "diante do exposto" 107…);
@@ -77,12 +77,17 @@ const RE_LIXO_WORD = /^\s*(?:\d+(?:\.\d+)?\s+\d+x\d+\s+)?(?:Normal\s+)?(?:\d+\s+
 export const RE_ALEGACAO = /\b(?:(?:agravante|agravad[oa]s?|apelante|apelad[oa]s?|recorrente|recorrid[oa]s?|embargante|embargad[oa]s?|autor(?:a|es|as)?|r[ée]u|requerente|requerid[oa]s?|parte|banco|impetrante|exequente|executad[oa]s?)\W+(?:\w+\W+){0,2}?(?:sustent|alega|aleg[oó]u|alegava|aduz|afirm|argument|narra|defende|insurg)\w*|(?:sustent|alega|aleg[oó]u|alegava|aduz|afirm|argument|narra|defende|insurg)\w*\W+(?:(?:a|o|as|os|que)\W+)?(?:agravante|agravad[oa]s?|apelante|apelad[oa]s?|recorrente|recorrid[oa]s?|embargante|embargad[oa]s?|autor(?:a|es|as)?|r[ée]u|requerente|requerid[oa]s?|parte|banco|impetrante|exequente|executad[oa]s?)|(?:alegava|alegando|sustentando|afirmando|argumentando|aduzindo|alegaç[ãa]o))/i;
 /** Trecho LITERAL em que o próprio julgado resume os fatos (espelho de _fatos_do_julgado, 08/10/2026): "I. CASO EM EXAME" da
  * ementa do CNJ, ou o RELATÓRIO do acórdão até o VOTO. Nunca resume; sem seção reconhecível devolve null. */
+const RE_RELATOR_VENCIDO = /\bvencid[oa]s? (?:\w+ ){0,6}?(?:o|a|o\(a\)) relator(?:a|\(a\))?\b/;
 export function fatosDoJulgado(corpo, tipo) {
   const t = String(tipo || "").toUpperCase();
   if (corpo && (t === "SENTENÇA" || t === "SENTENCA")) return fatosDaSentenca(corpo);
   if (!corpo || !["EMENTA", "ACÓRDÃO", "ACORDAO", "RELATÓRIO", "RELATORIO"].includes(t)) return null;
-  for (const sec of secoesDaEmenta(corpo, 0, corpo.length)) {
-    if (sec.nome !== "caso em exame") continue;
+  // conferência de 15/10/2026 (B7): o voto pode TRANSCREVER a ementa de outro julgado, com seu próprio "caso em exame"; a ementa
+  // do acórdão vem no fim. Fica o ÚLTIMO "caso em exame" fora de transcrição (492 de 1.645 acórdãos têm mais de um).
+  const secs = secoesDaEmenta(corpo, 0, corpo.length).filter((x) => x.nome === "caso em exame");
+  const trans = secs.length > 1 || t !== "EMENTA" ? faixasAlheias(corpo, t).transcritas : [];
+  const proprias = secs.filter((x) => !trans.some(([a, b]) => x.a >= a && x.a < b));
+  for (const sec of proprias.slice(-1)) {
     const m = /^\s*(?:[IVXivx]{1,3}\s*[.)-]?\s*)?caso em exame\s*[.:]?\s*/i.exec(corpo.slice(sec.a, sec.b));
     const txt = corpo.slice(sec.a + (m ? m[0].length : 0), sec.b).trim();
     return { onde: "ementa › caso em exame", texto: txt.slice(0, FATOS_MAX) };
@@ -94,7 +99,9 @@ export function fatosDoJulgado(corpo, tipo) {
     const v = mv.exec(corpo);
     const fim = v ? v.index : Math.min(corpo.length, ini + FATOS_MAX);
     const txt = corpo.slice(ini, fim).replace(/^[ \t\n:.-]+|[ \t\n:.-]+$/g, "").replace(RE_LIXO_WORD, "").trim();
-    if (txt.length > 40) return { onde: "relatório do acórdão", texto: txt.slice(0, FATOS_MAX) };
+    // conferência de 15/10/2026 (B8): com o relator VENCIDO, o voto logo após o relatório é o vencido; a ficha copiou os fatos dele
+    const vencido = RE_RELATOR_VENCIDO.test(norm1(corpo.slice(-6000)));
+    if (txt.length > 40) return { onde: vencido ? "relatório do acórdão (⚠️ relator VENCIDO: o voto que segue o relatório é o vencido; os fatos e fundamentos que decidem estão no voto vencedor)" : "relatório do acórdão", texto: txt.slice(0, FATOS_MAX) };
   }
   return null;
 }

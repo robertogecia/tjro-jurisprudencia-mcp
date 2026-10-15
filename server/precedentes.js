@@ -195,14 +195,39 @@ export function frasesDePrecedente(texto, tipo = "ACÓRDÃO", max = 3) {
 const isoBr = (br) => (/^\d{2}\/\d{2}\/\d{4}$/.test(br || "") ? br.split("/").reverse().join("-") : "");
 // Núcleo do julgado para medir "mesmo tema": tese + razões de decidir + caso em exame da ementa do CNJ; sem o modelo, o começo
 // do voto. O texto inteiro de acórdãos bancários se parece todo (partes, fórmulas) e misturava teses diferentes.
-function nucleo(t) {
+// 15/10/2026: a ementa do acórdão vem no FIM e o voto pode transcrever a de outro processo; antes lia só os 15.000 primeiros
+// caracteres e o núcleo podia ser a ementa citada. Agora: seções fora de transcrição, a partir do último "caso em exame".
+function nucleo(t, tipo = "ACÓRDÃO") {
   const x = String(t || "");
-  const sec = secoesDaEmenta(x, 0, Math.min(x.length, 15000)).filter((s) => ["caso em exame", "razoes de decidir", "dispositivo e tese", "dispositivo"].includes(s.nome));
+  const NOMES = ["caso em exame", "razoes de decidir", "dispositivo e tese", "dispositivo"];
+  let sec = secoesDaEmenta(x, 0, x.length).filter((s) => NOMES.includes(s.nome));
+  if (sec.length > 4 || (sec.length && sec[0].a > 15000)) {
+    const tr = faixasAlheias(x, tipo).transcritas;
+    sec = sec.filter((s) => !tr.some(([a, b]) => s.a >= a && s.a < b));
+    const k = sec.map((s) => s.nome).lastIndexOf("caso em exame");
+    if (k >= 0) sec = sec.slice(k);
+  }
   if (sec.length) return sec.map((s) => x.slice(s.a, s.b)).join(" ");
   const v = x.search(/\bVOTO\b/);
   return x.slice(v > 0 ? v : 0, (v > 0 ? v : 0) + 3000);
 }
 const conj = (t) => new Set(tokens(nucleo(t)));
+// memória por recibo (id + tamanho do texto): o servidor vive a sessão inteira e cada chamada recalculava núcleo, citações e
+// frases de todos os recibos posteriores (0,8 s por chamada com 4.070 recibos; medido em 15/10/2026)
+const MEMO_X = new Map();
+function memoX(x) {
+  const k = `${x.id_documento}:${(x.texto || "").length}`;
+  let v = MEMO_X.get(k);
+  if (!v) {
+    if (MEMO_X.size > 20000) MEMO_X.clear();
+    v = {};
+    MEMO_X.set(k, v);
+  }
+  return v;
+}
+const conjX = (x) => (memoX(x).conj ??= conj(x.texto));
+const citX = (x) => (memoX(x).cit ??= citacoesDoTexto(x.texto));
+const frasesX = (x) => (memoX(x).fr ??= frasesDePrecedente(x.texto, x.tipo, 1));
 const jaccard = (a, b) => { let n = 0; for (const x of a) if (b.has(x)) n++; return n / Math.max(1, a.size + b.size - n); };
 const rotulo = (r) => { const ro = resultadoComOrigem(r.texto, r.tipo); const k = rotuloDoConjunto(ro.conjunto, r.classe, ro.embargos); return k ? ROTULOS_RESULTADO[k] : ""; };
 // medido às cegas (15/10/2026, 40 pares, Sonnet e Opus, concordância 37/40): núcleo ≥ 0,25 → mesma questão jurídica 9/9;
@@ -252,7 +277,7 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
     P("_Expressões dos seus fatos (duas palavras vizinhas) e a frase do precedente que as traz, do voto quando há; palavra solta só se longa e no voto. Acerto medido às cegas: expressões 53 de 53 trataram do mesmo fato; palavras soltas, 61 de 75. Ausência de palavra NÃO prova fato diferente: o julgado pode dizer o mesmo com outras palavras. A distinção exige comparar FATOS MATERIAIS e FUNDAMENTOS DETERMINANTES (art. 489, § 1º, VI), e isso é leitura sua._");
     for (const p of [...c.expressoes, ...c.presentes]) P(`- **${p.termo}** (${p.onde}) — «${p.frase}»`);
     if (!c.expressoes.length && !c.presentes.length) P("- Nenhuma expressão dos seus fatos aparece no precedente.");
-    if (c.ausentes.length) P(`- Não mencionados no texto do precedente: ${c.ausentes.join(", ")}.`);
+    if (c.ausentes.length) P(`- **Seus termos que o precedente NÃO menciona:** ${c.ausentes.join(", ")}. Se algum é fato material, é o primeiro candidato a distinguishing (nos casos de teste, o fato que mudava a solução apareceu aqui em 10 de 10; a lista também traz palavras sem importância).`);
   }
   // 4. frases do próprio julgado
   const fr = frasesDePrecedente(t, r.tipo);
@@ -267,32 +292,32 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   const iso = isoBr(r.data_julgamento), meu = cnj(r.nr_processo || ""), meusDig = soDigitos(r.nr_processo);
   const todos = listarRecibos(pasta).filter((x) => /AC[ÓO]RD|EMENTA/.test(x.tipo || "") && soDigitos(x.nr_processo) !== meusDig);
   const depois = todos.filter((x) => iso && isoBr(x.data_julgamento) > iso);
-  const citam = depois.filter((x) => citacoesDoTexto(x.texto).includes(meu));
+  const citam = depois.filter((x) => citX(x).includes(meu));
   const meusAnc = ancoras(t);
   const A = conj(t), meuRes = res;
-  const similares = depois.map((x) => ({ x, s: jaccard(A, conj(x.texto)) })).filter((o) => o.s >= LIMIAR_TEMA).sort((a, b) => b.s - a.s).slice(0, 40);
+  const similares = depois.map((x) => ({ x, s: jaccard(A, conjX(x)) })).filter((o) => o.s >= LIMIAR_TEMA).sort((a, b) => b.s - a.s).slice(0, 40);
   const linha = (x, extra = "") => `id ${x.id_documento} · ${cnj(x.nr_processo || "")} · ${x.data_julgamento || "?"} · ${x.orgao_indice || ""} · ${rotulo(x) || "sem rótulo"}${extra}`;
   let algum = false;
   if (citam.length) {
     algum = true;
     P(`- **Julgados posteriores que CITAM este processo** (${citam.length}):`);
     for (const x of citam.slice(0, 8)) {
-      const f = frasesDePrecedente(x.texto, x.tipo, 1);
+      const f = frasesX(x);
       const sinal = f.mudanca[0] ? ` · mudança? «${f.mudanca[0]}»` : f.distincao[0] ? ` · distinção? «${f.distincao[0]}»` : "";
       P(`  - ${linha(x)}${sinal}`);
     }
   }
-  const mudam = similares.filter((o) => frasesDePrecedente(o.x.texto, o.x.tipo, 1).mudanca.length || (meusAnc.length && frasesDePrecedente(o.x.texto, o.x.tipo, 1).mudanca.length));
+  const mudam = similares.filter((o) => frasesX(o.x).mudanca.length);
   if (mudam.length) {
     algum = true;
-    P("- **Posteriores do mesmo tema com frase de MUDANÇA DE ENTENDIMENTO** (acerto medido 3 de 9: leia):");
-    for (const o of mudam.slice(0, 5)) P(`  - ${linha(o.x)} · «${frasesDePrecedente(o.x.texto, o.x.tipo, 1).mudanca[0]}»`);
+    P("- **Posteriores do mesmo tema com frase de MUDANÇA DE ENTENDIMENTO** (acerto medido 1 de 9 em amostra nova: quase sempre falso, leia):");
+    for (const o of mudam.slice(0, 5)) P(`  - ${linha(o.x)} · «${frasesX(o.x).mudanca[0]}»`);
   }
   if (meuRes) {
     const opostos = similares.filter((o) => o.s >= LIMIAR_MESMA_QUESTAO).filter((o) => { const rx = rotulo(o.x); return rx && OPOSTOS.some(([a, b]) => (a === meuRes && b === rx) || (b === meuRes && a === rx)); });
     if (opostos.length) {
       algum = true;
-      P(`- **Posteriores do mesmo tema com RESULTADO OPOSTO** (${opostos.length}; núcleo da ementa com semelhança ≥ 0,25, mesma questão jurídica em 9 de 9 pares medidos; resultado oposto pode ser fato diferente, não superação):`);
+      P(`- **Posteriores do mesmo tema com RESULTADO OPOSTO** (${opostos.length}; núcleo da ementa com semelhança ≥ 0,25: mesma questão jurídica em 34 de 36 pares medidos às cegas; a diferença veio de FATOS diferentes em 32 de 36 e de mudança de entendimento em só 2 de 36. Leia como material de distinguishing; overruling é a exceção):`);
       for (const o of opostos.slice(0, 5)) P(`  - ${linha(o.x, ` · semelhança ${o.s.toFixed(2)}`)}`);
     }
   }
@@ -302,7 +327,7 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   P("- Superação só se afirma com o julgado que supera aberto: mesmo órgão ou superior, fundamentação específica (art. 927, § 4º), modulação (§ 3º). Resultado oposto pode ser distinção, não overruling.");
   // 6. leading case
   P("\n## 6. Leading case do tema (recibos locais)");
-  const tema = [r, ...similares.map((o) => o.x), ...todos.filter((x) => !depois.includes(x)).map((x) => ({ x, s: jaccard(A, conj(x.texto)) })).filter((o) => o.s >= LIMIAR_TEMA).sort((a, b) => b.s - a.s).slice(0, 40).map((o) => o.x)];
+  const tema = [r, ...similares.map((o) => o.x), ...todos.filter((x) => !depois.includes(x)).map((x) => ({ x, s: jaccard(A, conjX(x)) })).filter((o) => o.s >= LIMIAR_TEMA).sort((a, b) => b.s - a.s).slice(0, 40).map((o) => o.x)];
   const lc = leadingCase(tema);
   if (lc.qualificados.length) for (const q of lc.qualificados) P(`- **Precedente qualificado do TJRO no tema** (IRDR/IAC com tese): ${q.nr} · id ${q.id} · ${q.data}. É o leading case da tese que fixou.`);
   if (lc.ancoras.length) P(`- Precedentes qualificados mais invocados no tema: ${lc.ancoras.map(([a, q]) => `${a} (${q})`).join(", ")}. O leading case de cada um (processo paradigma) se confere no BNP.`);
@@ -313,3 +338,6 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
 }
 
 export { norm1, teseDaEmenta, fatosDoJulgado, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO, dataDoFecho };
+
+// para o harness de validação (sem uso no servidor)
+export const _harness = { nucleo, conj, jaccard, rotulo, OPOSTOS };

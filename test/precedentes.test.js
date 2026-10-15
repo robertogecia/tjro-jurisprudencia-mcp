@@ -64,3 +64,15 @@ test("mudança: 'superada' só com entendimento/tese/súmula como sujeito", () =
   assert.equal(f("A data inicialmente prevista restou superada, esvaziando-se a urgência.").length, 0);
   assert.equal(f("Por muito tempo prevaleceu o entendimento do dano in re ipsa, mas tal orientação foi superada em atenção ao dever de uniformização.").length, 1);
 });
+
+// conferência dos 20 itens (15/10/2026): B7 e B8
+import { fatosDoJulgado } from "../server/posicao.js";
+test("fatos do julgado: ementa transcrita no voto não vira o caso; fica a ementa do próprio acórdão (B7)", () => {
+  const t = "RELATÓRIO Apelação do autor contra sentença de parcial procedência. VOTO Nesse sentido: “APELAÇÃO. I. CASO EM EXAME 1. Apelação de beneficiária contra sentença de improcedência. II. QUESTÃO EM DISCUSSÃO 2. x. III. RAZÕES DE DECIDIR 3. y. IV. DISPOSITIVO 4. Recurso desprovido.” (TJRO, Apelação 7000000-00.2020.8.22.0001, Rel. Des. Fulano, j. 01/01/2024). É como voto. " +
+    "EMENTA DIREITO DO CONSUMIDOR. I. CASO EM EXAME 1. Apelação do autor contra sentença que declarou quitado o cartão consignado. II. QUESTÃO EM DISCUSSÃO 2. z. III. RAZÕES DE DECIDIR 3. w. IV. DISPOSITIVO 4. Recurso parcialmente provido. Acordam os Magistrados da 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, em, RECURSO PARCIALMENTE PROVIDO À UNANIMIDADE.";
+  assert.match(fatosDoJulgado(t, "ACÓRDÃO").texto, /declarou quitado o cartão consignado/);
+});
+test("fatos do julgado: relator vencido no fecho gera aviso (B8)", () => {
+  const t = "RELATÓRIO Trata-se de agravo regimental do Município contra decisão que indeferiu a inicial. VOTO Nego provimento. É como voto. Acordam os Magistrados do Tribunal Pleno do Tribunal de Justiça do Estado de Rondônia, em, AGRAVO PROVIDO, POR MAIORIA, VENCIDOS A RELATORA E O DESEMBARGADOR FULANO.";
+  assert.match(fatosDoJulgado(t, "ACÓRDÃO").onde, /relator VENCIDO/);
+});
