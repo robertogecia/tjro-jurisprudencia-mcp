@@ -51,3 +51,16 @@ test("verbo no pretérito não casa com substantivo de mesma raiz", () => {
   const c = compararFatos("contratou empréstimo", "RELATÓRIO x. VOTO A conversão do contrato em empréstimo consignado. Fim.");
   assert.equal(c.expressoes.length, 0);
 });
+
+test("distinção (ajuste de 15/10/2026): súmula como fonte de que a LEI não se aplica é aplicação; tese da parte não é precedente", () => {
+  const f = (t) => frasesDePrecedente("RELATÓRIO x. VOTO " + t + " Fim.").distincao;
+  assert.equal(f("A Lei de Usura não se aplica às instituições financeiras, conforme dispõe a Súmula 596 do STF.").length, 0);
+  assert.equal(f("A tese do desvio produtivo do consumidor não se aplica ao caso concreto.").length, 0);
+  assert.equal(f("A presente demanda se distingue dos casos suspensos em razão do Incidente de Resolução de Demandas Repetitivas n. 15.").length, 1);
+});
+
+test("mudança: 'superada' só com entendimento/tese/súmula como sujeito", () => {
+  const f = (t) => frasesDePrecedente("RELATÓRIO x. VOTO " + t + " Fim.").mudanca;
+  assert.equal(f("A data inicialmente prevista restou superada, esvaziando-se a urgência.").length, 0);
+  assert.equal(f("Por muito tempo prevaleceu o entendimento do dano in re ipsa, mas tal orientação foi superada em atenção ao dever de uniformização.").length, 1);
+});

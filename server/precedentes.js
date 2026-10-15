@@ -145,19 +145,29 @@ export function compararFatos(fatos, texto, tipo = "ACÓRDÃO") {
 // Aplicação remedida em 15/10/2026 (amostra nova de 40, concordância 37/40): 26 de 37; exigir verbo de aplicação foi testado e
 // descartado, porque as 10 frases que ele cortava eram todas aplicação para os dois rotuladores.
 // RÓTULO: saem como FRASES CANDIDATAS, literais, com o acerto medido ao lado; quem lê decide.
-export const ACERTO_FRASES = { distincao: "18 de 29", aplicacao: "26 de 37", mudanca: "3 de 9", ressalva: "7 de 7" };
+export const ACERTO_FRASES = { distincao: "20 de 28", aplicacao: "26 de 37", mudanca: "1 de 9; regra estreitada depois, sem frases novas para remedir", ressalva: "7 de 7" };
 const OBJ = "(?:tema|sumula|precedente|tese|irdr|iac|paradigma|julgado|acordao|entendimento firmado|orientacao firmada|jurisprudencia)";
-const RE_MUDANCA = new RegExp("\\b(?:overruling|revisao (?:da|de) tese|superacao (?:do|da|de) (?:precedente|entendimento|tese|jurisprudencia|orientacao)|" +
+const RE_MUDANCA = new RegExp("\\b(?:overruling|(?:entendimento|orientacao|tese|jurisprudencia|sumula|precedente|posicionamento)\\b.{0,60}\\b(?:encontra-se|esta|restou|foi|ficou) superad[ao]|revisao (?:da|de) tese|superacao (?:do|da|de) (?:precedente|entendimento|tese|jurisprudencia|orientacao)|" +
   "(?:revejo|reviso|revisito|altero|modifico|readequo|realinho|reformulo|supero|mudo|retifico) (?:\\w+ ){0,2}(?:meu |o meu |o |este |esse |aquele )?(?:entendimento|posicionamento|orientacao|posicao)|" +
   "(?:passo|passei|passamos) a (?:entender|adotar|decidir|admitir|reconhecer|seguir|acompanhar)|" +
   "(?:este|esta|deste|desta|o|a) (?:tribunal|corte|camara|colegiado|turma) (?:\\w+ ){0,3}(?:alterou|modificou|reviu|revisou|superou|passou a|mudou|evoluiu)|" +
   "(?:evolucao|alteracao|mudanca|modificacao|revisao) (?:\\w+ ){0,2}(?:do|da) (?:entendimento|jurisprudencia|orientacao|posicionamento) (?:\\w+ ){0,2}(?:desta|deste|da|do) (?:corte|tribunal|camara|colegiado|turma))\\b");
-const RE_NEGA = /\b(?:nao houve|inexist\w+|ausencia de|sem) (?:\w+ ){0,4}(?:alterac|modificac|mudanc|superac|revis|fundamentos? nov)|rediscut|tentativa|pretende|pretensao|insurg|almeja|alega|relat(?:a|ou)\b|narra|art\. 489|ratio decidendi|common law|doutrina|demandaria|reexame|vedad\w+|nao havia razoes|nao havendo|passo a (?:decidir|analisar|examinar|apreciar)/;
+const RE_NEGA = /\bartigo 489|\b(?:nao houve|inexist\w+|ausencia de|sem) (?:\w+ ){0,4}(?:alterac|modificac|mudanc|superac|revis|fundamentos? nov)|rediscut|tentativa|pretende|pretensao|insurg|almeja|alega|relat(?:a|ou)\b|narra|art\. 489|ratio decidendi|common law|doutrina|demandaria|reexame|vedad\w+|nao havia razoes|nao havendo|passo a (?:decidir|analisar|examinar|apreciar)/;
 const RE_PARTE = /\b(?:argument\w*|defende\w*|afirm\w*|aduz\w*|sustent\w*|aleg\w*|pugn\w*|requer\w*|pretend\w*|insurg\w*)\b/;
 const RE_RESSALVA = /\b(?:ressalvad\w+ (?:o )?(?:meu|minha) (?:entendimento|posicionamento|posicao|opiniao|conviccao)|ressalva (?:de|do) (?:meu )?entendimento(?: pessoal)?|ressalvando (?:o )?meu (?:entendimento|posicionamento)|ressalvo (?:o )?meu (?:entendimento|posicionamento)|curvo-me|curvando-me|me curvo)\b/;
 const RE_APLICA = /\b(?:tese (?:juridica )?(?:fixada|firmada)|em (?:observancia|atencao|cumprimento|obediencia) (?:a|ao) (?:tese|tema|irdr|iac|sumula|precedente)|aplicacao (?:da tese|do tema|do irdr|do iac|do precedente)|(?:conforme|consoante|nos termos d\w) (?:o |a )?(?:tema|irdr|iac) (?:n\w* )?\d)/;
 const RE_DISTINCAO = /\b(?:distinguishing|distincao|distinguir|distingue|inaplic\w+|nao se (?:aplica|amolda|ajusta|enquadra|subsume)|afast\w+ (?:a )?(?:aplicacao|incidencia)|(?:hipotese|situacao|caso) (?:fatica |concreto )?(?:diversa|distinta|diverso|distinto)|peculiar\w*|diferentemente)\b/;
 const RE_OBJ = new RegExp(`\\b${OBJ}\\b`);
+// Ajuste de 15/10/2026 (1ª amostra, 93 frases, 2 rotuladores cegos): o marcador de distinção tem de estar PERTO do precedente
+// (60 caracteres); súmula/tema citado como fonte de que uma LEI não se aplica é aplicação, não distinção; fórmula da ementa
+// ("questão em discussão", "tese de julgamento"), "não se amolda à finalidade dos aclaratórios" e "distinção entre" conceitos não contam.
+// "tese" sozinha pode ser tese da parte ("tese do desvio produtivo"): na distinção só conta tese fixada/firmada/de tema ou IRDR
+const OBJ_D = "(?:tema|sumula|precedente|irdr|iac|paradigma|julgado|acordao|entendimento firmado|orientacao firmada|jurisprudencia|incidente de resolucao|demandas repetitivas|recursos? repetitivos?|tese (?:fixada|firmada|juridica|do tema|do irdr|repetitiva))";
+const RE_DIST_PERTO = new RegExp(`${RE_DISTINCAO.source}.{0,120}\\b${OBJ_D}\\b|\\b${OBJ_D}\\b.{0,120}${RE_DISTINCAO.source}`);
+const RE_DIST_FORA = /questao em discussao|tese de julgamento|ressalvad\w+ as peculiaridades|finalidade dos (?:aclaratorios|embargos)|distincao entre (?:os|as|o|a) |(?:conforme|consoante|nos termos d\w+|segundo|que afasta)\s.{0,40}\b(?:sumula|tema)\b|\bafastando\b|eventual distincao|deve ser apreciad|condic\w+ economic|quantum|doutrina/;
+function ehDistincao(x) {
+  return RE_DISTINCAO.test(x) && RE_DIST_PERTO.test(x) && !RE_PARTE.test(x) && !RE_DIST_FORA.test(x);
+}
 /** Frases candidatas, na voz do próprio julgado (fora de transcrição, voto divergente e declaração de voto). */
 export function frasesDePrecedente(texto, tipo = "ACÓRDÃO", max = 3) {
   const t = String(texto || "");
@@ -174,7 +184,7 @@ export function frasesDePrecedente(texto, tipo = "ACÓRDÃO", max = 3) {
     const lit = f.replace(/[ \t\n\r\f\v]+/g, " ").trim().slice(0, 320);
     if (RE_RESSALVA.test(x)) out.ressalva.push(lit);
     else if (RE_MUDANCA.test(x) && !RE_NEGA.test(x) && !RE_PARTE.test(x)) out.mudanca.push(lit);
-    else if (RE_DISTINCAO.test(x) && RE_OBJ.test(x) && !RE_PARTE.test(x) && !/condic\w+ economic|quantum|doutrina/.test(x)) out.distincao.push(lit);
+    else if (ehDistincao(x)) out.distincao.push(lit);
     else if (RE_APLICA.test(x) && !RE_PARTE.test(x)) out.aplicacao.push(lit);
   }
   for (const k of Object.keys(out)) out[k] = out[k].slice(0, max);
@@ -239,7 +249,7 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   if (String(fatos_do_caso || "").trim()) {
     const c = compararFatos(fatos_do_caso, t, r.tipo);
     P("\n## 3. Seus fatos × o precedente");
-    P("_Expressões dos seus fatos (duas palavras vizinhas) e a frase do precedente que as traz, do voto quando há; palavra solta só se longa e no voto. Ausência de palavra NÃO prova fato diferente: o julgado pode dizer o mesmo com outras palavras. A distinção exige comparar FATOS MATERIAIS e FUNDAMENTOS DETERMINANTES (art. 489, § 1º, VI), e isso é leitura sua._");
+    P("_Expressões dos seus fatos (duas palavras vizinhas) e a frase do precedente que as traz, do voto quando há; palavra solta só se longa e no voto. Acerto medido às cegas: expressões 53 de 53 trataram do mesmo fato; palavras soltas, 61 de 75. Ausência de palavra NÃO prova fato diferente: o julgado pode dizer o mesmo com outras palavras. A distinção exige comparar FATOS MATERIAIS e FUNDAMENTOS DETERMINANTES (art. 489, § 1º, VI), e isso é leitura sua._");
     for (const p of [...c.expressoes, ...c.presentes]) P(`- **${p.termo}** (${p.onde}) — «${p.frase}»`);
     if (!c.expressoes.length && !c.presentes.length) P("- Nenhuma expressão dos seus fatos aparece no precedente.");
     if (c.ausentes.length) P(`- Não mencionados no texto do precedente: ${c.ausentes.join(", ")}.`);

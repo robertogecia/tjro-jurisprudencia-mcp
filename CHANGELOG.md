@@ -4,6 +4,10 @@ Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
 ## v1.36.0 (15/10/2026): distinguishing, superação, natureza do julgado e leading case
 
+- Distinção: o marcador tem de estar perto do precedente; súmula citada como fonte de que uma lei não se aplica conta como aplicação; tese da parte não conta. Validada às cegas em amostra nova: 20 de 28 (antes 18 de 29).
+- Comparação de fatos medida às cegas (10 precedentes, 20 relatos hipotéticos): expressões 53 de 53 trataram do mesmo fato; palavras soltas, 61 de 75.
+- Mudança de entendimento: 1 de 9 na amostra nova; "superada" passou a exigir entendimento, tese ou súmula como sujeito. Frase de overruling é rara nos acórdãos; o sinal mais útil continua sendo a seção 5 (julgados posteriores).
+
 - `distinguir_tjro`, comparação de fatos: compara EXPRESSÕES dos seus fatos (palavras vizinhas, encadeadas numa linha quando caem na mesma frase), prefere a frase do voto e diz se ela vem do voto ou do relatório (alegação). Palavra solta só com 6+ letras e no voto: no teste ao vivo, "comum" e "banco" pescavam "prazo comum" e "FEBRABAN".
 - Frase de "aplica precedente qualificado": acerto remedido às cegas em amostra nova (26 de 37). Exigir verbo de aplicação foi testado e descartado: as frases que ele cortava eram todas aplicação.
 - Precedente qualificado (IRDR/IAC): a tese vem inteira, sem corte.
