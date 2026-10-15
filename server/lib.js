@@ -364,7 +364,7 @@ export const resultadoComOrigem = (texto, tipo) => {
   if (/(?<!NAO )\bACOLH/.test(cauda)) r.add("ACOLHIDO");
   // PARCIAL é qualificador do PROVIDO (o par OPOSTOS não muda): "parcial
   // provimento", "parcialmente provido", "provido em parte".
-  if (/\bPARCIAL(MENTE)? PROVI|\bPARCIAL PROVIMENTO|\bPROVIMENTO PARCIAL|\bPROVID[OA]S? EM PARTE/.test(cauda)) r.add("PARCIAL");
+  if (/\bPARCIAL(MENTE)? PROVI|\bPARCIAL PROVIMENTO|\bPROVIMENTO PARCIAL|\bPROVID[OA]S? EM PARTE|\bPROVID[OA]S? PARCIALMENTE/.test(cauda)) r.add("PARCIAL");
   if (embargos) {
     // v1.31.0: "embargos PARCIALMENTE acolhidos/providos" (ou "acolhidos em parte") guarda o qualificador PARCIAL: o esquema só
     // tinha PARCIAL para provimento e esses embargos viravam "acolhido" (6 das 12 divergências da amostra cega de 12/10/2026).
@@ -1558,6 +1558,23 @@ export async function post(body, fetchImpl = fetch) {
 }
 
 // --------------------------------------------------------------- formatters -
+// v1.35.0 (relato de 14/10/2026): pedido de subtipo do ED acolhido (erro material / omissão / efeito infringente). Regra medida
+// às cegas (40 acórdãos novos, 2 rotuladores; concordância 40/40 no vício e 32/40 no efeito): vício declarado certo em 14/18,
+// efeito em 12/32. Rótulo assim enganaria; o ED acolhido mostra a FRASE do dispositivo que o acolhe, e quem lê decide.
+const RE_VICIOS_ED = [/erros? materia/, /omiss|omit/, /contradi/, /obscur/];
+export function fraseDosEmbargos(texto) {
+  const t = String(texto || "");
+  const zona = t.length > 7000 ? t.slice(0, 3000) + " " + t.slice(-4000) : t;
+  const fr = zona.split(/(?<=[.;])\s+(?=[A-ZÀ-Ý0-9])/).filter((f) => {
+    const x = fold(f);
+    return /embargos|aclarator|declarator/.test(x) && /\bacolh|\bdou provimento|providos?\b/.test(x) && !/\bnao (se )?acolh|rejeit|1\.?022|cabem embargos|cabimento|prestam|destinam|hipoteses/.test(x) &&
+      RE_VICIOS_ED.filter((r) => r.test(x)).length < 3;
+  });
+  if (!fr.length) return "";
+  const f = fr[fr.length - 1].replace(/[ \t\n\r\f\v]+/g, " ").trim();
+  return f.length > 320 ? f.slice(0, 320) + "…" : f;
+}
+
 // v1.34.0 (relato de uso, 13/10/2026): pedido de rótulo "má-fé aplicada / afastada / só citada". A regra medida às cegas
 // (60 frases novas, 2 rotuladores, concordância 58/60) acertou afastada 87%, aplicada 71%, pedido da parte 60%, só citada
 // 50%: rótulo assim enganaria. Na busca sobre má-fé, cada resultado mostra a FRASE literal, e quem lê decide.
@@ -1602,6 +1619,9 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
         ? "_Dica: para restringir, acrescente um grupo com o fato que distingue o seu caso (o tipo de réu, o produto, a conduta) — os grupos se somam por AND._"
         : '_Dica: para restringir, use operador AND na consulta (ex.: "dano AND moral"), termo_exato=true, ou `grupos` de sinônimos._'
     );
+  // v1.35.0 (relato de 14/10/2026): relator + 3 grupos genéricos devolveu 2.110 e 1.310 documentos, e o agente tirou conclusão do topo.
+  if (total >= 1000)
+    out.push(`⚠️ Consulta pouco seletiva (${total} documentos): a página mostra só o topo da ordenação, que não representa o conjunto. Antes de concluir algo sobre ele, restrinja por classe, assunto (ex.: "Sucumbenciais"), resultado ou um termo próprio do tema.`);
 
   if (total >= 3 && opcoes.semPanorama !== true) {
     const pan = formatPanorama(data);
@@ -1668,6 +1688,13 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   const agora = opcoes.agora ?? Date.now();
   const buscaDeMaFe = /\bma[\s-]*fe\b/.test(fold(`${consulta || ""} ${consultaMontada || ""}`));
   const recente = (s) => diasDesdeJulgamento(s, agora);
+  // data da sessão pelo fecho, só no ACÓRDÃO e só quando difere do índice
+  const fechoData = (i) => {
+    const s = hits[i]._source || {};
+    if (s.tipo !== "ACÓRDÃO") return "";
+    const f = dataDoFecho(textos[i]), idx = s.dtjulgamento_str || dataBr(s.dtjulgamento) || "";
+    return f && idx && f !== idx ? ` (índice; sessão pelo fecho: ${f})` : "";
+  };
 
   // Votação do fecho: o ACÓRDÃO tem a sua; a EMENTA (sem fecho) empresta a do acórdão do MESMO julgamento na página (nº + data;
   // sem data não se presume; votações divergentes no mesmo julgamento: não arrisca) — mesma regra do órgão do fecho.
@@ -1722,6 +1749,8 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
     const doFecho = orgaoDoFechoDe(i);
     const corrige = doFecho && orgaoDiverge(doFecho, orgao(s)) ? doFecho : null;
     const maFe = buscaDeMaFe ? fraseDeMaFe(limpar(s.ds_modelo_documento || "", 0)) : "";
+    const rotI = rotuloDoConjunto(resultados[i], s.ds_classe_judicial, comOrigem[i].embargos);
+    const edFrase = (rotI === "ACOLHIDO" || (rotI === "PARCIAL" && comOrigem[i].embargos)) ? fraseDosEmbargos(textos[i]) : "";
     const linhas = [
       `\n---\n**${inicio + i}. ${s.tipo} · ${s.ds_classe_judicial || ""}**`,
       `- Processo: ${cnj(s.nr_processo || "")}`,
@@ -1730,13 +1759,18 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       corrige
         ? `- Órgão: ${corrige} (${s.grau_jurisdicao}º grau) — ⚠️ declarado no fecho do acórdão; o índice diz ${orgao(s)}`
         : `- Órgão: ${orgao(s)} (${s.grau_jurisdicao}º grau)`,
-      `- Julgado em: ${s.dtjulgamento_str || s.dtjulgamento || "—"}${votSufixoI(i, " · Votação no fecho: ", "")}${assunto}`,
+      `- Julgado em: ${s.dtjulgamento_str || s.dtjulgamento || "—"}${fechoData(i)}${votSufixoI(i, " · Votação no fecho: ", "")}${assunto}`,
       ...(maFe ? [`- Má-fé (frase literal mais próxima do fim do texto, para triagem; não é rótulo): «${maFe}»`] : []),
+      ...(edFrase ? [`- Embargos acolhidos, frase do dispositivo (literal, para ver se foi erro material, omissão ou efeito infringente; não é rótulo): «${edFrase}»`] : []),
       ...(recente(s) !== null ? [`- 🆕 JULGADO RECENTE (${recente(s)} dia(s)): pode ainda não ter sido publicado e cabe embargos de declaração; confira a publicação no PJe antes de citar.`] : []),
       `- Citação: ${citacao(s, corrige)}`,
       `- Inteiro teor: ${link(s)}`,
     ];
     const grupo = porProcesso.get(chaveProc(i));
+    if ((s.tipo || "") !== "ACÓRDÃO" && chaveJulg(i)) {
+      const j = grupo.find((j) => j !== i && ((hits[j]._source || {}).tipo || "") === "ACÓRDÃO" && chaveJulg(j) === chaveJulg(i));
+      if (j !== undefined) linhas.push(`- ACÓRDÃO deste julgamento nesta página: nº ${inicio + j}, id ${idDocumento(hits[j]._source || {}) || "—"} (para citar a decisão do colegiado, use o acórdão, não o ${s.tipo})`);
+    }
     if (grupo.length > 1) {
       if (grupo[0] === i) {
         linhas.push(
@@ -1965,7 +1999,7 @@ export function formatInteiro(data, nrProcesso) {
   const out = [
     `**Processo ${cnj(nrProcesso)} — ${s0.ds_classe_judicial || ""}**`,
     `Relator(a): ${relator(s0)} · ${corrige0 ? `${corrige0} (⚠️ declarado no fecho do acórdão; o índice diz ${orgao(s0)})` : orgao(s0)} · Julgado em ${s0.dtjulgamento_str || s0.dtjulgamento || "—"}`,
-    `Citação: ${citacao(s0, corrige0)}` + (idDocumento(s0) ? ` · id ${idDocumento(s0)}` : ""),
+    `Citação: ${citacao(s0, corrige0)}` + (idDocumento(s0) ? ` · id ${idDocumento(s0)}` : "") + pecaEAcordao(s0, unicos, dataDe),
     // O link do topo é o da peça mais recente; cada peça abaixo traz o seu. A ficha
     // copia o link da peça CITADA: uma ficha real guardou o id do acórdão com o link
     // do relatório de outro julgamento, e a peça gerada levaria o juiz ao documento errado.
@@ -1993,6 +2027,8 @@ export function formatInteiro(data, nrProcesso) {
       `⚠️ Este número tem ${julgamentos.size} julgamentos distintos — ${lista}. A Citação acima é da decisão mais recente; ` +
         `para citar outra, use a data e o id da peça correspondente. O número sozinho não identifica a decisão.`
     );
+    const dif = resultadosPorJulgamento(julgamentos, unicos);
+    if (dif) out.push(dif);
   }
   for (const g of reemissoesDoAcordao(unicos)) {
     const desc = (x) => `id ${idDocumento(x[0]) || "?"} (${dataDe(x[0]) || "sem data"}, ${x[1].length} caracteres)`;
@@ -2078,6 +2114,10 @@ export function formatInteiro(data, nrProcesso) {
     // "Favorável a quem": só no ACÓRDÃO (a ementa não tem partes nem fecho) e só
     // aqui, no inteiro teor — o cabeçalho da busca não traz partes legíveis.
     if (s.tipo === "ACÓRDÃO") {
+      const ld = linhaDatas(corpo, s);
+      if (ld) avisos.push(ld);
+    }
+    if (s.tipo === "ACÓRDÃO") {
       const vf = votacaoDoFecho(corpo);
       if (vf) avisos.push(`🗳️ Votação no fecho: ${vf}. (Lida da proclamação; não diz quem foi vencido: confira o fecho antes de citar como posição do órgão.)`);
     }
@@ -2085,6 +2125,9 @@ export function formatInteiro(data, nrProcesso) {
       const roF = resultadoComOrigem(corpo, s.tipo);
       const lado = linhaFavoravel(corpo, rotuloDoConjunto(roF.conjunto, s.ds_classe_judicial, roF.embargos));
       if (lado) avisos.push(lado);
+      const rotF = rotuloDoConjunto(roF.conjunto, s.ds_classe_judicial, roF.embargos);
+      const edF = rotF === "ACOLHIDO" || (rotF === "PARCIAL" && roF.embargos) ? fraseDosEmbargos(corpo) : "";
+      if (edF) avisos.push(`🧾 Embargos acolhidos, frase do dispositivo (literal; diga você se foi erro material, omissão ou efeito infringente): «${edF}»`);
     }
     // v1.10.0: custódia na hora da leitura — a mesma conta do recibo, que antes só o lint via.
     const cust = linhaCustodia(corpo, s.tipo);
@@ -2133,6 +2176,51 @@ export function formatInteiro(data, nrProcesso) {
     usado += tam(bloco);
   }
   return out.join("\n");
+}
+
+// v1.35.0 (relato de 14/10/2026): a Citação do topo é da peça mais recente, que às vezes é o VOTO; o agente teve de descobrir
+// sozinho qual id era o acórdão. Peça que não é acórdão diz o tipo e aponta o ACÓRDÃO do mesmo julgamento (mesma data).
+export function pecaEAcordao(s0, unicos, dataDe) {
+  if (s0.tipo === "ACÓRDÃO") return "";
+  const ac = dataDe(s0) ? unicos.find(([s]) => s.tipo === "ACÓRDÃO" && dataDe(s) === dataDe(s0)) : null;
+  return ` · peça: ${s0.tipo || "?"}` + (ac && idDocumento(ac[0]) ? `; o ACÓRDÃO deste julgamento é o id ${idDocumento(ac[0])}` : "; o ACÓRDÃO deste julgamento não veio nesta resposta");
+}
+// v1.35.0: dois julgamentos sob o mesmo número com resultados diferentes ("PROVIDO" × "PROVIDO PARCIALMENTE"): o aviso de
+// julgamentos distintos não dizia em que diferiam. Resultado declarado de cada um (ACÓRDÃO; sem ele, a EMENTA).
+export function resultadosPorJulgamento(julgamentos, unicos) {
+  const res = [];
+  for (const [d, ss] of julgamentos) {
+    const peca = unicos.find(([s]) => ss.includes(s) && s.tipo === "ACÓRDÃO") || unicos.find(([s]) => ss.includes(s) && s.tipo === "EMENTA");
+    if (!peca) continue;
+    const ro = resultadoComOrigem(peca[1], peca[0].tipo);
+    const r = rotuloDoConjunto(ro.conjunto, peca[0].ds_classe_judicial, ro.embargos);
+    // só provido / parcialmente / desprovido: apelação provida e embargos rejeitados é o normal, não divergência
+    if (r && ["PROVIDO", "PARCIAL", "DESPROVIDO"].includes(r)) res.push(`${d} (${peca[0].tipo}, id ${idDocumento(peca[0]) || "?"}): ${ROTULOS_RESULTADO[r]}`);
+  }
+  const rotulos = new Set(res.map((x) => x.split(": ").pop()));
+  return rotulos.size > 1
+    ? `⚠️ Os julgamentos declaram resultados diferentes: ${res.join("; ")}. O mais recente pode ser o dos embargos de declaração ou uma reemissão corrigida; confira qual é o vigente antes de citar o resultado.`
+    : "";
+}
+
+// v1.35.0 (relato de 14/10/2026): o índice dá "julgado em 04/09" e o fecho diz "Porto Velho, 28 de agosto". Nos 412 acórdãos
+// do cache com data no fecho, 398 diferem e em 397 o fecho vem ANTES (mediana 6 dias, p90 17): o fecho é a sessão; o índice
+// é a data do documento no sistema, a que a citação padrão do TJRO usa. As duas aparecem lado a lado.
+const MESES = { janeiro: 1, fevereiro: 2, "março": 3, marco: 3, abril: 4, maio: 5, junho: 6, julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12 };
+const RE_DATA_FECHO = /\b(?:Porto Velho|Ji-Paran[aá]|Cacoal|Vilhena|Ariquemes|Guajar[aá]-Mirim|Rolim de Moura|Jaru|Ouro Preto do Oeste)\s*(?:\/\s*RO)?,?\s*(\d{1,2})º?\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i;
+export function dataDoFecho(corpo) {
+  const t = String(corpo || "");
+  let ult = -1;
+  for (const m of t.matchAll(RE_ACORDAM)) ult = m.index;
+  if (ult < 0) return "";
+  const m = RE_DATA_FECHO.exec(t.slice(ult, ult + 2500));
+  const mes = m && MESES[m[2].toLowerCase()];
+  return mes ? `${m[1].padStart(2, "0")}/${String(mes).padStart(2, "0")}/${m[3]}` : "";
+}
+export function linhaDatas(corpo, s) {
+  const f = dataDoFecho(corpo), idx = s.dtjulgamento_str || dataBr(s.dtjulgamento) || "";
+  if (!f || !idx || f === idx) return "";
+  return `📅 Sessão de julgamento (data no fecho): ${f} · índice: ${idx} (data do documento no sistema, a que a citação padrão do TJRO usa). Para dizer quando o colegiado julgou, use a do fecho; para localizar a peça, o id.`;
 }
 
 // v1.34.0 (relato de uso, 14/10/2026): acórdão cortado pelo orçamento perdia o fecho, que diz a câmara,
@@ -2487,7 +2575,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.34.0";
+export const VERSAO = "1.35.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

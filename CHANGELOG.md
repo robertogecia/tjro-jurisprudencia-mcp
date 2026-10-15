@@ -2,6 +2,15 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.35.0 (15/10/2026): correções vindas de uma jurimetria de honorários da 1ª Câmara Cível
+
+- **Data da sessão ao lado da data do índice.** O fecho do acórdão ("Porto Velho, 28 de agosto de 2026") traz a data da sessão; o índice traz a data do documento no sistema, que é a usada pela citação padrão do TJRO. Nos 412 acórdãos do cache com data no fecho, 398 diferem, e em 397 o fecho vem antes (mediana de 6 dias). O inteiro teor e a busca mostram as duas lado a lado.
+- **"RECURSO PROVIDO PARCIALMENTE" agora é parcialmente provido.** O rotulador só reconhecia a ordem "parcialmente provido"; a inversa saía como "provido". Nenhum rótulo dos 4.070 recibos mudou (os 26 que têm a forma inversa também têm a usual), mas a ementa nova que só tiver a inversa não é mais rotulada errado.
+- **Julgamentos do mesmo número com resultados diferentes.** Quando dois julgamentos sob o mesmo número declaram provido, parcialmente provido ou desprovido diferentes, o aviso diz qual é qual, com id e data. Embargos rejeitados depois da apelação provida não disparam (é o normal).
+- **Citação de VOTO ou EMENTA aponta o ACÓRDÃO.** A Citação do inteiro teor diz o tipo da peça e, se não for acórdão, o id do ACÓRDÃO do mesmo julgamento; na busca, a peça que não é acórdão aponta o acórdão do mesmo julgamento quando ele está na página.
+- **Consulta pouco seletiva.** Com 1.000 documentos ou mais, a busca avisa que a página é só o topo da ordenação e sugere restringir por classe, assunto, resultado ou termo próprio antes de concluir algo sobre o conjunto.
+- **Embargos acolhidos mostram a frase do dispositivo, sem rótulo.** Subtipo pedido (erro material, omissão, efeito infringente) medido às cegas em 40 acórdãos novos, com 2 rotuladores (concordância de 40/40 no vício e 32/40 no efeito): a regra acertou o vício declarado em 14 de 18 e o efeito em 12 de 32. Rótulo assim enganaria; o ED acolhido traz a frase literal que o acolhe.
+
 ## v1.34.0 (14/10/2026): correções vindas do relato de uso de uma pesquisa de litigância de má-fé
 
 - **Falso alerta de TRANSCRIÇÃO corrigido.** O verificador marcava como transcrição a frase do próprio relator quando o voto citava uma ementa no formato do PJe, sem parênteses ("…Processo nº …, Relator(a) do Acórdão: … Data de julgamento: dd/mm/aaaa."). Duas causas: "Relator(a) do Acórdão:" abria bloco e essa citação não fechava bloco, então o bloco seguinte atravessava três parágrafos do relator. Nos 1.672 acórdãos dos recibos, 50 mudaram; a conferência cega e dupla dos 55 trechos que mudaram de lado confirmou 46 de 49 novas transcrições e 5 de 6 devoluções à voz do relator, sem erro confirmado pelos dois rotuladores (concordância 52/55).

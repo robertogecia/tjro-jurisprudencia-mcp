@@ -68,3 +68,38 @@ test("transcrição: citação no formato do PJe fecha o bloco da ementa transcr
   const fimPje = t.indexOf("10/06/2021.") + "10/06/2021.".length;
   assert.ok(fx.some(([a, b]) => a < t.indexOf("Seguro DPVAT") && b <= fimPje + 1), JSON.stringify(fx));
 });
+
+// v1.35.0 — segundo relato (jurimetria de honorários, 14/10/2026)
+import { dataDoFecho, linhaDatas, pecaEAcordao, resultadosPorJulgamento } from "../server/lib.js";
+
+test("data da sessão pelo fecho, ao lado da do índice", () => {
+  const c = "Voto. Acordam os Magistrados da 1ª Câmara Cível, em, RECURSO PROVIDO À UNANIMIDADE. Porto Velho, 28 de agosto de 2026 Desembargador FULANO";
+  assert.equal(dataDoFecho(c), "28/08/2026");
+  assert.match(linhaDatas(c, { dtjulgamento_str: "04/09/2026" }), /Sessão de julgamento \(data no fecho\): 28\/08\/2026 · índice: 04\/09\/2026/);
+  assert.equal(linhaDatas(c, { dtjulgamento_str: "28/08/2026" }), "");
+  assert.equal(dataDoFecho("sem fecho"), "");
+});
+
+test("citação de VOTO aponta o ACÓRDÃO do mesmo julgamento", () => {
+  const dataDe = (s) => s.d || "";
+  const voto = { tipo: "VOTO", id_processo_documento: 36055403, d: "01/09/2026" };
+  const ac = { tipo: "ACÓRDÃO", id_processo_documento: 36055394, d: "01/09/2026" };
+  assert.match(pecaEAcordao(voto, [[voto, ""], [ac, ""]], dataDe), /peça: VOTO; o ACÓRDÃO deste julgamento é o id 36055394/);
+  assert.equal(pecaEAcordao(ac, [[ac, ""]], dataDe), "");
+  assert.match(pecaEAcordao(voto, [[voto, ""]], dataDe), /não veio nesta resposta/);
+});
+
+test("resultados diferentes entre julgamentos do mesmo número; embargos rejeitados não contam", () => {
+  const e1 = { tipo: "ACÓRDÃO", id_processo_documento: 1, ds_classe_judicial: "Apelação Cível" };
+  const e2 = { tipo: "ACÓRDÃO", id_processo_documento: 2, ds_classe_judicial: "Apelação Cível" };
+  const F = (r) => `Voto. Acordam os Magistrados da 1ª Câmara Cível, na conformidade da ata, em, ${r} À UNANIMIDADE. Porto Velho, 1 de setembro de 2026`;
+  const J = new Map([["04/09/2026", [e1]], ["01/09/2026", [e2]]]);
+  assert.match(resultadosPorJulgamento(J, [[e1, F("RECURSO PROVIDO")], [e2, F("RECURSO PROVIDO PARCIALMENTE")]]), /resultados diferentes: 04\/09\/2026 \(ACÓRDÃO, id 1\): provido; 01\/09\/2026 \(ACÓRDÃO, id 2\): parcialmente provido/);
+  assert.equal(resultadosPorJulgamento(J, [[e1, F("RECURSO PROVIDO")], [e2, F("RECURSO PROVIDO")]]), "");
+});
+
+test("consulta pouco seletiva: aviso a partir de 1.000 documentos", () => {
+  const d = (n) => ({ hits: { total: { value: n }, hits: [] } });
+  assert.match(formatBusca(d(2110), "honorários", ["ACÓRDÃO"], "recentes", 1, 10), /Consulta pouco seletiva \(2110 documentos\)/);
+  assert.doesNotMatch(formatBusca(d(400), "honorários", ["ACÓRDÃO"], "recentes", 1, 10), /pouco seletiva/);
+});
