@@ -12,8 +12,10 @@ Relato de uma sessão que fez jurimetria de um juiz e de um relator (120 consult
 - **`resultado=` filtra sentenças.** `procedente`, `parcialmente_procedente`, `improcedente`, `extinto`, `homologado`, pelo desfecho lido do dispositivo. Faltava um jeito de separar as sentenças de um juiz por resultado.
 - **A mensagem de escolha pendente manda o subagente devolver ao agente principal,** em vez de ficar parado sem interlocutor. A escolha continua sendo só do usuário.
 - **Servidor Python:** o rótulo de versão do diário de erros ainda dizia 1.26 (era isso que aparecia misturado com a 1.32 no mesmo dia); agora acompanha a versão. Mesmas correções espelhadas no Python (cache 300 de 300 idêntico, corte de saída idêntico).
-- **Fora desta versão:** modo de leitura barato "triagem" para decisões contrárias, e explicar nos alertas de `verificar_citacao_tjro` em que trecho recai a divergência ou o obiter (ficam como proposta).
-- 279 testes no Node.
+- **Modo `triagem` em `obter_inteiro_teor_tjro`** (`modo="triagem"`): leitura barata para decidir se vale ler uma decisão contrária por inteiro. Um bloco por julgamento: resultado declarado, peças com id e link, tese da ementa, fatos do julgado (trecho literal), fecho e precedentes qualificados citados, sem o texto das peças (cerca de 10 a 15% do tamanho). Para aspas continua valendo o modo completo ou `verificar_citacao_tjro`. Idêntico no Node e no Python em 483 processos do cache.
+- **Alertas que dizem onde.** `VOTO DIVERGENTE` agora mostra como a parte divergente começa ("peço vênia ao Relator para divergir no sentido de…"); `OBITER DICTUM?` mostra a frase onde está a marca (ou diz que a marca está no começo do próprio trecho). Idênticos no Node e no Python em 160 conferências (8 de voto divergente, 23 de obiter).
+- **Divergência antiga achada pela paridade (só no Python):** o corte da tese da ementa acima de 1.000 caracteres usava `rfind` sem a folga que o `lastIndexOf` do Node tem, e cortava uma palavra antes em 6 de 483 casos.
+- 281 testes no Node.
 
 ## v1.32.0 (14/10/2026): vocabulário das ementas que casaram e "mais como este"
 

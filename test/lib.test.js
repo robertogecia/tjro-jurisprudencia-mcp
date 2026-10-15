@@ -2253,3 +2253,24 @@ test("cache do inteiro teor: um cache com mais tipos cobre o pedido de menos tip
 test("a mensagem de escolha pendente manda o subagente devolver ao agente principal", () => {
   assert.match(AVISO_ESCOLHA_PENDENTE, /Se você é um subagente.*PARE.*agente principal/s);
 });
+
+// v1.33.0 — modo triagem do inteiro teor
+import { formatTriagem as fTri } from "../server/lib.js";
+test("formatTriagem: um bloco por julgamento, sem o texto das peças, com resultado, tese, fatos, fecho e precedentes citados", () => {
+  const ementa = "EMENTA. I. CASO EM EXAME Apelação contra sentença que declarou a inexistência de contrato de consignado e condenou o banco à restituição. II. QUESTÃO EM DISCUSSÃO A questão consiste em saber a quem cabe provar a autoria. III. RAZÕES DE DECIDIR O ônus é do banco (Tema 1061/STJ). IV. DISPOSITIVO E TESE Recurso desprovido. Tese de julgamento: Cabe ao banco provar a autoria da contratação eletrônica.";
+  const acordao = ementa + " VOTO. Relatório e fundamentos longos aqui. ".repeat(300) + " ACORDAM os Magistrados da 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, em, POR UNANIMIDADE, NEGAR PROVIMENTO AO RECURSO, NOS TERMOS DO VOTO DO RELATOR. Porto Velho, 10 de março de 2026.";
+  const hit = (id, tipo, txt) => ({ _source: { id_processo_documento: id, nr_processo: "70000000020258220001", tipo, dtjulgamento: "2026-03-10", dtjulgamento_str: "10/03/2026", ds_classe_judicial: "APELAÇÃO CÍVEL", nome_relator_acordao: "Fulano de Tal", ds_orgao_julgador_colegiado: "1ª Câmara Cível", ds_modelo_documento: txt } });
+  const data = { hits: { total: { value: 2 }, hits: [hit(11, "ACÓRDÃO", acordao), hit(12, "EMENTA", ementa)] } };
+  const t = fTri(data, "70000000020258220001");
+  assert.match(t, /^\*\*Triagem do processo 7000000-00\.2025\.8\.22\.0001\*\* \(1 julgamento\(s\), 2 documento\(s\)\)/);
+  assert.match(t, /### 10\/03\/2026 · Rel\. Fulano de Tal · 1ª Câmara Cível \(fecho\) · APELAÇÃO CÍVEL/);
+  assert.match(t, /Resultado declarado: desprovido \(fecho\)/);
+  assert.match(t, /Peças: ACÓRDÃO id 11 .* · EMENTA id 12/);
+  assert.match(t, /TESE DA EMENTA .*Cabe ao banco provar a autoria da contratação eletrônica/);
+  assert.match(t, /Fatos \(trecho literal, ementa › caso em exame\)/);
+  assert.match(t, /Fecho: «ACORDAM os Magistrados da 1ª Câmara Cível .* NOS TERMOS DO VOTO DO RELATOR\.»/);
+  assert.doesNotMatch(t, /Porto Velho, 10 de março/);
+  assert.match(t, /Cita precedente qualificado: Tema 1061/);
+  assert.ok(t.length < acordao.length / 2, "a triagem é bem menor que o texto");
+  assert.match(fTri({ hits: { hits: [] } }, "70000000020258220001"), /Nenhum documento encontrado/);
+});

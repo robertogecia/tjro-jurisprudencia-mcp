@@ -359,3 +359,18 @@ test("verificarCitacao: só recibos de busca não provam ausência; ✅ vale; po
   assert.match(out, /fonte: portal/);
   assert.match(out, /✅ LITERAL · id 802/);
 });
+
+// v1.33.0 — os alertas dizem ONDE: abertura da parte divergente e a frase do obiter
+import { fraseDoObiter, obiterAntesComPos } from "../server/verificar.js";
+test("OBITER DICTUM?: o alerta traz a frase, não só a marca; marca no começo do trecho diz isso", () => {
+  const txt = "O apelante sustenta a nulidade. Ainda que fosse possível admitir a validade do contrato, a prova de autoria não foi produzida pelo banco, como lhe cabia. Assim, nego provimento.";
+  const r = conferirTrecho(txt, "a prova de autoria não foi produzida pelo banco, como lhe cabia", "VOTO");
+  assert.ok(r.ok);
+  const ob = r.alertas.find((a) => a.startsWith("OBITER DICTUM?"));
+  assert.ok(ob, JSON.stringify(r.alertas));
+  assert.match(ob, /A frase: «Ainda que fosse possível admitir a validade do contrato,» \+ o trecho\./);
+  const tn = norm1(txt); const i = tn.indexOf("a prova de autoria");
+  const com = obiterAntesComPos(tn, i, i + 60, txt);
+  assert.ok(com && com.pos < i);
+  assert.match(fraseDoObiter(txt, { de: 0, pos: i + 1 }, i), /começo do próprio trecho/);
+});

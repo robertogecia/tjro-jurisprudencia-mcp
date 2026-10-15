@@ -177,6 +177,10 @@ Duas leituras a mais, sem nenhuma consulta extra ao portal:
   a extensão já leu), as variantes dos seus termos com o radical para `termo*` e, com `relator`, as expressões que ele repete. Use para montar a 2ª rodada em
   `grupos` (alternativas em OU) e `excluir`. Não gasta consulta; a rodada seguinte gasta. Medido às cegas: 65% das sugestões descrevem o assunto, 4% são ruído,
   o resto é fórmula de acórdão; é sugestão, confira que a nova busca traz o assunto. Com `similares_a`, a nota também lista os termos que distinguem o julgado-modelo ("mais como este").
+- **`modo="triagem"` no inteiro teor (v1.33.0).** Antes de gastar uma leitura integral de um acórdão contrário, peça `obter_inteiro_teor_tjro` com `modo="triagem"`:
+  por julgamento, o resultado declarado, as peças com id e link, a tese da ementa, os fatos do julgado, o fecho e os precedentes qualificados citados, sem o texto
+  (uns 10 a 15% do tamanho). Serve para decidir o que ler; para pôr trecho entre aspas, use o modo completo ou `verificar_citacao_tjro`. Os alertas desta também dizem
+  onde: o voto divergente mostra como a parte divergente começa, e o obiter mostra a frase da marca.
 
 ## Antes das aspas: verificar a citação, e o que já foi lido — desde a 1.10.0
 

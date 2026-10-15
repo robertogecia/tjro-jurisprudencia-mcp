@@ -1813,6 +1813,82 @@ export const linhaTese = (te) =>
   `- TESE DA EMENTA (literal; tese enunciada pelo órgão, não prova de ratio): "${te.texto}${te.completa ? "" : " […]"}"` +
   (te.completa ? "" : ` ⚠️ TESE INCOMPLETA: ${te.total > 1 ? `${te.exibidos} de ${te.total} itens` : "trecho parcial"}; abra o inteiro teor antes de fichar.`);
 
+// v1.33.0 (relato de uso de 14/10/2026): leitura BARATA para decidir se vale gastar uma leitura integral. Um bloco por julgamento do processo,
+// sem o texto das peças: resultado declarado, peças com id e link, tese da ementa, fatos do julgado (trecho literal), proclamação do fecho e
+// precedentes qualificados citados. Para ler o teor: chamar de novo sem `modo`; para aspas: verificar_citacao_tjro.
+export const TRIAGEM_DISPOSITIVO_MAX = 700;
+const RE_FECHO_BRUTO = /acordam\s+(?:os|as)\s+(?:magistrados|desembargadores|juizes|juizas)/gi;
+const RE_FIM_DO_FECHO = /\s(?:Porto Velho|Ji-Paran[aá]|Cacoal|Vilhena|Ariquemes|Guajar[aá]-Mirim|Rolim de Moura|Jaru|Ouro Preto)[^.,]{0,30},\s*\d{1,2} de /i;
+export function formatTriagem(data, nrProcesso) {
+  const hits = (data.hits || {}).hits || [];
+  if (!hits.length) return `Nenhum documento encontrado para o processo ${cnj(nrProcesso)}.`;
+  const unicos = [];
+  const vistos = new Set();
+  for (const h of hits) {
+    const s = h._source || {};
+    const corpo = limpar(s.ds_modelo_documento || "", 0);
+    const chave = `${s.tipo} ${corpo}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    unicos.push([s, corpo]);
+  }
+  const dataDe = (s) => s.dtjulgamento_str || dataBr(s.dtjulgamento) || `sem data (id ${idDocumento(s) || "?"})`;
+  const grupos = new Map();
+  for (const [s, corpo] of unicos) {
+    const d = dataDe(s);
+    if (!grupos.has(d)) grupos.set(d, []);
+    grupos.get(d).push([s, corpo]);
+  }
+  const iso = (docs) => String(docs[0][0].dtjulgamento || "");
+  const ordenados = [...grupos.entries()].sort((a, b) => (iso(b[1]) > iso(a[1]) ? 1 : iso(b[1]) < iso(a[1]) ? -1 : 0));
+  const out = [
+    `**Triagem do processo ${cnj(nrProcesso)}** (${ordenados.length} julgamento(s), ${unicos.length} documento(s)). Modo triagem: resultado, tese, fatos, fecho e precedentes citados, SEM o texto das peças. ` +
+      "Para ler o teor, chame de novo sem `modo`; para pôr trecho entre aspas, use `verificar_citacao_tjro`. Indício para decidir o que ler, não citação.",
+  ];
+  const preferir = (docs, tipos) => { for (const t of tipos) { const d = docs.find(([s]) => String(s.tipo || "").toUpperCase() === t); if (d) return d; } return docs[0]; };
+  for (const [d, docs] of ordenados) {
+    const [s0] = preferir(docs, ["ACÓRDÃO", "EMENTA", "SENTENÇA", "VOTO", "RELATÓRIO"]);
+    const fechos = new Map();
+    for (const [, corpo] of docs) { const r = extrairOrgaoComOrigem(corpo); if (r && r.origem === "fecho") fechos.set(fold(r.orgao), r.orgao); }
+    const orgaoTxt = fechos.size === 1 ? `${[...fechos.values()][0]} (fecho)` : `${orgao(s0)} (índice; confira o fecho)`;
+    const j = novoJulgamento(s0.ds_classe_judicial || "");
+    let origemFecho = false;
+    for (const [s, corpo] of docs) { const r = resultadoComOrigem(corpo, s.tipo); somarResultado(j, r); if (r.origem === "fecho") origemFecho = true; }
+    const rot = rotuloDoJulgamento(j);
+    const desf = docs.map(([s, corpo]) => desfechoDeSentenca(corpo, s.tipo, s.ds_classe_judicial)).find(Boolean);
+    const resTxt = desf ? `sentença ${ROTULOS_SENTENCA[desf]} (lido do dispositivo)` : rot ? `${ROTULOS_RESULTADO[rot]}${origemFecho ? " (fecho)" : ""}` : "sem resultado identificável: leia o dispositivo";
+    const linhas = [`### ${d} · Rel. ${relator(s0)} · ${orgaoTxt} · ${s0.ds_classe_judicial || ""}`, `- Resultado declarado: ${resTxt}`];
+    linhas.push(`- Peças: ${docs.map(([s]) => `${s.tipo} id ${idDocumento(s) || "?"} (${link(s)})`).join(" · ")}`);
+    const [sE, corpoE] = preferir(docs, ["EMENTA", "ACÓRDÃO"]);
+    const te = teseDaEmenta(corpoE);
+    if (te) linhas.push(linhaTese(te));
+    const [sF, corpoF] = preferir(docs, ["EMENTA", "ACÓRDÃO", "SENTENÇA", "RELATÓRIO"]);
+    const fatos = fatosDoJulgado(corpoF, sF.tipo);
+    if (fatos && !fatos.onde.startsWith("sem relatório formal")) {
+      const teto = fatos.onde.includes("sentença") ? FATOS_MAX_SENT : FATOS_MAX;
+      const cautela = fatos.onde.startsWith("relatório do") || fatos.onde.includes("sentença") ? " ⚠️ relatório: alegações e andamento, não fundamento nem resultado" : RE_ALEGACAO.test(fatos.texto) ? " ⚠️ contém alegação da parte" : "";
+      linhas.push(`- Fatos (trecho literal, ${fatos.onde}${cautela}): "${fatos.texto.replace(/[ \t\n\r\f\v]+/g, " ")}${fatos.texto.length >= teto ? " […]" : ""}"`);
+    }
+    let fechoTxt = null;
+    for (const [, corpo] of docs) {
+      let ult = -1;
+      for (const m of corpo.matchAll(RE_FECHO_BRUTO)) ult = m.index;
+      if (ult >= 0) {
+        let f = corpo.slice(ult, ult + TRIAGEM_DISPOSITIVO_MAX + 200).replace(/[ \t\n\r\f\v]+/g, " ").trim();
+        const fim = RE_FIM_DO_FECHO.exec(f);
+        f = fim ? f.slice(0, fim.index).trim() : f.slice(0, TRIAGEM_DISPOSITIVO_MAX).trim();
+        fechoTxt = f;
+        break;
+      }
+    }
+    linhas.push(fechoTxt ? `- Fecho: «${fechoTxt}»` : "- Fecho: não há proclamação no texto (documento sem fecho)");
+    const anc = ancoras(docs.map(([, corpo]) => corpo).join("\n"));
+    if (anc.length) linhas.push(`- Cita precedente qualificado: ${anc.join(", ")} (o que o julgado cita, não o que decide sobre eles)`);
+    out.push(linhas.join("\n"));
+  }
+  return out.join("\n\n");
+}
+
 export function formatInteiro(data, nrProcesso) {
   const hitsObj = data.hits || {};
   const total = (hitsObj.total || {}).value || 0;

@@ -30,6 +30,7 @@ import {
   diagnosticoRitmo,
   comAvisos,
   gravarEscolha,
+  formatTriagem,
   dicaConsultaGrande,
   limitarSaida,
   lerEscolha,
@@ -299,6 +300,7 @@ server.registerTool(
         .array(z.string())
         .optional()
         .describe('Quais peças trazer. Padrão ["ACÓRDÃO","EMENTA","VOTO","RELATÓRIO"].'),
+      modo: z.enum(["completo", "triagem"]).optional().describe('"triagem" = leitura barata para decidir se vale ler o acórdão inteiro: por julgamento, resultado declarado, peças com id e link, tese da ementa, fatos do julgado, fecho e precedentes qualificados citados, SEM o texto das peças (cerca de 10 a 15% do tamanho). Padrão "completo". Para aspas, nunca use a triagem: use o modo completo ou verificar_citacao_tjro.'),
     },
   },
   async (a) => {
@@ -308,11 +310,11 @@ server.registerTool(
       const tipo = normTipos(a.tipo, ["ACÓRDÃO", "EMENTA", "VOTO", "RELATÓRIO"]);
       const cache = lerCacheInteiro(a.nr_processo, tipo);
       if (cache)
-        return { content: [{ type: "text", text: await comAvisos(notaCache(cache.obtido_em) + formatInteiro(cache.data, a.nr_processo)) }] };
+        return { content: [{ type: "text", text: await comAvisos(notaCache(cache.obtido_em) + (a.modo === "triagem" ? formatTriagem : formatInteiro)(cache.data, a.nr_processo)) }] };
       const data = await post(buildInteiroBody(a.nr_processo, tipo));
       gravarRecibos(data);
       gravarCacheInteiro(a.nr_processo, tipo, data);
-      return { content: [{ type: "text", text: await comAvisos(formatInteiro(data, a.nr_processo)) }] };
+      return { content: [{ type: "text", text: await comAvisos((a.modo === "triagem" ? formatTriagem : formatInteiro)(data, a.nr_processo)) }] };
     } catch (e) {
       return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
     }
