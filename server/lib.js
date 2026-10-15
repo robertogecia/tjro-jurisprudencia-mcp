@@ -1219,7 +1219,7 @@ export function linhaDeRitmo(agora = Date.now()) {
     const reqs = e.requisicoes || [];
     const naJanela = reqs.filter((t) => agora - t <= janela).length;
     return `\n_Ritmo do portal: ${naJanela} de ${JANELA_MAX_REQS} consultas na janela atual de ${janela / 60_000} min (nível ${e.indiceJanela + 1} de ${ESCADA_JANELA_MS.length}), ` +
-      `somando tudo o que esta máquina consultou. Se o seu roteiro tem teto de consultas por frente, conte as suas chamadas; este número só diz o fôlego do limitador._`;
+      `somando as consultas deste servidor (a extensão do Claude Desktop e o servidor Python contam em separado). Se o seu roteiro tem teto de consultas por frente, conte as suas chamadas; este número só diz o fôlego do limitador._`;
   } catch {
     return "";
   }
@@ -1562,17 +1562,33 @@ export async function post(body, fetchImpl = fetch) {
 // às cegas (40 acórdãos novos, 2 rotuladores; concordância 40/40 no vício e 32/40 no efeito): vício declarado certo em 14/18,
 // efeito em 12/32. Rótulo assim enganaria; o ED acolhido mostra a FRASE do dispositivo que o acolhe, e quem lê decide.
 const RE_VICIOS_ED = [/erros? materia/, /omiss|omit/, /contradi/, /obscur/];
+// Red-team de 15/10/2026: o divisor cortava em "art." e "Des." e a frase saía sem a parte que decide. Junta de novo o pedaço
+// que termina em abreviação.
+const RE_ABREV_FIM = /(?:^|[^\p{L}])(?:art|arts|n|nº|inc|al|p|pp|fl|fls|id|des|desa|min|rel|cf|ex|v|vol|cap|dr|dra|sr|sra|§)\.$/iu;
+export function frasesDoTexto(t) {
+  const out = [];
+  for (const p of String(t || "").split(/(?<=[.;])\s+(?=[A-ZÀ-Ý0-9])/)) {
+    if (out.length && RE_ABREV_FIM.test(out[out.length - 1])) out[out.length - 1] += " " + p;
+    else out.push(p);
+  }
+  return out;
+}
+const umaLinha = (f, max = 360) => { const x = f.replace(/[ \t\n\r\f\v]+/g, " ").trim(); return x.length > max ? x.slice(0, max) + "…" : x; };
 export function fraseDosEmbargos(texto) {
   const t = String(texto || "");
   const zona = t.length > 7000 ? t.slice(0, 3000) + " " + t.slice(-4000) : t;
-  const fr = zona.split(/(?<=[.;])\s+(?=[A-ZÀ-Ý0-9])/).filter((f) => {
+  const fr = frasesDoTexto(zona).filter((f) => {
     const x = fold(f);
     return /embargos|aclarator|declarator/.test(x) && /\bacolh|\bdou provimento|providos?\b/.test(x) && !/\bnao (se )?acolh|rejeit|1\.?022|cabem embargos|cabimento|prestam|destinam|hipoteses/.test(x) &&
       RE_VICIOS_ED.filter((r) => r.test(x)).length < 3;
   });
   if (!fr.length) return "";
-  const f = fr[fr.length - 1].replace(/[ \t\n\r\f\v]+/g, " ").trim();
-  return f.length > 320 ? f.slice(0, 320) + "…" : f;
+  // a frase do VOTO ("acolho os embargos para…") diz o vício; a do fecho é reserva, sem a fórmula "Vistos, relatados… em,"
+  const doVoto = fr.filter((f) => !/acordam os magistrados/i.test(f));
+  let f = doVoto.length ? doVoto[doVoto.length - 1] : fr[fr.length - 1];
+  const em = /acordam os magistrados[^]*?\bem,\s*/i.exec(f);
+  if (em) f = f.slice(em.index + em[0].length);
+  return umaLinha(f);
 }
 
 // v1.34.0 (relato de uso, 13/10/2026): pedido de rótulo "má-fé aplicada / afastada / só citada". A regra medida às cegas
@@ -1580,18 +1596,19 @@ export function fraseDosEmbargos(texto) {
 // 50%: rótulo assim enganaria. Na busca sobre má-fé, cada resultado mostra a FRASE literal, e quem lê decide.
 const RE_MA_FE = /litiga\w*\s+de\s+ma[\s-]*fe/;
 export function fraseDeMaFe(texto) {
-  const fr = String(texto || "").split(/(?<=[.;])\s+(?=[A-ZÀ-Ý0-9])/).filter((f) => RE_MA_FE.test(fold(f)));
-  if (!fr.length) return "";
-  const f = fr[fr.length - 1].replace(/[ \t\n\r\f\v]+/g, " ").trim();
-  return f.length > 320 ? f.slice(0, 320) + "…" : f;
+  const fr = frasesDoTexto(texto).filter((f) => RE_MA_FE.test(fold(f)));
+  return fr.length ? umaLinha(fr[fr.length - 1]) : "";
 }
+
+// data AAAA-MM-DD válida no calendário (o índice e o fecho já trouxeram "31 de novembro")
+export const dataValida = (a, m, d) => m >= 1 && m <= 12 && d >= 1 && d <= new Date(Date.UTC(a, m, 0)).getUTCDate();
 
 // v1.34.0 (relato de uso, 13/10/2026): a busca devolveu o próprio acórdão embargado, julgado dias antes, sem nada que o
 // distinguisse. Julgado há até RECENTE_DIAS dias: ainda pode não ter sido publicado e cabe embargos.
 export const RECENTE_DIAS = 30;
 export function diasDesdeJulgamento(s, agora) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String((s || {}).dtjulgamento || ""));
-  if (!m) return null;
+  if (!m || !dataValida(+m[1], +m[2], +m[3])) return null;
   const dias = Math.floor((agora - Date.UTC(+m[1], +m[2] - 1, +m[3])) / 86400000);
   return dias >= 0 && dias <= RECENTE_DIAS ? dias : null;
 }
@@ -2181,26 +2198,32 @@ export function formatInteiro(data, nrProcesso) {
 // v1.35.0 (relato de 14/10/2026): a Citação do topo é da peça mais recente, que às vezes é o VOTO; o agente teve de descobrir
 // sozinho qual id era o acórdão. Peça que não é acórdão diz o tipo e aponta o ACÓRDÃO do mesmo julgamento (mesma data).
 export function pecaEAcordao(s0, unicos, dataDe) {
-  if (s0.tipo === "ACÓRDÃO") return "";
+  // só peça de 2º grau que integra um acórdão; sentença, decisão e despacho não têm "acórdão deste julgamento"
+  if (!/^(VOTO|EMENTA|RELAT|DECLARA)/.test(String(s0.tipo || "").toUpperCase())) return "";
   const ac = dataDe(s0) ? unicos.find(([s]) => s.tipo === "ACÓRDÃO" && dataDe(s) === dataDe(s0)) : null;
   return ` · peça: ${s0.tipo || "?"}` + (ac && idDocumento(ac[0]) ? `; o ACÓRDÃO deste julgamento é o id ${idDocumento(ac[0])}` : "; o ACÓRDÃO deste julgamento não veio nesta resposta");
 }
 // v1.35.0: dois julgamentos sob o mesmo número com resultados diferentes ("PROVIDO" × "PROVIDO PARCIALMENTE"): o aviso de
 // julgamentos distintos não dizia em que diferiam. Resultado declarado de cada um (ACÓRDÃO; sem ele, a EMENTA).
 export function resultadosPorJulgamento(julgamentos, unicos) {
-  const res = [];
+  const res = [], edAc = [];
   for (const [d, ss] of julgamentos) {
     const peca = unicos.find(([s]) => ss.includes(s) && s.tipo === "ACÓRDÃO") || unicos.find(([s]) => ss.includes(s) && s.tipo === "EMENTA");
     if (!peca) continue;
     const ro = resultadoComOrigem(peca[1], peca[0].tipo);
     const r = rotuloDoConjunto(ro.conjunto, peca[0].ds_classe_judicial, ro.embargos);
-    // só provido / parcialmente / desprovido: apelação provida e embargos rejeitados é o normal, não divergência
-    if (r && ["PROVIDO", "PARCIAL", "DESPROVIDO"].includes(r)) res.push(`${d} (${peca[0].tipo}, id ${idDocumento(peca[0]) || "?"}): ${ROTULOS_RESULTADO[r]}`);
+    const id = idDocumento(peca[0]) || "?";
+    // red-team de 15/10/2026: embargos ficam fora da comparação (ED "parcialmente acolhido" não é apelação "parcialmente
+    // provida"), mas ED ACOLHIDO pode ter mudado o resultado: aviso próprio.
+    if (ro.embargos) { if (r === "ACOLHIDO" || r === "PARCIAL") edAc.push(`${d} (id ${id})`); continue; }
+    if (r && ["PROVIDO", "PARCIAL", "DESPROVIDO"].includes(r)) res.push(`${d} (${peca[0].tipo}, id ${id}): ${ROTULOS_RESULTADO[r]}`);
   }
-  const rotulos = new Set(res.map((x) => x.split(": ").pop()));
-  return rotulos.size > 1
-    ? `⚠️ Os julgamentos declaram resultados diferentes: ${res.join("; ")}. O mais recente pode ser o dos embargos de declaração ou uma reemissão corrigida; confira qual é o vigente antes de citar o resultado.`
-    : "";
+  const out = [];
+  if (new Set(res.map((x) => x.split(": ").pop())).size > 1)
+    out.push(`⚠️ Os julgamentos declaram resultados diferentes: ${res.join("; ")}. Pode ser recurso diferente (apelação e agravo interno) ou reemissão corrigida; confira qual é o vigente antes de citar o resultado.`);
+  if (edAc.length && julgamentos.size > 1)
+    out.push(`⚠️ Embargos de declaração ACOLHIDOS em ${edAc.join("; ")}: se tiveram efeito infringente, o resultado vigente é o deles, não o da decisão embargada. Confira o dispositivo dos embargos antes de citar o resultado.`);
+  return out.join("\n");
 }
 
 // v1.35.0 (relato de 14/10/2026): o índice dá "julgado em 04/09" e o fecho diz "Porto Velho, 28 de agosto". Nos 412 acórdãos
@@ -2208,19 +2231,29 @@ export function resultadosPorJulgamento(julgamentos, unicos) {
 // é a data do documento no sistema, a que a citação padrão do TJRO usa. As duas aparecem lado a lado.
 const MESES = { janeiro: 1, fevereiro: 2, "março": 3, marco: 3, abril: 4, maio: 5, junho: 6, julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12 };
 const RE_DATA_FECHO = /\b(?:Porto Velho|Ji-Paran[aá]|Cacoal|Vilhena|Ariquemes|Guajar[aá]-Mirim|Rolim de Moura|Jaru|Ouro Preto do Oeste)\s*(?:\/\s*RO)?,?\s*(\d{1,2})º?\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i;
-export function dataDoFecho(corpo) {
+export function dataDoFechoBruta(corpo) {
   const t = String(corpo || "");
   let ult = -1;
   for (const m of t.matchAll(RE_ACORDAM)) ult = m.index;
-  if (ult < 0) return "";
-  const m = RE_DATA_FECHO.exec(t.slice(ult, ult + 2500));
+  if (ult < 0) return null;
+  // red-team: em IRDR o dispositivo traz as teses e a data fica a mais de 4.000 caracteres do "acordam"
+  const m = RE_DATA_FECHO.exec(t.slice(ult, ult + 6000));
   const mes = m && MESES[m[2].toLowerCase()];
-  return mes ? `${m[1].padStart(2, "0")}/${String(mes).padStart(2, "0")}/${m[3]}` : "";
+  if (!mes) return null;
+  const d = +m[1], a = +m[3];
+  return { br: `${m[1].padStart(2, "0")}/${String(mes).padStart(2, "0")}/${m[3]}`, iso: `${a}-${String(mes).padStart(2, "0")}-${m[1].padStart(2, "0")}`, valida: dataValida(a, mes, d) };
+}
+export function dataDoFecho(corpo) {
+  const b = dataDoFechoBruta(corpo);
+  return b && b.valida ? b.br : "";
 }
 export function linhaDatas(corpo, s) {
-  const f = dataDoFecho(corpo), idx = s.dtjulgamento_str || dataBr(s.dtjulgamento) || "";
-  if (!f || !idx || f === idx) return "";
-  return `📅 Sessão de julgamento (data no fecho): ${f} · índice: ${idx} (data do documento no sistema, a que a citação padrão do TJRO usa). Para dizer quando o colegiado julgou, use a do fecho; para localizar a peça, o id.`;
+  const b = dataDoFechoBruta(corpo), idx = s.dtjulgamento_str || dataBr(s.dtjulgamento) || "";
+  if (!b || !idx || b.br === idx) return "";
+  if (!b.valida) return `📅 O fecho traz data impossível (${b.br}); fique com a do índice (${idx}) e confira no documento.`;
+  const isoIdx = idx.split("/").reverse().join("-");
+  if (b.iso > isoIdx) return `📅 O fecho (${b.br}) é posterior ao índice (${idx}), o contrário do usual: confira no documento antes de usar qualquer das duas.`;
+  return `📅 Sessão de julgamento (data no fecho): ${b.br} · índice: ${idx} (data do documento no sistema, a que a citação padrão do TJRO usa). Para dizer quando o colegiado julgou, use a do fecho; para localizar a peça, o id.`;
 }
 
 // v1.34.0 (relato de uso, 14/10/2026): acórdão cortado pelo orçamento perdia o fecho, que diz a câmara,
@@ -2231,7 +2264,8 @@ export function fechoForaDoCorte(corpo, exibidos) {
   for (const m of t.matchAll(RE_ACORDAM)) ult = m.index;
   if (ult < 0 || ult < exibidos) return "";
   const f = t.slice(ult, ult + 700).replace(/[ \t\n\r\f\v]+/g, " ").trim();
-  return `\n📍 FECHO (estava na parte cortada; trecho literal a partir de "acordam os Magistrados"): «${f}${t.length > ult + 700 ? "…" : ""}»`;
+  const df = t.length > ult + 700 ? dataDoFecho(t) : "";
+  return `\n📍 FECHO (estava na parte cortada; trecho literal a partir de "acordam os Magistrados"): «${f}${t.length > ult + 700 ? "…" : ""}»${df ? ` (data no fecho: ${df})` : ""}`;
 }
 
 // v1.34.0 (relato de uso, 13/10/2026): o PJe reemite o acórdão (ids e datas diferentes, um deles às vezes sem o voto),
@@ -2245,7 +2279,9 @@ export function reemissoesDoAcordao(unicos) {
     let ult = -1;
     for (const m of c.matchAll(RE_ACORDAM)) ult = m.index;
     if (ult < 0) continue;
-    const k = fold(c.slice(0, 1200)) + "|" + fold(c.slice(ult, ult + 400));
+    // red-team: a reemissão costuma vir sem o cabeçalho do PJe; compara a partir da EMENTA/RELATÓRIO
+    const ini = Math.max(0, c.search(/\b(?:EMENTA|RELAT[ÓO]RIO)\b/i));
+    const k = fold(c.slice(ini, ini + 1200)) + "|" + fold(c.slice(ult, ult + 400));
     if (!grupos.has(k)) grupos.set(k, []);
     grupos.get(k).push(u);
   }
@@ -2274,10 +2310,12 @@ export function artigosTrocados(texto) {
       const [a, b] = [vistos.get(ks[i]), vistos.get(ks[j])];
       if (ks[i].length !== ks[j].length || [...ks[i]].sort().join("") !== [...ks[j]].sort().join("")) continue;
       if (a.dips.size && b.dips.size && ![...a.dips].some((d) => b.dips.has(d))) continue;
-      const fora = [[ks[i], a], [ks[j], b]].filter(([k, v]) => v.dips.size === 1 && v.dips.has("CPC") && Number(k) > 1072).map(([, v]) => v.rot);
-      return `🔢 ARTIGO COM ALGARISMOS TROCADOS? O texto cita art. ${a.rot} e art. ${b.rot} (mesmos algarismos em outra ordem)` +
-        (fora.length ? `; o CPC vai até o art. 1.072, então art. ${fora.join(" e ")} do CPC não existe` : "") +
-        ". Pode ser erro de digitação do julgado: confira qual dispositivo a ementa e o dispositivo usam antes de citar.";
+      // red-team de 15/10/2026: pares legítimos (1.012 e 1.021 do CPC) davam alarme; só avisa quando um dos dois NÃO EXISTE
+      // no diploma declarado (CPC até 1.072, CC até 2.046)
+      const fora = [[ks[i], a], [ks[j], b]].filter(([k, v]) => v.dips.size === 1 && ((v.dips.has("CPC") && Number(k) > 1072) || (v.dips.has("CC") && Number(k) > 2046)));
+      if (!fora.length) continue;
+      const [, v] = fora[0], dip = [...v.dips][0];
+      return `🔢 ARTIGO QUE NÃO EXISTE: o texto cita art. ${v.rot} do ${dip} (que vai até o art. ${dip === "CPC" ? "1.072" : "2.046"}) e também art. ${(v === a ? b : a).rot}, com os mesmos algarismos em outra ordem. Provável erro de digitação do julgado: confira qual dispositivo a ementa e o dispositivo usam antes de citar.`;
     }
   return "";
 }

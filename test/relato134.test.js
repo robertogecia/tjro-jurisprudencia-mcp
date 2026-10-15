@@ -27,12 +27,11 @@ test("reemissão: mesmo começo e mesmo fecho = mesmo julgamento; o mais longo p
   assert.deepEqual(g[0].map((x) => x[0].id_processo_documento), [2, 1]);
 });
 
-test("artigo com algarismos trocados: avisa; CPC acima de 1.072 não existe; diplomas diferentes não", () => {
-  assert.match(artigosTrocados("nos termos do art. 1.103, § 3º, III, do CPC. Ementa: art. 1.013, § 3º, do CPC."), /art\. 1\.103 do CPC não existe/);
-  assert.match(artigosTrocados("art. 1.583 do Código Civil e 550 do CPC; § 5º do art. 1.538 do CC/02"), /ALGARISMOS TROCADOS/);
-  assert.doesNotMatch(artigosTrocados("art. 1.583 do Código Civil e 550 do CPC; § 5º do art. 1.538 do CC/02"), /não existe/);
+test("artigo trocado: só avisa quando um dos dois não existe no diploma (red-team de 15/10/2026)", () => {
+  assert.match(artigosTrocados("nos termos do art. 1.103, § 3º, III, do CPC. Ementa: art. 1.013, § 3º, do CPC."), /ARTIGO QUE NÃO EXISTE: o texto cita art\. 1\.103 do CPC/);
+  assert.equal(artigosTrocados("art. 1.583 do Código Civil e 550 do CPC; § 5º do art. 1.538 do CC/02"), "");
+  assert.equal(artigosTrocados("Nos termos do art. 1.012 do CPC, a apelação; e o art. 1.021 do CPC trata do agravo interno."), "");
   assert.equal(artigosTrocados("art. 1.022 do CPC e art. 1.220 do Código Civil"), "");
-  assert.equal(artigosTrocados("art. 1.022 do CPC e art. 489 do CPC"), "");
 });
 
 test("julgado recente: até 30 dias; data futura ou antiga, nada", () => {

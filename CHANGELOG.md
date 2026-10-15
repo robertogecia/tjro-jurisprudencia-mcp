@@ -11,6 +11,16 @@ Versões anteriores estão descritas nas mensagens de commit (`git log`).
 - **Consulta pouco seletiva.** Com 1.000 documentos ou mais, a busca avisa que a página é só o topo da ordenação e sugere restringir por classe, assunto, resultado ou termo próprio antes de concluir algo sobre o conjunto.
 - **Embargos acolhidos mostram a frase do dispositivo, sem rótulo.** Subtipo pedido (erro material, omissão, efeito infringente) medido às cegas em 40 acórdãos novos, com 2 rotuladores (concordância de 40/40 no vício e 32/40 no efeito): a regra acertou o vício declarado em 14 de 18 e o efeito em 12 de 32. Rótulo assim enganaria; o ED acolhido traz a frase literal que o acolhe.
 
+- **Red-team antes de publicar (15/10/2026).** Quatro caçadores (Opus, Sonnet, Fable) e quatro verificadores de outro modelo revisaram a 1.34 e a 1.35; dos 26 achados, 24 foram confirmados e corrigidos:
+  - **Citação do PJe com número antigo.** Também reconhece o número antigo do TJRO (".822.") e o número com espaço vindo do PDF. "Relator (a)", "Relatora" e "Relator para o Acórdão:" não abrem mais bloco de transcrição. Conferência cega e dupla dos trechos que mudaram de lado (60 trechos, Sonnet e Opus, concordância 59/60): 49 de 51 novas transcrições e 8 de 9 devoluções à voz do relator confirmadas.
+  - **Resultados entre julgamentos.** Embargos saem da comparação de resultados (ED "parcialmente acolhido" não é apelação "parcialmente provida"). Embargos ACOLHIDOS ganham aviso próprio, porque podem ter mudado o resultado.
+  - **Frase literal.** A frase literal (má-fé, embargos) não é mais cortada em "art." ou "Des.". A dos embargos prefere a do voto e tira a fórmula do fecho.
+  - **Datas.** Data do fecho impossível ("31 de novembro") ou posterior ao índice gera aviso em vez de "use a do fecho". A busca da data no fecho foi ampliada para alcançar o dispositivo longo de IRDR. Data inválida no índice não derruba mais o espelho Python.
+  - **Artigo trocado.** Só avisa quando um dos artigos não existe no diploma declarado (CPC até 1.072, CC até 2.046); pares legítimos como 1.012 e 1.021 do CPC não disparam mais.
+  - **Reemissão.** A reemissão é comparada a partir da EMENTA ou do RELATÓRIO, sem o cabeçalho do PJe.
+  - **Citação de sentença ou decisão.** A citação de SENTENÇA, DECISÃO ou DESPACHO não diz mais que "o acórdão não veio".
+  - **Placar de ritmo.** O placar diz que conta só as consultas deste servidor.
+
 ## v1.34.0 (14/10/2026): correções vindas do relato de uso de uma pesquisa de litigância de má-fé
 
 - **Falso alerta de TRANSCRIÇÃO corrigido.** O verificador marcava como transcrição a frase do próprio relator quando o voto citava uma ementa no formato do PJe, sem parênteses ("…Processo nº …, Relator(a) do Acórdão: … Data de julgamento: dd/mm/aaaa."). Duas causas: "Relator(a) do Acórdão:" abria bloco e essa citação não fechava bloco, então o bloco seguinte atravessava três parágrafos do relator. Nos 1.672 acórdãos dos recibos, 50 mudaram; a conferência cega e dupla dos 55 trechos que mudaram de lado confirmou 46 de 49 novas transcrições e 5 de 6 devoluções à voz do relator, sem erro confirmado pelos dois rotuladores (concordância 52/55).
