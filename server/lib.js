@@ -508,7 +508,16 @@ export function linhasQuebra(mapa, max = 8, minimo = 3) {
 // Filtro de resultado, 100% no cliente, sobre os hits já trazidos: fica quem
 // pertence a um julgamento cujo rótulo é o pedido. "sem" = sem resultado identificável.
 export const ROTULOS_FILTRO = { provido: "PROVIDO", parcial: "PARCIAL", desprovido: "DESPROVIDO", acolhido: "ACOLHIDO", rejeitado: "REJEITADO", sem: null };
+// v1.33.0: `resultado=` também filtra SENTENÇAS pelo desfecho lido do dispositivo (o relato de uso de 14/10/2026 não achava como separar procedentes de improcedentes).
+export const FILTRO_SENTENCA = { procedente: "PROCEDENTE", parcialmente_procedente: "PARCIAL", improcedente: "IMPROCEDENTE", extinto: "EXTINTO", homologado: "HOMOLOGADO" };
 export function filtrarPorResultado(hits, rotulo) {
+  if (rotulo in FILTRO_SENTENCA) {
+    const fica = hits.filter((h) => {
+      const x = h._source || {};
+      return desfechoDeSentenca(limpar(x.ds_modelo_documento || "", 0), x.tipo, x.ds_classe_judicial) === FILTRO_SENTENCA[rotulo];
+    });
+    return { hits: fica, removidos: hits.length - fica.length };
+  }
   if (!(rotulo in ROTULOS_FILTRO)) return { hits, removidos: 0 };
   const alvo = ROTULOS_FILTRO[rotulo];
   const julgs = new Map();
@@ -780,6 +789,24 @@ export const RESPOSTA_CORROMPIDA =
 const ehRespostaCorrompida = (e) =>
   /HTTP\/1\.1 protocol|Invalid header|^HPE_/i.test(`${e?.cause?.code || ""} ${e?.cause?.message || ""}`.trim());
 
+// v1.33.0: o portal responde HTTP 500 a consultas grandes (6 de 6 com 3 grupos e 11 a 17 termos em 14/10/2026; com 2 grupos e menos termos passou).
+export const contaTermosDaConsulta = (grupos) => (Array.isArray(grupos) ? grupos.reduce((n, g) => n + (Array.isArray(g) ? g.length : 1), 0) : 0);
+export function dicaConsultaGrande(mensagem, grupos) {
+  const nG = Array.isArray(grupos) ? grupos.length : 0, nT = contaTermosDaConsulta(grupos);
+  if (!/HTTP 500/.test(String(mensagem || "")) || (nG < 3 && nT < 10)) return "";
+  return ` O portal respondeu 500 a uma consulta grande (${nG} grupos, ${nT} termos): costuma falhar acima de 2 grupos ou cerca de 10 termos. Reduza para até 2 grupos e uns 6 termos, ou divida em duas buscas.`;
+}
+// Resultado muito grande é desviado pelo cliente para um arquivo que o subagente não lê; corta no limite de um resultado e avisa.
+export const SAIDA_MAX_CHARS = 80000;
+export function limitarSaida(texto, max = SAIDA_MAX_CHARS) {
+  const t = String(texto || "");
+  if (t.length <= max) return t;
+  const corte = t.lastIndexOf("\n## ", max);
+  const ate = corte > max / 4 ? corte : max;
+  const mostrados = (t.slice(0, ate).match(/\n## /g) || []).length;
+  const total = (t.match(/\n## /g) || []).length;
+  return `${t.slice(0, ate)}\n\n[SAÍDA CORTADA: ${mostrados} de ${total} resultados cabem aqui (limite de ${Math.round(max / 1000)} mil caracteres, para o resultado não ser desviado para arquivo). Repita com modo="compacto" ou por_pagina menor, ou peça a página seguinte.]\n`;
+}
 export const msgErro = (e) =>
   e.name === "TimeoutError"
     ? "tempo esgotado após 45s — o portal JURIS pode estar lento; tente novamente"
@@ -894,6 +921,7 @@ export const AVISO_ESCOLHA_PENDENTE =
   "Se o usuário aceitar, a extensão passa a se apresentar ao portal como um navegador comum, de forma permanente, até ele desfazer. " +
   "É um disfarce: o tribunal pode considerar uso indevido do portal e, se restringir o acesso (por exemplo, bloqueando o IP da rede " +
   "dele), o risco é inteiramente do usuário e de quem divide a rede com ele. O ritmo mínimo entre consultas continua valendo.\n" +
+  "Se você é um subagente (sem usuário para perguntar), PARE: devolva esta mensagem inteira ao agente principal e não escolha por ele.\n" +
   "Se ele disser SIM: chame configurar_identificacao_tjro com escolha=\"navegador\" e repita a consulta. " +
   "Se disser NÃO: chame com escolha=\"honesta\" (a extensão continua se declarando; a consulta pode ser bloqueada pelo portal, e o " +
   "caminho é o site juris.tjro.jus.br ou pedir liberação a suporte@tjro.jus.br). A escolha fica gravada e a pergunta não se repete.";
@@ -2219,8 +2247,30 @@ const chaveInteiro = (nr, tipo) =>
 export function lerCacheInteiro(nr, tipo, pasta = dirCache(), agora = Date.now()) {
   try {
     const c = JSON.parse(fs.readFileSync(path.join(pasta, chaveInteiro(nr, tipo)), "utf8"));
-    if (!c?.obtido_em || agora - Date.parse(c.obtido_em) > CACHE_INTEIRO_MS) return null;
-    return c;
+    if (c?.obtido_em && agora - Date.parse(c.obtido_em) <= CACHE_INTEIRO_MS) return c;
+  } catch {
+    /* sem cache exato: tenta um que cubra os tipos pedidos */
+  }
+  // v1.33.0: o mesmo processo lido com mais tipos ("ACÓRDÃO_EMENTA_RELATÓRIO_VOTO") cobre o pedido de menos tipos ("ACÓRDÃO"); antes refazia a requisição.
+  try {
+    const digitos = String(nr || "").replace(/\D/g, "");
+    if (!digitos) return null;
+    const pedidos = new Set((tipo || []).map((t) => String(t).toUpperCase()));
+    const chaveDeTipos = (t) => new Set(String(t).split("_").map((x) => x.toUpperCase()));
+    let melhor = null;
+    for (const f of fs.readdirSync(pasta)) {
+      const m = /^inteiro-(\d+)-(.*)\.json$/.exec(f);
+      if (!m || m[1] !== digitos) continue;
+      const tem = chaveDeTipos(m[2]);
+      if (![...pedidos].every((t) => tem.has(t))) continue;
+      const c = JSON.parse(fs.readFileSync(path.join(pasta, f), "utf8"));
+      if (!c?.obtido_em || agora - Date.parse(c.obtido_em) > CACHE_INTEIRO_MS) continue;
+      if (!melhor || Date.parse(c.obtido_em) > Date.parse(melhor.obtido_em)) melhor = c;
+    }
+    if (!melhor) return null;
+    const hits = (melhor.data?.hits?.hits || []).filter((h) => pedidos.has(String((h._source || {}).tipo || "").toUpperCase()));
+    if (!hits.length) return null;
+    return { ...melhor, data: { ...melhor.data, hits: { ...melhor.data.hits, hits } } };
   } catch {
     return null;
   }
@@ -2250,7 +2300,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.32.0";
+export const VERSAO = "1.33.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

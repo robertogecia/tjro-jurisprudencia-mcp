@@ -30,6 +30,8 @@ import {
   diagnosticoRitmo,
   comAvisos,
   gravarEscolha,
+  dicaConsultaGrande,
+  limitarSaida,
   lerEscolha,
   modoNavegadorAtivo,
   comAjudaNoErro,
@@ -173,7 +175,7 @@ server.registerTool(
       modo: z.enum(["completo", "compacto"]).optional().describe('"compacto" = uma linha por documento (órgão, data, relator, resultado declarado, assunto, processo, id), sem trecho — para varrer 100–250 resultados e escolher o que abrir. Padrão "completo" (com trecho).'),
       sugerir_termos: z.boolean().optional().describe("true = acrescenta, no fim, o VOCABULÁRIO das ementas desta página (zero consulta extra): termos e pares de palavras característicos dos resultados (frequentes aqui, raros no corpus local), variantes dos seus termos com o radical para `termo*`, e, se houver `relator`, as expressões que ele repete. Serve para montar a 2ª rodada em `grupos`/`excluir` com as palavras que os julgadores de fato usaram. Use com por_pagina de 50 a 250. Indício, não conclusão."),
       similares_a: z.string().optional().describe("Id de um documento DESTA página (id_processo_documento, vem em cada resultado): reordena a página, no cliente e sem consulta extra, pela semelhança de texto com ele (cosseno TF-IDF), com a semelhança em % no cabeçalho. Use com por_pagina alto e a mesma consulta que trouxe o documento. Semelhança de palavras, não de tese."),
-      resultado: z.enum(["provido", "parcial", "desprovido", "acolhido", "rejeitado", "sem"]).optional().describe("Filtra, NO CLIENTE e só dentro da página trazida, os documentos cujo julgamento declara esse resultado no dispositivo (provido / parcialmente provido / desprovido / acolhido / rejeitado; \"sem\" = sem resultado identificável). Use com por_pagina alto. O total do cabeçalho continua sendo o do índice."),
+      resultado: z.enum(["provido", "parcial", "desprovido", "acolhido", "rejeitado", "sem", "procedente", "parcialmente_procedente", "improcedente", "extinto", "homologado"]).optional().describe("Filtra, NO CLIENTE e só dentro da página trazida, os documentos cujo julgamento declara esse resultado no dispositivo (provido / parcialmente provido / desprovido / acolhido / rejeitado; \"sem\" = sem resultado identificável). Para SENTENÇAS (tipo=[\"SENTENÇA\"]) vale o desfecho do dispositivo: procedente / parcialmente_procedente / improcedente / extinto / homologado (sentença sem desfecho identificável sai do filtro). Use com por_pagina alto. O total do cabeçalho continua sendo o do índice."),
     },
   },
   async (a) => {
@@ -267,9 +269,9 @@ server.registerTool(
       let texto = formatBusca(data, a.consulta, tipo, ordenacao, pagina, porPagina, filtros, nota, !!a.termo_exato, temGrupos || (Array.isArray(a.excluir) && a.excluir.length) ? corpo.fields.query : "", { modo: a.modo });
       if (a.sugerir_termos)
         texto += blocoVocabulario(sugerirVocabulario((data.hits || {}).hits || [], { consulta: a.consulta, grupos: a.grupos, relator: a.relator }), { relator: a.relator });
-      return { content: [{ type: "text", text: await comAvisos(texto) }] };
+      return { content: [{ type: "text", text: await comAvisos(limitarSaida(texto)) }] };
     } catch (e) {
-      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
+      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e) + dicaConsultaGrande(msgErro(e), a.grupos)) }], isError: true };
     }
   }
 );

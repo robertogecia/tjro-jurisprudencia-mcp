@@ -2,6 +2,19 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.33.0 (14/10/2026): correções vindas do relato de uso de um caso real
+
+Relato de uma sessão que fez jurimetria de um juiz e de um relator (120 consultas em 2 dias, 0 bloqueios abaixo de 7 s). Dos 10 achados, entram os que têm correção segura:
+
+- **HTTP 500 em consulta grande.** O portal respondeu 500 em 6 de 6 buscas com 3 grupos e 11 a 17 termos; com 2 grupos e menos termos passou. Quando ocorre, o erro agora diz o tamanho da consulta e manda reduzir (até 2 grupos e uns 6 termos) ou dividir em duas buscas.
+- **Resultado grande não é mais desviado para arquivo.** Acima de 80 mil caracteres a busca corta no limite de um resultado e avisa quantos cabem, com a instrução de usar `modo="compacto"` ou `por_pagina` menor. Antes o cliente salvava a saída num arquivo que o subagente de pesquisa não consegue abrir.
+- **Cache do inteiro teor aproveitado.** Ler o processo com mais tipos (acórdão, ementa, relatório, voto) agora cobre o pedido de menos tipos (só acórdão): antes refazia a requisição à toa. Pedido de tipo que o cache não tem vai ao portal.
+- **`resultado=` filtra sentenças.** `procedente`, `parcialmente_procedente`, `improcedente`, `extinto`, `homologado`, pelo desfecho lido do dispositivo. Faltava um jeito de separar as sentenças de um juiz por resultado.
+- **A mensagem de escolha pendente manda o subagente devolver ao agente principal,** em vez de ficar parado sem interlocutor. A escolha continua sendo só do usuário.
+- **Servidor Python:** o rótulo de versão do diário de erros ainda dizia 1.26 (era isso que aparecia misturado com a 1.32 no mesmo dia); agora acompanha a versão. Mesmas correções espelhadas no Python (cache 300 de 300 idêntico, corte de saída idêntico).
+- **Fora desta versão:** modo de leitura barato "triagem" para decisões contrárias, e explicar nos alertas de `verificar_citacao_tjro` em que trecho recai a divergência ou o obiter (ficam como proposta).
+- 279 testes no Node.
+
 ## v1.32.0 (14/10/2026): vocabulário das ementas que casaram e "mais como este"
 
 Resposta à pergunta "como achar o que o julgador escreveu com outras palavras?". O motor do TJRO casa palavras; pesquisa semântica por vetores não cabe (o índice é do tribunal e não aceita vetor, o corpus local é pequeno e exigiria baixar modelo). O que cabe, sem consulta extra e sem dependência:

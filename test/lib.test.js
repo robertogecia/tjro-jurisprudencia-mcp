@@ -2203,3 +2203,53 @@ test("embargos parcialmente acolhidos/providos viram PARCIAL; 'parcial' do recur
   assert.equal(parcialDosEmbargos("EMBARGOS ACOLHIDOS, PARA DAR PARCIAL PROVIMENTO AO RECURSO"), false);
   assert.equal(parcialDosEmbargos("EMBARGOS PARCIALMENTE ACOLHIDOS"), true);
 });
+
+// v1.33.0 — melhorias a partir do relato de uso de 14/10/2026
+import { dicaConsultaGrande, limitarSaida, contaTermosDaConsulta, FILTRO_SENTENCA, filtrarPorResultado as filtrarPR, lerCacheInteiro as lerCI, gravarCacheInteiro as gravarCI, AVISO_ESCOLHA_PENDENTE } from "../server/lib.js";
+import fsx from "node:fs";
+import osx from "node:os";
+import pathx from "node:path";
+
+test("HTTP 500 em consulta grande ganha a dica de reduzir; consulta pequena ou outro erro, não", () => {
+  const g3 = [["a", "b", "c", "d"], ["e", "f", "g", "h"], ["i", "j", "k"]];
+  assert.equal(contaTermosDaConsulta(g3), 11);
+  assert.match(dicaConsultaGrande("HTTP 500", g3), /3 grupos, 11 termos.*até 2 grupos/);
+  assert.equal(dicaConsultaGrande("HTTP 500", [["a", "b"], ["c"]]), "");
+  assert.equal(dicaConsultaGrande("tempo esgotado", g3), "");
+  assert.match(dicaConsultaGrande("HTTP 500", [["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]]), /1 grupos, 10 termos/);
+});
+
+test("limitarSaida: corta no limite de um resultado e avisa; texto curto passa igual", () => {
+  const um = (i) => `\n## EMENTA ${i}\n` + "x".repeat(900);
+  const t = "cabeçalho" + Array.from({ length: 30 }, (_, i) => um(i)).join("");
+  assert.equal(limitarSaida("curto"), "curto");
+  const c = limitarSaida(t, 10000);
+  assert.ok(c.length < 10600 && /\[SAÍDA CORTADA: \d+ de 30 resultados cabem aqui/.test(c));
+  assert.ok(!/\n## EMENTA \d+\nx{1,899}\n\n\[SAÍDA/.test(c), "não corta no meio de um resultado");
+});
+
+test("resultado= também filtra SENTENÇAS pelo desfecho do dispositivo", () => {
+  const sent = (id, dispositivo) => ({ _source: { id_processo_documento: id, tipo: "SENTENÇA", ds_classe_judicial: "PROCEDIMENTO COMUM CÍVEL", ds_modelo_documento: "RELATÓRIO. Dispensado. FUNDAMENTAÇÃO. Passo a decidir. " + "texto ".repeat(80) + " DISPOSITIVO. " + dispositivo } });
+  const hits = [sent(1, "Ante o exposto, JULGO PROCEDENTES os pedidos formulados na inicial, condenando o réu."), sent(2, "Ante o exposto, JULGO IMPROCEDENTES os pedidos iniciais.")];
+  assert.ok("procedente" in FILTRO_SENTENCA);
+  const p = filtrarPR(hits, "procedente"), i = filtrarPR(hits, "improcedente");
+  assert.deepEqual(p.hits.map((h) => h._source.id_processo_documento), [1]);
+  assert.deepEqual(i.hits.map((h) => h._source.id_processo_documento), [2]);
+  assert.equal(p.removidos, 1);
+});
+
+test("cache do inteiro teor: um cache com mais tipos cobre o pedido de menos tipos", () => {
+  const pasta = fsx.mkdtempSync(pathx.join(osx.tmpdir(), "tjro-cache-"));
+  const hit = (id, tipo) => ({ _source: { id_processo_documento: id, tipo, ds_modelo_documento: `texto ${tipo}` } });
+  const data = { hits: { total: { value: 3 }, hits: [hit(1, "ACÓRDÃO"), hit(2, "EMENTA"), hit(3, "VOTO")] } };
+  gravarCI("7000000-00.2025.8.22.0001", ["ACÓRDÃO", "EMENTA", "RELATÓRIO", "VOTO"], data, pasta);
+  const so = lerCI("7000000-00.2025.8.22.0001", ["ACÓRDÃO"], pasta);
+  assert.ok(so && so.data.hits.hits.length === 1 && so.data.hits.hits[0]._source.tipo === "ACÓRDÃO");
+  assert.equal(lerCI("7000000-00.2025.8.22.0001", ["ACÓRDÃO", "SENTENÇA"], pasta), null, "tipo que o cache não cobre vai ao portal");
+  assert.equal(lerCI("7000000-00.2025.8.22.0002", ["ACÓRDÃO"], pasta), null);
+  assert.ok(lerCI("7000000-00.2025.8.22.0001", ["ACÓRDÃO", "EMENTA", "RELATÓRIO", "VOTO"], pasta));
+});
+
+test("a mensagem de escolha pendente manda o subagente devolver ao agente principal", () => {
+  assert.match(AVISO_ESCOLHA_PENDENTE, /Se você é um subagente.*PARE.*agente principal/s);
+});
