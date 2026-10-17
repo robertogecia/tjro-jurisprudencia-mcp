@@ -12,6 +12,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { verificarCitacao } from "./verificar.js";
 import { buscarRecibos, recalcularRecibos, RECIBOS_LIMITE_MAX, listarRecibos, indiceLeve } from "./recibos.js";
+import { auditarCitacoes } from "./auditoria.js";
 import { avisoGrafiaRelator } from "./relatores.js";
 import {
   ORDENACOES,
@@ -387,6 +388,25 @@ server.registerTool(
     annotations: { title: "Buscar recibos locais do TJRO", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   async (a) => ({ content: [{ type: "text", text: buscarRecibos(a.consulta || "", a.grupos ?? null, a.limite ?? 10, undefined, { nrProcesso: a.nr_processo || "", idDocumento: a.id_documento || "", relator: a.relator || "" }) }] })
+);
+
+server.registerTool(
+  "auditar_citacoes_tjro",
+  {
+    title: "Auditar as citações de processos numa peça (sem rede)",
+    description:
+      "Recebe o texto de uma peça (ou trecho) e confere CADA número de processo citado — ZERO requisição ao portal: " +
+      "(1) dígito verificador do CNJ (número errado ou inventado sai 🔴 antes de gastar consulta); (2) tribunal pelo segmento (.8.22. = TJRO); " +
+      "(3) se o acórdão já foi lido nesta máquina, compara com o que a peça escreve PERTO do número: câmara (contra o FECHO, nunca o cadastro — pega a \"3ª Câmara Cível\" " +
+      "de acórdão julgado pela 1ª ou 2ª), relator e data do julgamento; (4) lista as citações a STJ/STF pela classe-base (AgInt/EDcl no mesmo REsp contam uma vez). " +
+      "Não diz se o julgado sustenta a tese: isso é leitura, verificar_citacao_tjro (frase entre aspas) e o revisor-adversarial. " +
+      "Use antes do timbre, e ao receber peça de terceiro. 🟡 = não lido aqui: abra com obter_inteiro_teor_tjro e audite de novo. O texto não é gravado.",
+    inputSchema: {
+      texto: z.string().describe("Texto da peça ou do trecho com as citações (até 400 mil caracteres por chamada)."),
+    },
+    annotations: { title: "Auditar citações (TJRO, local)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async (a) => ({ content: [{ type: "text", text: auditarCitacoes(a.texto) }] })
 );
 
 server.registerTool(

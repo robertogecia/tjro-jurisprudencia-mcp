@@ -37,12 +37,24 @@ export function naturezaDoJulgado(s, texto) {
 
 // --------------------------------------------------------------- citações / leading case ---
 const RE_CNJ = /(?<![0-9])(\d{7})-?(\d{2})\.?(\d{4})\.?(?:8\.?22|822)\.?(\d{4})(?![0-9])/g; // lookaround por dígito, igual ao Python (red-team 17/10/2026)
-const RE_SUP = /\b(REsp|AREsp|AgInt no AREsp|AgInt no REsp|EREsp|RE|ARE|AgRg no AREsp|AgRg no REsp)\s*(?:n[º°.]*\s*)?(\d{1,3}(?:\.\d{3})+|\d{4,7})(?:\s*\/\s*([A-Z]{2}))?/g;
-/** Processos citados no texto (TJRO pelo CNJ; STJ/STF pela classe e número), sem repetir. */
+// v1.39.0 (ideia do eyecite/CourtListener): o recurso interno ou os embargos dentro de um REsp ("AgInt nos EDcl no REsp 123")
+// são o MESMO processo do STJ — a chave é a classe-base + número, e "AgInt no REsp 123" e "REsp 123/RO" contam uma vez.
+// Classes novas medidas nos 6.395 recibos de 17/10/2026 (EAREsp 580, ADI 397, HC/RHC 309, RMS 44, Rcl 44): a regra antiga
+// perdia ~25% das citações a tribunal superior. AI e CC ficam de fora (AI nº 0804416-91… é agravo de TJ; CC é o Código Civil);
+// MS nunca colado ao número (evita "OAB nº MS5871A"); número seguido de "-NN.NNNN" é CNJ, não classe superior ("MS 0800197-56.2018…").
+// "/2019/0334073-4" depois do número é o registro do STJ no formato JusBrasil ("AREsp: 1615833 MS 2019/…": MS é a UF), não citação.
+// Aceita "REsp1234567/SP" (sem espaço) e o sufixo do STF "-AgR", "-RG", "-9", e a UF depois de "/" ou "-" ("REsp 1.234.567-MA").
+const UF_SUP = "AC|AL|AM|AP|BA|CE|DF|ES|GO|MA|MG|MS|MT|PA|PB|PE|PI|PR|RJ|RN|RO|RR|RS|SC|SE|SP|TO";
+const RE_SUP = new RegExp(`\\b((?:(?:AgInt|AgRg|EDcl)\\s+n[oa]s?\\s+)*)(REsp|AREsp|EREsp|EAREsp|RE|ARE|RMS|RHC|HC|Rcl|ADI|ADPF|ADC|MS)(?::?\\s+(?:n[º°.]*\\s*)?|\\s*n[º°.]+\\s*|(?<!MS))(\\d{1,3}(?:\\.\\d{3})+|\\d{4,7})(?!\\d|\\.\\d|-\\d{2}\\.\\d|\\/\\d)(?:-(?:AgR|RG|ED|\\d)\\b)?(?:\\s*[/-]\\s*(${UF_SUP})\\b)?`, "g");
+/** Processos citados no texto (TJRO pelo CNJ; STJ/STF pela classe-base e número), sem repetir. */
 export function citacoesDoTexto(texto) {
-  const t = String(texto || ""), out = new Set();
+  const t = String(texto || ""), out = new Set(), sup = new Map();
   for (const m of t.matchAll(RE_CNJ)) out.add(cnj(`${m[1]}${m[2]}${m[3]}822${m[4]}`));
-  for (const m of t.matchAll(RE_SUP)) out.add(`${m[1]} ${m[2].replace(/\./g, "")}${m[3] ? "/" + m[3] : ""}`.replace(/\s+/g, " "));
+  for (const m of t.matchAll(RE_SUP)) {
+    const k = `${m[2]} ${m[3].replace(/\./g, "")}`;
+    if (!sup.has(k) || (!sup.get(k) && m[4])) sup.set(k, m[4] || "");
+  }
+  for (const [k, uf] of sup) out.add(uf ? `${k}/${uf}` : k);
   return [...out];
 }
 /** Leading case candidato num conjunto de decisões do MESMO tema: IRDR/IAC com tese fixada primeiro; depois o mais citado
@@ -422,4 +434,5 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
 export { norm1, teseDaEmenta, fatosDoJulgado, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO, dataDoFecho };
 
 // para o harness de validação (sem uso no servidor)
-export const _harness = { nucleo, conj, jaccard, rotulo, OPOSTOS };
+export const _harness = { nucleo, conj, jaccard, rotulo, OPOSTOS, RE_SUP };
+export const _RE_SUP = RE_SUP;

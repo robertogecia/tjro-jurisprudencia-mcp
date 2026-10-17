@@ -196,6 +196,15 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
   ou `id_documento` reencontra um acórdão já lido sem precisar de termos; `relator` lista o
   que você já leu de um desembargador. Não é pesquisa no
   acervo do tribunal: zero resultado aqui nunca é "não localizado".
+- **`auditar_citacoes_tjro`** (1.39.0) confere, sem tocar no portal, cada número de processo de
+  uma peça que você cola: se o dígito verificador do CNJ fecha (número errado ou inventado sai
+  em vermelho antes de gastar consulta), de que tribunal é, e, quando o acórdão já foi lido
+  nesta máquina, se a câmara escrita na peça é a do **fecho** (pega a "3ª Câmara Cível" posta
+  em acórdão julgado pela 1ª ou pela 2ª), se o relator e a data batem. Lista à parte as
+  citações a STJ e STF, contando uma vez o AgInt e os EDcl dentro do mesmo REsp. Medido em
+  amostra nova de 30 citações escritas em estilos variados: achou 12 dos 15 erros plantados e
+  não acusou nenhuma das 15 corretas; em 64 notas reais do acervo, nenhum alarme vermelho
+  falso. Não diz se o julgado sustenta a tese: isso continua sendo leitura.
 - **Linha de custódia no inteiro teor.** Cada ACÓRDÃO e VOTO abertos vêm com uma linha
   dizendo quantos trechos são de outros julgados (e que fatia do voto isso é), onde começa o
   voto que pode ser o vencido e onde começa a ementa da casa. É a mesma conta que vai para
