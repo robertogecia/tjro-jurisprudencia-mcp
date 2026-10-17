@@ -121,3 +121,41 @@ test("buscarRecibos: zero no E com 3+ palavras devolve ranking BM25 e avisa; o E
   assert.doesNotMatch(e, /MAIS delas/);
   assert.doesNotMatch(buscarRecibos("licença prêmio", [["pecúnia"]], 3, d), /MAIS delas/);
 });
+
+// v1.38.0 — índice leve (red-team de 17/10/2026: 4 achados confirmados e fechados)
+import { indiceLeve, INDICE_LEVE_VERSAO } from "../server/recibos.js";
+import { avisoGrafiaRelator } from "../server/relatores.js";
+test("indiceLeve: constrói, revalida por (mtime, tamanho), descarta array e versão antiga, e dá o mesmo aviso de grafia que listarRecibos", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "idx leve "));
+  const mk = (id, rel) => fs.writeFileSync(path.join(d, `${id}.json`), JSON.stringify({ id_documento: String(id), nr_processo: `700000${id}0120248220001`, tipo: "ACÓRDÃO", data_julgamento: `1${id}/03/2024`, classe: "APELAÇÃO CÍVEL", relator_indice: rel, texto: "RELATÓRIO x VOTO y" }));
+  for (const i of [1, 2, 3, 4]) mk(i, "FULANO DE TAL");
+  _limparMemoParaTeste();
+  let idx = indiceLeve(d);
+  assert.equal(idx.length, 4);
+  assert.equal(avisoGrafiaRelator("FULANO DE TAL", idx), avisoGrafiaRelator("FULANO DE TAL", listarRecibos(d)));
+  const arq = path.join(d, ".indice-leve.json");
+  const disco = JSON.parse(fs.readFileSync(arq, "utf8"));
+  assert.equal(disco.v, INDICE_LEVE_VERSAO);
+  assert.ok(disco.m["1.json"].tam > 0 && Number.isInteger(disco.m["1.json"].mt));
+  // recibo reescrito com mtime preservado: o tamanho muda, o índice percebe (achado 3)
+  const st = fs.statSync(path.join(d, "4.json"));
+  mk(4, "Fulano de Tal");
+  fs.utimesSync(path.join(d, "4.json"), st.atime, st.mtime);
+  _limparMemoParaTeste();
+  // mesmo tamanho e mesmo mtime: o caminho rápido sozinho não percebe (limite conhecido); a listagem completa percebe e sincroniza o índice
+  listarRecibos(d);
+  idx = indiceLeve(d);
+  assert.match(avisoGrafiaRelator("FULANO DE TAL", idx), /Fulano de Tal/);
+  assert.equal(avisoGrafiaRelator("FULANO DE TAL", idx), avisoGrafiaRelator("FULANO DE TAL", listarRecibos(d)));
+  // arquivo "[]" (achado 4) e versão antiga (achado 2): descartados e regravados
+  for (const ruim of ["[]", JSON.stringify({ v: INDICE_LEVE_VERSAO - 1, m: {} }), "null", "x"]) {
+    fs.writeFileSync(arq, ruim);
+    _limparMemoParaTeste();
+    assert.equal(indiceLeve(d).length, 4, ruim);
+    assert.equal(JSON.parse(fs.readFileSync(arq, "utf8")).v, INDICE_LEVE_VERSAO, ruim);
+  }
+  // recibo apagado sai do índice
+  fs.unlinkSync(path.join(d, "2.json"));
+  _limparMemoParaTeste();
+  assert.deepEqual(indiceLeve(d).map((e) => e.id_documento).sort(), ["1", "3", "4"]);
+});

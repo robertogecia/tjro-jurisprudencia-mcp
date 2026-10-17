@@ -2,6 +2,17 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.38.0
+
+Eficiência, tokens e método, com red-team agêntico (4 caçadores de modelos distintos, verificadores de outro modelo): 23 achados, 22 confirmados, todos fechados; a rodada final deu 0 divergências Node×Python em 129 comparações.
+
+- **Primeira chamada mais rápida.** O aviso de grafia do relator abria os 6.395 recibos (cerca de 2 s em toda primeira busca da sessão) só para ler o nome do relator. Agora lê um índice leve dos cabeçalhos (`.indice-leve.json`, 1,8 MB), revalidado por mtime, tamanho e hash curto do cabeçalho, com versão de esquema; 27 ms e zero releitura, mesmo quando o índice foi gravado pelo outro servidor. A listagem completa sincroniza o índice sempre que lê um recibo.
+- **`distinguir_tjro` com `formato: "resumo"`.** Só as 5 linhas e os ids para abrir: 467 tokens contra 1.912 do completo (medido em 31 acórdãos, 76% a menos). Avisa quando a lista de ids foi cortada; formato inválido é recusado nos dois servidores.
+- **Citações de processo (base da superação e do leading case):** o Python não casava "nº7001234-56..." porque "º" conta como letra para `\b`; os dois lados usam agora lookaround por dígito, e o desempate dos "mais citados" é pelo nome, igual nos dois.
+- **Skill perfil-do-julgador:** `tese_por_camara.py` (tese × câmara pelo fecho × classe × ano, com intervalo de 95%, cobertura e relatores); perfil e rodadas contam por JULGAMENTO (nº + data) e não por recibo; classe pelo cabeçalho do documento com âncora (embargos e agravo interno herdam a classe errada do índice; rótulo de preliminar não prova embargos); validação de `--total-ano`, `--desde`, `--expandir`, `--top`, grupo vazio e pastas de saída antes de calcular; histórico corrompido não é mais sobrescrito; termo sem ocorrência local deixa de sair como "genérico".
+- **Harness de paridade** roda com heap de 6 GB por padrão (os recibos cresceram 57% em um dia e estouravam a memória do Node).
+- Testado e descartado: cache "quase idêntico" de buscas (a chave por consulta exata em 24 h já cobre; afrouxar arriscaria devolver resultado de outra consulta).
+
 ## v1.37.1
 
 Mesmo código da 1.37.0, com o número de versão novo. Quem instalou uma montagem anterior da 1.37.0 (sem a correção da tese de IRDR/IAC, o cache em disco, o ranking BM25 e o resumo em camadas) só via "Desinstalar" no Claude Desktop, porque o instalador compara o número da versão. Com 1.37.1 ele oferece "Atualizar" e a extensão avisa quem está na 1.37.0.

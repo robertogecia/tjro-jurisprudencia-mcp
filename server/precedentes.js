@@ -36,7 +36,7 @@ export function naturezaDoJulgado(s, texto) {
 }
 
 // --------------------------------------------------------------- citações / leading case ---
-const RE_CNJ = /\b(\d{7})-?(\d{2})\.?(\d{4})\.?(?:8\.?22|822)\.?(\d{4})\b/g;
+const RE_CNJ = /(?<![0-9])(\d{7})-?(\d{2})\.?(\d{4})\.?(?:8\.?22|822)\.?(\d{4})(?![0-9])/g; // lookaround por dígito, igual ao Python (red-team 17/10/2026)
 const RE_SUP = /\b(REsp|AREsp|AgInt no AREsp|AgInt no REsp|EREsp|RE|ARE|AgRg no AREsp|AgRg no REsp)\s*(?:n[º°.]*\s*)?(\d{1,3}(?:\.\d{3})+|\d{4,7})(?:\s*\/\s*([A-Z]{2}))?/g;
 /** Processos citados no texto (TJRO pelo CNJ; STJ/STF pela classe e número), sem repetir. */
 export function citacoesDoTexto(texto) {
@@ -60,8 +60,9 @@ export function leadingCase(docs, max = 5) {
   for (const d of docs) for (const a of ancoras(d.texto)) ancs.set(a, (ancs.get(a) || 0) + 1);
   return {
     qualificados: qualificados.map((d) => ({ id: d.id_documento, nr: cnj(d.nr_processo || ""), data: d.data_julgamento || "" })),
-    maisCitados: [...cont.entries()].filter(([, q]) => q >= 2).sort((a, b) => b[1] - a[1]).slice(0, max),
-    ancoras: [...ancs.entries()].sort((a, b) => b[1] - a[1]).slice(0, max),
+    // empate desempata pelo nome (ordem de código, igual ao sorted() do Python): red-team 17/10/2026 achou os 5 "mais citados" em ordem diferente nos dois servidores
+    maisCitados: [...cont.entries()].filter(([, q]) => q >= 2).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).slice(0, max),
+    ancoras: [...ancs.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).slice(0, max),
   };
 }
 
@@ -296,6 +297,7 @@ function fichaDePrecedente({ r, t, ementa, tese, fonteSec, sessao, pasta }) {
 }
 
 export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso = "", pasta, formato = "completo" } = {}) {
+  if (!["completo", "resumo", "ficha"].includes(formato)) return `formato=${JSON.stringify(formato)} não existe. Use "completo" (padrão), "resumo" (só as 5 linhas e os ids) ou "ficha" (rascunho JSON).`;
   DISCO = !pasta;
   const r = escolherRecibo(String(id_documento || "").trim(), nr_processo, pasta);
   if (!r) return `Sem recibo local de ${id_documento ? `id ${id_documento}` : cnj(nr_processo || "") || "?"}. Leia o julgado antes com obter_inteiro_teor_tjro (grava o recibo) e repita; esta ferramenta não consulta o portal.`;
@@ -406,6 +408,12 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   RES.push(`- Superação: ${citam.length} julgado(s) posterior(es) citam este processo (${citam.filter((x) => frasesX(x).distincao.length).length} com frase de distinção); ${mudam.length} do mesmo tema com frase de mudança (quase sempre falsa); ${opostosN} do mesmo tema com resultado oposto (em regra, fato diferente) (seção 5)`);
   RES.push(`- Leading case: ${lc.qualificados[0] ? `${lc.qualificados[0].nr} · id ${lc.qualificados[0].id}` : "sem candidato nos recibos"} (seção 6)`);
   L.splice(3, 0, "", ...RES);
+  // formato "resumo" (17/10/2026): camada 1 e os ids para abrir; ~420 tokens contra ~1.840 do completo (medido em 40 acórdãos)
+  if (formato === "resumo") {
+    const ids = [...citam.slice(0, 8), ...mudam.slice(0, 5).map((o) => o.x)].map((x) => `${x.id_documento} (${x.data_julgamento || "?"})`);
+    const corte = Math.max(0, citam.length - 8) + Math.max(0, mudam.length - 5);
+    return [...L.slice(0, 3 + 1 + RES.length), `- Ids para abrir: ${ids.length ? ids.join(", ") : "nenhum julgado posterior nos recibos"}.${corte ? ` Mais ${corte} fora desta lista: peça o formato "completo".` : ""} Detalhe completo: mesma chamada com formato "completo"; rascunho de ficha: formato "ficha".`].join("\n");
+  }
   P(`\n_Tema = este julgado + até 80 recibos com vocabulário parecido (semelhança do núcleo da ementa ≥ 0,2). Recibo é só o que esta máquina já leu, não o acervo do TJRO._`);
   gravarDeriv();
   return L.join("\n");

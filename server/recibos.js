@@ -6,6 +6,7 @@
 // reabrir um acórdão da semana passada para citá-lo de novo é cota jogada fora.
 // Zero resultado aqui NUNCA é "não localizado": só cobre o que já passou por esta máquina.
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { dirRecibos, cnj, link, relator, extrairOrgaoComOrigem, extrairRelatorDoTexto } from "./lib.js";
 import { norm1, camposAlheios, CUSTODIA_VERSAO } from "./custodia.js";
@@ -13,7 +14,7 @@ import { rankearPorConsulta } from "./vocabulario.js";
 
 // memo por (arquivo, mtime): 600+ recibos de até 100 KB não se releem a cada chamada.
 const MEMO = new Map();
-const nomeValido = (n) => /^\d{1,20}\.json$/.test(n);   // norma-<id>.json fica de fora
+const nomeValido = (n) => /^\d{1,20}\.json$/.test(n);   // norma-<id>.json e .indice-leve.json ficam de fora
 
 export function reciboIntegro(r) {
   return !!r && typeof r === "object" && /^\d{1,20}$/.test(String(r.id_documento || "")) && typeof r.texto === "string" && r.texto.length > 0;
@@ -35,13 +36,83 @@ export function listarRecibos(pasta = dirRecibos()) {
       if (!reciboIntegro(r)) { MEMO.delete(cam); continue; }
       memo = { mt, r, tn: norm1(r.texto) };
       MEMO.set(cam, memo);
+      atualizarEntradaLeve(pasta, n, cam, r);
     }
     out.push(memo);
   }
   out.sort((a, b) => b.mt - a.mt);
+  gravarIndiceLeve(pasta);
   return out.map((m) => ({ ...m.r, _tn: m.tn }));
 }
-export function _limparMemoParaTeste() { MEMO.clear(); }
+export function _limparMemoParaTeste() { MEMO.clear(); INDICE_LEVE.clear(); SUJO.clear(); }
+
+// Índice LEVE (17/10/2026): só os campos do cabeçalho de cada recibo (sem texto), para quem não precisa do texto — o aviso de grafia
+// do relator rodava listarRecibos() inteiro (JSON.parse de 6.395 arquivos, ~2 s na 1ª busca de cada sessão) só para ler relator_indice.
+// Fica em disco (.indice-leve.json na pasta de recibos) e revalida por (nome, mtime): recibo novo ou alterado entra, apagado sai.
+// Red-team de 17/10/2026 (4 achados confirmados): (1) mt comparado com === não casava com o float gravado pelo Python; (2) sem versão de
+// esquema, entrada antiga com mt igual passava sem os campos novos; (3) recibo reescrito com mtime preservado (cp -p, rsync -a) ficava
+// com cabeçalho velho; (4) arquivo com "[]" era aceito e nunca se regenerava. Chave agora = (mt em ms inteiro, tamanho em bytes), igual nos
+// dois lados; arquivo = { v, m }; array ou versão diferente descartam o índice inteiro.
+// Achado próprio após o red-team: recibo reescrito com MESMO tamanho e mtime preservado (ex.: só a caixa do relator mudou) escapa da chave
+// (mt, tam). Não dá para hashear 142 MB a cada chamada rápida; então quem já leu o arquivo inteiro (listarRecibos, ao parsear) atualiza a
+// entrada leve com um hash curto do conteúdo, e o índice nunca fica mais velho que a última listagem completa.
+const INDICE_LEVE = new Map();
+export const INDICE_LEVE_VERSAO = 3;
+const chaveMt = (st) => Math.round(st.mtimeMs);
+const hashCurto = (r) => crypto.createHash("sha1").update(`${r.relator_indice ?? ""}|${r.data_julgamento ?? ""}|${r.orgao_indice ?? ""}|${r.classe ?? ""}|${r.nr_processo ?? ""}|${r.tipo ?? ""}|${r.texto.length}`).digest("hex").slice(0, 12);
+const entradaLeve = (mt, tam, r) => ({ mt, tam, h: hashCurto(r), id_documento: String(r.id_documento), nr_processo: r.nr_processo ?? null, tipo: r.tipo ?? null, data_julgamento: r.data_julgamento ?? null,
+  classe: r.classe ?? null, relator_indice: r.relator_indice ?? null, orgao_indice: r.orgao_indice ?? null, tamanho: r.texto.length });
+const SUJO = new Set();
+function carregarIndiceLeve(pasta) {
+  let disco = INDICE_LEVE.get(pasta);
+  if (disco) return disco;
+  let bruto = null;
+  try { bruto = JSON.parse(fs.readFileSync(path.join(pasta, ".indice-leve.json"), "utf8")); } catch { bruto = null; }
+  disco = bruto && typeof bruto === "object" && !Array.isArray(bruto) && bruto.v === INDICE_LEVE_VERSAO && bruto.m && typeof bruto.m === "object" && !Array.isArray(bruto.m) ? bruto.m : {};
+  INDICE_LEVE.set(pasta, disco);
+  return disco;
+}
+function atualizarEntradaLeve(pasta, n, cam, r) {
+  // carrega o índice do disco se esta sessão ainda não o abriu: senão a listagem completa não sincronizava nada (achado do teste de 17/10/2026)
+  const disco = carregarIndiceLeve(pasta);
+  let st; try { st = fs.statSync(cam); } catch { return; }
+  const e = entradaLeve(chaveMt(st), st.size, r);
+  const atual = disco[n];
+  if (!atual || atual.h !== e.h || atual.mt !== e.mt || atual.tam !== e.tam) { disco[n] = e; SUJO.add(pasta); }
+}
+function gravarIndiceLeve(pasta) {
+  const disco = INDICE_LEVE.get(pasta);
+  if (!disco || !SUJO.has(pasta)) return;
+  const arq = path.join(pasta, ".indice-leve.json");
+  try { const tmp = `${arq}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify({ v: INDICE_LEVE_VERSAO, m: disco })); fs.renameSync(tmp, arq); SUJO.delete(pasta); } catch { /* índice é só aceleração */ }
+}
+export function indiceLeve(pasta = dirRecibos()) {
+  let nomes = [];
+  try { nomes = fs.readdirSync(pasta).filter(nomeValido); } catch { return []; }
+  const arq = path.join(pasta, ".indice-leve.json");
+  const disco = carregarIndiceLeve(pasta);
+  const out = []; let sujo = false; const vivos = new Set();
+  for (const n of nomes) {
+    const cam = path.join(pasta, n);
+    let st; try { st = fs.statSync(cam); } catch { continue; }
+    const mt = chaveMt(st), tam = st.size;
+    vivos.add(n);
+    let e = disco[n];
+    if (!e || e.mt !== mt || e.tam !== tam) {
+      const memo = MEMO.get(cam);
+      let r = memo && Math.round(memo.mt) === mt ? memo.r : null;
+      if (!r) { try { r = JSON.parse(fs.readFileSync(cam, "utf8")); } catch { r = null; } }
+      if (!reciboIntegro(r)) { if (disco[n]) { delete disco[n]; sujo = true; } continue; }
+      e = entradaLeve(mt, tam, r);
+      disco[n] = e; sujo = true;
+    }
+    out.push(e);
+  }
+  for (const n of Object.keys(disco)) if (!vivos.has(n)) { delete disco[n]; sujo = true; }
+  if (sujo) SUJO.add(pasta);
+  gravarIndiceLeve(pasta);
+  return out;
+}
 
 export const soDigitos = (n) => String(n || "").replace(/\D/g, "");
 

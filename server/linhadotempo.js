@@ -2,7 +2,7 @@
 import { buildBuscaBody, post, limpar, resultadoComOrigem, novoJulgamento, somarResultado, rotuloDoJulgamento, cnj, orgao, relator, idDocumento, gravarRecibos } from "./lib.js";
 import { norm1 } from "./custodia.js";
 import { avisoGrafiaRelator } from "./relatores.js";
-import { listarRecibos } from "./recibos.js";
+import { listarRecibos, indiceLeve } from "./recibos.js";
 
 const RE_SINAL_AFASTA = /(?<![a-z0-9])(?:distingue|distinguish\w*|distincao|nao se aplica|inaplicavel|nao se amolda|nao guarda similitude|nao ha similitude|situacao diversa|hipotese diversa|caso diverso|em sentido contrario|em sentido diverso|contrariamente|diverge|divergente|afasta(?:-se)? a aplicacao|nao ha identidade|nao incide|nao se verifica a mesma)(?![a-z0-9])/;
 const WS = /[ \t\n\r\f\v]+/g;
@@ -101,7 +101,7 @@ export async function linhaDoTempo(o, postImpl = post, dormirImpl = dormir) {
   }
   if (!linhas.length) return incompleta || "Sem resultado.";
   // v1.29.0 (H07): a grafia minoritária do relator fora do filtro simula queda no ano da troca.
-  const avG = o.relator ? avisoGrafiaRelator(o.relator, listarRecibos()) : "";
+  const avG = o.relator ? avisoGrafiaRelator(o.relator, indiceLeve()) : "";
   return formatarLinhaDoTempo(linhas, filtros, incompleta) + (avG ? "\n" + avG : "");
 }
 

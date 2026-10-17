@@ -11,7 +11,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { verificarCitacao } from "./verificar.js";
-import { buscarRecibos, recalcularRecibos, RECIBOS_LIMITE_MAX, listarRecibos } from "./recibos.js";
+import { buscarRecibos, recalcularRecibos, RECIBOS_LIMITE_MAX, listarRecibos, indiceLeve } from "./recibos.js";
 import { avisoGrafiaRelator } from "./relatores.js";
 import {
   ORDENACOES,
@@ -225,7 +225,7 @@ server.registerTool(
         );
       if (a.relator) {
         // v1.29.0 (H07): grafia minoritária do mesmo relator fica fora em silêncio.
-        const avG = avisoGrafiaRelator(a.relator, listarRecibos());
+        const avG = avisoGrafiaRelator(a.relator, indiceLeve());
         if (avG) nota += avG + "\n";
       }
       if (a.assunto)
@@ -407,7 +407,7 @@ server.registerTool(
       id_documento: z.string().optional().describe("Id do documento (id_processo_documento) do julgado já lido. Preferível ao número."),
       nr_processo: z.string().optional().describe("Número CNJ; sem id, usa o ACÓRDÃO mais recente do processo nos recibos."),
       fatos_do_caso: z.string().max(4000).optional().describe("Fatos materiais do SEU caso, em poucas linhas, para comparar com o precedente. Não é gravado nem enviado a lugar nenhum."),
-      formato: z.enum(["completo", "ficha"]).optional().describe("\"completo\" (padrão): resumo de 5 linhas no topo e 6 seções. \"ficha\": rascunho JSON da ficha de precedente (contrato do pesquisador-juridico), com os campos que o texto permite ler; o resto fica vazio e verificacao sai \"não conferido\"."),
+      formato: z.enum(["completo", "resumo", "ficha"]).optional().describe("\"completo\" (padrão): resumo de 5 linhas no topo e 6 seções. \"resumo\": só as 5 linhas e os ids para abrir (um quarto dos tokens; peça o completo depois, se precisar). \"ficha\": rascunho JSON da ficha de precedente (contrato do pesquisador-juridico), com os campos que o texto permite ler; o resto fica vazio e verificacao sai \"não conferido\"."),
     },
     annotations: { title: "Distinguir e checar superação (TJRO)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
