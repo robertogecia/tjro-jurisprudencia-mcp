@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## v1.37.1
+
+Mesmo código da 1.37.0, com o número de versão novo. Quem instalou uma montagem anterior da 1.37.0 (sem a correção da tese de IRDR/IAC, o cache em disco, o ranking BM25 e o resumo em camadas) só via "Desinstalar" no Claude Desktop, porque o instalador compara o número da versão. Com 1.37.1 ele oferece "Atualizar" e a extensão avisa quem está na 1.37.0.
+
 ## v1.37.0
 
 Conferência dos 20 itens de 08/10/2026 e novas hipóteses, todas medidas às cegas com dois modelos (Sonnet e Opus).
