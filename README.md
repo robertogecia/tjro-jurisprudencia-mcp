@@ -214,6 +214,12 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
   "está vigente". Medido às cegas com dois rotuladores: nas amostras de ajuste, 36 de 37
   marcações vermelhas corretas; numa amostra nova de 39 casos difíceis, nenhum vermelho falso,
   2 das 3 modificações reais em laranja e 1 que passou.
+- **`lista_de_leitura_tjro`** (1.41.0), sem tocar no portal: para um tema, os processos do TJRO
+  que os acórdãos já lidos mais citam e que você ainda não abriu, os já lidos e os STJ/STF mais
+  citados. A rede de citações desta máquina é rasa (cerca de 5% dos citados tinham sido lidos em
+  18/10/2026); a lista diz onde abrir primeiro. "Mais citado" é candidato a ler, não leading case.
+  O formato `ficha` do `distinguir_tjro` passou a levar `situacao_local`, que o lint da
+  `peticao-rg` usa para barrar ficha de acórdão modificado depois.
 - **`julgados_que_citam_tjro` com `direcao="citados"`** (1.40.0) mostra o que UM acórdão já lido
   cita, sem consulta: cada processo do TJRO com câmara do fecho e resultado, se já foi lido
   aqui, e as citações a STJ e STF. Marca como indício a citação que parece estar só dentro da

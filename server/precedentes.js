@@ -291,7 +291,7 @@ function escolherRecibo(id, nr, pasta) {
 /** Rascunho da "ficha de precedente" (contrato do pesquisador-juridico), só com o que o texto do recibo permite ler. Campos que dependem de
  * leitura ou de decisão do advogado ficam vazios: `sustenta`, `trecho`, `chave`, `link` (o recibo não guarda os parâmetros do portal e link
  * nunca se fabrica), `relator_para_acordao`. `verificacao` sai "não conferido": quem confere é o pesquisador-juridico ou o advogado. */
-function fichaDePrecedente({ r, t, ementa, tese, fonteSec, sessao, pasta }) {
+function fichaDePrecedente({ r, t, ementa, tese, fonteSec, sessao, pasta, situacao = "" }) {
   const lit = (x, n) => String(x || "").replace(/[ \t\n\r\f\v]+/g, " ").trim().slice(0, n);
   const ob = extrairOrgaoComOrigem(t);
   const disp = secoesDaEmenta(fonteSec, 0, Math.min(fonteSec.length, 15000)).find((x) => x.nome === "dispositivo e tese" || x.nome === "dispositivo");
@@ -300,7 +300,7 @@ function fichaDePrecedente({ r, t, ementa, tese, fonteSec, sessao, pasta }) {
   const ficha = {
     chave: "", numero: cnj(r.nr_processo || ""), tribunal: "TJRO", orgao: (ob && ob.orgao) || "", relator: extrairRelatorDoTexto(t) || "",
     relator_para_acordao: "", julgamento: isoBr(sessao) || isoBr(r.data_julgamento) || "", id_documento: String(r.id_documento), link: "",
-    outras_decisoes_no_mesmo_numero: outras, dispositivo: disp ? lit(fonteSec.slice(disp.a, disp.b), 900) : "", tese: tese ? tese.texto : "",
+    outras_decisoes_no_mesmo_numero: outras, situacao_local: situacao, dispositivo: disp ? lit(fonteSec.slice(disp.a, disp.b), 900) : "", tese: tese ? tese.texto : "",
     ementa: lit(ementa ? ementa.texto : r.tipo === "EMENTA" ? t : "", 3000), trecho: "", sustenta: "", verificado_em: new Date().toISOString().slice(0, 10),
     verificacao: "não conferido",
     _ferramenta: { natureza: naturezaDoJulgado(r, t).replace(/^🏛️ NATUREZA: /, "").slice(0, 160), observacao: "Rascunho do distinguir_tjro: órgão e relator lidos do texto do recibo; confira no inteiro teor (relator para o acórdão, votação, link) antes de usar." },
@@ -337,7 +337,7 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   const razoes = secoesDaEmenta(fonteSec, 0, Math.min(fonteSec.length, 12000)).find((x) => x.nome === "razoes de decidir");
   if (razoes) P(`- **Razões de decidir** (seção III da ementa, literal): «${fonteSec.slice(razoes.a, razoes.b).replace(/[ \t\n\r\f\v]+/g, " ").trim().slice(0, 900)}»`);
   const res = rotulo(r);
-  if (formato === "ficha") return fichaDePrecedente({ r, t, ementa, tese, fonteSec, sessao, pasta });
+  // v1.41.0: a ficha sai depois do semáforo, para levar `situacao_local` (o lint da peticao-rg barra 🔴)
   if (res) P(`- **Resultado declarado:** ${res}.`);
   if (!tese && !razoes) P("- Sem tese nem seção \"razões de decidir\" no modelo do CNJ: a ratio tem de ser extraída do voto pela leitura (fundamento sem o qual o resultado mudaria, art. 489, § 1º, V).");
   P("- Fundamento que só reforça (\"ainda que assim não fosse\") é obiter, não ratio: `verificar_citacao_tjro` marca OBITER DICTUM? na frase.");
@@ -422,7 +422,9 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   RES.push(`- Fatos do julgado: ${fatos ? `«${cur(fatos.texto, 200)}»` : "sem seção reconhecível (seção 2)"}`);
   if (cmp) RES.push(`- Seus fatos: ${cmp.expressoes.length} expressão(ões) deles aparece(m) no precedente; ele NÃO menciona: ${cmp.ausentes.slice(0, 6).join(", ") || "nenhum termo seu"} (seção 3)`);
   RES.push(`- Superação: ${citam.length} julgado(s) posterior(es) citam este processo (${citam.filter((x) => frasesX(x).distincao.length).length} com frase de distinção); ${mudam.length} do mesmo tema com frase de mudança (quase sempre falsa); ${opostosN} do mesmo tema com resultado oposto (em regra, fato diferente) (seção 5)`);
-  RES.push(`- Situação (indício, sem verde): ${semaforo({ modificado: cad.modificado, conferir: cad.conferir, citamComSinal: citam.filter((x) => frasesX(x).distincao.length || frasesX(x).mudanca.length).length, opostos: opostosN, mudam: mudam.length })} (seções 5 e 5-A)`);
+  const situacao = semaforo({ modificado: cad.modificado, conferir: cad.conferir, citamComSinal: citam.filter((x) => frasesX(x).distincao.length || frasesX(x).mudanca.length).length, opostos: opostosN, mudam: mudam.length });
+  if (formato === "ficha") return fichaDePrecedente({ r, t, ementa, tese, fonteSec, sessao, pasta, situacao });
+  RES.push(`- Situação (indício, sem verde): ${situacao} (seções 5 e 5-A)`);
   RES.push(`- Leading case: ${lc.qualificados[0] ? `${lc.qualificados[0].nr} · id ${lc.qualificados[0].id}` : "sem candidato nos recibos"} (seção 6)`);
   L.splice(3, 0, "", ...RES);
   // formato "resumo" (17/10/2026): camada 1 e os ids para abrir; ~420 tokens contra ~1.840 do completo (medido em 40 acórdãos)

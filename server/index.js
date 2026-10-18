@@ -13,7 +13,7 @@ import { z } from "zod";
 import { verificarCitacao } from "./verificar.js";
 import { buscarRecibos, recalcularRecibos, RECIBOS_LIMITE_MAX, listarRecibos, indiceLeve, recibosDoProcesso } from "./recibos.js";
 import { auditarCitacoes } from "./auditoria.js";
-import { citadosPor } from "./cadeia.js";
+import { citadosPor, listaDeLeitura } from "./cadeia.js";
 import { citacoesDoTexto } from "./precedentes.js";
 /** v1.40.0: o que um acórdão já lido cita (recibo local, sem rede). */
 function citadosTexto(nr) {
@@ -403,6 +403,25 @@ server.registerTool(
     annotations: { title: "Buscar recibos locais do TJRO", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   async (a) => ({ content: [{ type: "text", text: buscarRecibos(a.consulta || "", a.grupos ?? null, a.limite ?? 10, undefined, { nrProcesso: a.nr_processo || "", idDocumento: a.id_documento || "", relator: a.relator || "" }) }] })
+);
+
+server.registerTool(
+  "lista_de_leitura_tjro",
+  {
+    title: "Lista de leitura de um tema: processos mais citados ainda não lidos (sem rede)",
+    description:
+      "Para um TEMA (grupos de sinônimos, como em buscar_recibos_tjro), lê os acórdãos do tema JÁ LIDOS nesta máquina e diz quais processos do TJRO eles mais citam " +
+      "e que ainda NÃO foram lidos aqui (citado por N processos distintos do tema), quais já foram lidos e os STJ/STF mais citados — ZERO requisição. " +
+      "Serve para aumentar a cobertura onde importa: a rede local é rasa (em 18/10/2026, só ~5% dos processos citados tinham sido lidos), e o \"mais citado\" do distinguir_tjro conta citações sem conhecer o citado. " +
+      "Mais citado é candidato a ler, não leading case nem prova de vigência. Abra no máximo 3 por pesquisa, um por vez, com obter_inteiro_teor_tjro.",
+    inputSchema: {
+      grupos: z.array(z.array(z.string())).optional().describe('Sinônimos: [["consignado","RMC"],["dobro","repetição"]] (OU dentro do grupo, E entre grupos).'),
+      consulta: z.string().optional().describe("Palavras que devem TODAS aparecer (opcional se usar grupos)."),
+      limite: z.number().int().min(1).max(30).optional().describe("Quantos não lidos mostrar (padrão 10)."),
+    },
+    annotations: { title: "Lista de leitura (TJRO, local)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  async (a) => ({ content: [{ type: "text", text: listaDeLeitura({ consulta: a.consulta || "", grupos: a.grupos ?? null, limite: a.limite ?? 10 }, citacoesDoTexto) }] })
 );
 
 server.registerTool(

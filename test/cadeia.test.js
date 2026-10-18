@@ -62,3 +62,30 @@ test("edAcolhidoDepois: 'embargos providos' no fecho sem mudança achada vira �
   assert.ok(!edAcolhidoDepois({ texto: "VOTO Trato do ponto." + fecho("EMBARGOS DE DECLARAÇÃO NÃO ACOLHIDOS") }));
   assert.match(semaforo({ conferir: [{}] }), /^🟠 .*embargos acolhidos\/providos depois/);
 });
+
+test("listaDeLeitura: mais citados do tema NÃO lidos, contados por processo citante distinto; já lidos à parte", async () => {
+  const { listaDeLeitura } = await import("../server/cadeia.js");
+  _limparMemoParaTeste();
+  const p = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-leitura-"));
+  const g = (s) => { const r = recibo(s); fs.writeFileSync(path.join(p, `${r.id_documento}.json`), JSON.stringify(r)); };
+  const NAO_LIDO = "0800003-59.2025.8.22.0000";
+  g({ id_processo_documento: 1, nr_processo: NR, tipo: "ACÓRDÃO", dtjulgamento_str: "10/01/2025", ds_modelo_documento: `Consignado em dobro. Ver ${NAO_LIDO} e 7000002-50.2023.8.22.0002.` + fecho("RECURSO NÃO PROVIDO") });
+  g({ id_processo_documento: 2, nr_processo: "70000025020238220002", tipo: "ACÓRDÃO", dtjulgamento_str: "10/02/2025", ds_modelo_documento: `Consignado em dobro. Ver ${NAO_LIDO} e ${NAO_LIDO}.` + fecho("RECURSO PROVIDO") });
+  const out = listaDeLeitura({ grupos: [["consignado"], ["dobro"]] }, citacoesDoTexto, p);
+  assert.match(out, new RegExp(`${NAO_LIDO.replace(/\./g, "\\.")} — citado por 2`));
+  assert.match(out, /Já lidos e citados pelo tema:\*\* 7000002-50\.2023\.8\.22\.0002 \(1\)/);
+  assert.match(listaDeLeitura({}, citacoesDoTexto, p), /Informe o tema/);
+});
+
+test("cadeia agrupa por SESSÃO do fecho: acórdão reemitido (mesma sessão, outra data no índice) não é 'posterior'", () => {
+  _limparMemoParaTeste();
+  const p = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-sessao-"));
+  const g = (s) => { const r = recibo(s); fs.writeFileSync(path.join(p, `${r.id_documento}.json`), JSON.stringify(r)); return r; };
+  const f = " ACÓRDÃO Vistos, acordam os Magistrados da 1ª Câmara Cível do Tribunal de Justiça do Estado de Rondônia, em, EMBARGOS DE DECLARAÇÃO ACOLHIDOS, À UNANIMIDADE. Porto Velho, 19 de novembro de 2024.";
+  const txt = "RELATÓRIO Trata-se de embargos de declaração opostos. VOTO Ante o exposto, acolho os embargos para fixar os honorários em 15% sobre o valor da condenação." + f;
+  const a = g({ id_processo_documento: 11, nr_processo: NR, tipo: "ACÓRDÃO", dtjulgamento_str: "22/11/2024", ds_modelo_documento: txt });
+  g({ id_processo_documento: 12, nr_processo: NR, tipo: "ACÓRDÃO", dtjulgamento_str: "27/11/2024", ds_modelo_documento: txt + " " });
+  const c = cadeiaDoProcesso(a, p);
+  assert.equal(c.itens.length, 1);
+  assert.equal(c.modificado.length, 0);
+});

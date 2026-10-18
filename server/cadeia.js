@@ -2,8 +2,8 @@
 // Ideia do backlog do GitHub (17/10/2026): "case_history" do tw-legal-rag e o "cited_by/citing" do CourtListener, adaptados ao TJRO.
 // O que importa para quem vai citar: o acórdão foi MODIFICADO depois no próprio processo? (juízo de retratação exercido após tema
 // do STJ/STF, embargos acolhidos com efeito modificativo, anulação). Isso é o sinal mais forte de "não cite este" que existe nos recibos.
-import { recibosDoProcesso, soDigitos } from "./recibos.js";
-import { extrairOrgaoComOrigem, fold, cnj, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO } from "./lib.js";
+import { recibosDoProcesso, soDigitos, listarRecibos, regexTermo } from "./recibos.js";
+import { extrairOrgaoComOrigem, fold, cnj, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO, dataDoFecho } from "./lib.js";
 // mesmo rótulo do distinguir (precedentes.js), sem import circular
 const rotulo = (r) => { const ro = resultadoComOrigem(r.texto, r.tipo); const k = rotuloDoConjunto(ro.conjunto, r.classe, ro.embargos); return k ? ROTULOS_RESULTADO[k] : ""; };
 
@@ -87,18 +87,21 @@ export function edAcolhidoDepois(doc) {
 /** Julgamentos do mesmo processo (um por data, preferindo ACÓRDÃO), com o efeito de cada posterior sobre o anterior. */
 export function cadeiaDoProcesso(r, pasta) {
   const docs = recibosDoProcesso(r.nr_processo || "", pasta).filter((x) => x.texto && /AC[ÓO]RD|EMENTA|SENTEN/.test(String(x.tipo || "").toUpperCase()));
+  // v1.41.0: um julgamento por SESSÃO (data do fecho, quando legível), não pela data do índice. Acórdão reemitido dias depois
+  // (id 26358276 = 24975406, mesma sessão 19/11/2024, índice 22 e 27/11) virava "posterior que modificou" (perfil-do-julgador, 18/10/2026).
+  const sessao = (y) => dataDoFecho(y.texto) || y.data_julgamento || "";
   const porData = new Map();
   for (const x of docs) {
-    const k = x.data_julgamento || "?"; const a = porData.get(k);
+    const k = sessao(x) || "?"; const a = porData.get(k);
     const pref = (y) => (/AC[ÓO]RD/.test(String(y.tipo || "").toUpperCase()) ? 2 : 1) * 1e7 + String(y.texto).length;
     if (!a || pref(x) > pref(a)) porData.set(k, x);
   }
-  const lista = [...porData.values()].sort((a, b) => (isoBr(a.data_julgamento) < isoBr(b.data_julgamento) ? -1 : isoBr(a.data_julgamento) > isoBr(b.data_julgamento) ? 1 : 0));
-  const meuIso = isoBr(r.data_julgamento);
+  const lista = [...porData.values()].sort((a, b) => (isoBr(sessao(a)) < isoBr(sessao(b)) ? -1 : isoBr(sessao(a)) > isoBr(sessao(b)) ? 1 : 0));
+  const minha = sessao(r), meuIso = isoBr(minha);
   const itens = lista.map((x) => {
     const ob = extrairOrgaoComOrigem(x.texto);
-    const depois = meuIso && isoBr(x.data_julgamento) > meuIso;
-    return { x, iso: isoBr(x.data_julgamento), este: String(x.id_documento) === String(r.id_documento) || x.data_julgamento === r.data_julgamento, depois,
+    const depois = meuIso && isoBr(sessao(x)) > meuIso;
+    return { x, iso: isoBr(sessao(x)), este: String(x.id_documento) === String(r.id_documento) || sessao(x) === minha, depois,
       orgao: ob && ob.origem === "fecho" ? ob.orgao : "", rotulo: rotulo(x) || "", efeito: depois ? efeitoSobreAnterior(x) : null };
   }).map((i) => ({ ...i, confira: i.depois && !i.efeito && edAcolhidoDepois(i.x) }));
   const om = RE_ORIGEM.exec(String(r.texto || "").slice(0, 2500));
@@ -171,4 +174,43 @@ export function citadosPor(r, citacoesDoTexto, pasta) {
     L.push(`- ${c}${marca} — lido: ${datas.join(", ")} · ${ob && ob.origem === "fecho" ? ob.orgao : "câmara do fecho não legível"} · ${rotulo(ac) || "sem rótulo"} · id ${ac.id_documento}`);
   }
   return { linhas: L, nTj, nSup };
+}
+
+
+/** v1.41.0 — lista de leitura dirigida (sem rede). A rede local é rasa: dos processos do TJRO citados nos acórdãos lidos, só ~5%
+ * foram lidos (medido em 18/10/2026: 268 de 4.940). Para um TEMA (grupos de sinônimos, como em buscar_recibos_tjro), diz quais
+ * processos os acórdãos lidos do tema mais citam e que esta máquina ainda NÃO leu — para abrir poucos, um por vez, dentro do ritmo. */
+export function listaDeLeitura({ consulta = "", grupos = null, limite = 10 } = {}, citacoesDoTexto, pasta) {
+  const gs = (Array.isArray(grupos) ? grupos : []).map((g) => (Array.isArray(g) ? g : [g]).map((x) => String(x).trim()).filter(Boolean)).filter((g) => g.length);
+  for (const w of String(consulta || "").split(/\s+/).map((x) => x.trim()).filter((x) => x.length > 1)) gs.push([w]);
+  if (!gs.length) return "Informe o tema: `grupos` (sinônimos; OU dentro do grupo, E entre grupos) e/ou `consulta` (todas as palavras).";
+  const res = gs.map((g) => g.map(regexTermo).filter(Boolean));
+  const todos = listarRecibos(pasta).filter((x) => x.texto && x.nr_processo);
+  const lidos = new Set(todos.map((x) => soDigitos(x.nr_processo)));
+  const tema = todos.filter((x) => /AC[ÓO]RD|EMENTA/.test(String(x.tipo || "").toUpperCase()) && res.every((g) => g.some((re) => { re.lastIndex = 0; return re.test(x._tn || ""); })));
+  if (!tema.length) return "Nenhum acórdão lido nesta máquina casa com esse tema. Zero aqui não é \"não localizado\": busque no portal com buscar_jurisprudencia_tjro.";
+  const procTema = new Set(tema.map((x) => soDigitos(x.nr_processo)));
+  const cit = new Map(), sup = new Map();
+  for (const x of tema) {
+    const a = soDigitos(x.nr_processo);
+    for (const c of citacoesDoTexto(x.texto)) {
+      if (/^\d{7}-\d{2}\.\d{4}\.8\.22\.\d{4}$/.test(c)) {
+        const b = soDigitos(c); if (b === a) continue;
+        if (!cit.has(b)) cit.set(b, { c, quem: new Map() });
+        cit.get(b).quem.set(a, x.id_documento);
+      } else { if (!sup.has(c)) sup.set(c, new Set()); sup.get(c).add(a); }
+    }
+  }
+  const ord = [...cit.values()].map((o) => ({ ...o, n: o.quem.size, lido: lidos.has(soDigitos(o.c)) })).sort((p, q) => q.n - p.n || (p.c < q.c ? -1 : 1));
+  const naoLidos = ord.filter((o) => !o.lido), jaLidos = ord.filter((o) => o.lido);
+  const L = [`**Lista de leitura (sem rede)** — tema: ${gs.map((g) => "(" + g.join(" OU ") + ")").join(" E ")}`,
+    `- Acórdãos lidos do tema: ${tema.length} (${procTema.size} processos). Processos do TJRO que eles citam: ${ord.length}; já lidos aqui: ${jaLidos.length}${ord.length ? ` (${Math.round(100 * jaLidos.length / ord.length)}%)` : ""}.`, ""];
+  const top = naoLidos.filter((o) => o.n >= 2).slice(0, Math.max(1, Math.min(30, limite)));
+  L.push(top.length ? "**Mais citados pelo tema e NÃO lidos aqui** (citado por N processos distintos do tema):" : "Nenhum processo não lido é citado por 2 ou mais processos do tema.");
+  for (const o of top) L.push(`- ${o.c} — citado por ${o.n} · ex.: ids ${[...o.quem.values()].slice(0, 3).join(", ")}`);
+  if (jaLidos.length) L.push("", `**Já lidos e citados pelo tema:** ${jaLidos.slice(0, 5).map((o) => `${o.c} (${o.n})`).join("; ")} — abra com distinguir_tjro (resumo), sem rede.`);
+  const ts = [...sup].map(([c, q]) => [c, q.size]).filter(([, n]) => n >= 2).sort((p, q) => q[1] - p[1] || (p[0] < q[0] ? -1 : 1)).slice(0, 5);
+  if (ts.length) L.push("", `**STJ/STF mais citados pelo tema:** ${ts.map(([c, n]) => `${c} (${n})`).join("; ")} — confira no MCP do STJ/JusRatio; "muito citado" não é "certo" (o EAREsp 676.608/RS é o mais citado do acervo local e tem número em disputa).`);
+  L.push("", "_Mais citado é candidato a ler, não leading case nem prova de vigência. Abra no máximo 3 por pesquisa, um por vez (obter_inteiro_teor_tjro respeita o ritmo do portal); depois rode de novo — os lidos saem da lista._");
+  return L.join("\n");
 }
