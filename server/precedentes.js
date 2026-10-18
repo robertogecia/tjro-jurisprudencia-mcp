@@ -11,6 +11,7 @@ import { norm1, faixasAlheias } from "./custodia.js";
 import { teseDaEmenta, fatosDoJulgado, secoesDaEmenta } from "./posicao.js";
 import { listarRecibos, reciboPorId, recibosDoProcesso, soDigitos } from "./recibos.js";
 import { tokens } from "./similares.js";
+import { cadeiaDoProcesso, blocoCadeia, semaforo } from "./cadeia.js";
 import { fold, ancoras, frasesDoTexto, cnj, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO, dataDoFecho, VERSAO, dirCache, extrairOrgaoComOrigem, extrairRelatorDoTexto } from "./lib.js";
 import { STOP_SIM } from "./similares.js";
 
@@ -403,6 +404,9 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   if (meusAnc.length) P(`- Precedentes qualificados que ele aplica (${meusAnc.join(", ")}): situação, revisão e cancelamento se conferem no BNP (\`buscar_precedentes_qualificados\` / \`verificar_precedente_bnp\`), nunca aqui.`);
   P("- Para ampliar além dos recibos: `julgados_que_citam_tjro` (quem cita este processo no portal) e `linha_do_tempo_tjro` (resultado por ano da tese).");
   P("- Superação só se afirma com o julgado que supera aberto: mesmo órgão ou superior, fundamentação específica (art. 927, § 4º), modulação (§ 3º). Resultado oposto pode ser distinção, não overruling (medido às cegas: julgado que cita o anterior e tem resultado oposto era mudança de entendimento em 3 de 66 casos; em 59 era fato diferente). Overruling de verdade se confirma pela situação do precedente no BNP e pelo julgado que o supera, aberto.");
+  // 5-A. o mesmo processo depois deste julgamento (v1.40.0): o sinal mais forte de "não cite este" nos recibos
+  const cad = cadeiaDoProcesso(r, pasta);
+  for (const x of blocoCadeia(cad)) P(x);
   // 6. leading case
   P("\n## 6. Leading case do tema (recibos locais)");
   const tema = [r, ...similares.map((o) => o.x), ...todos.filter((x) => !depois.includes(x)).map((x) => ({ x, s: jaccard(A, conjX(x)) })).filter((o) => o.s >= LIMIAR_TEMA).sort((a, b) => b.s - a.s).slice(0, 40).map((o) => o.x)];
@@ -418,6 +422,7 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   RES.push(`- Fatos do julgado: ${fatos ? `«${cur(fatos.texto, 200)}»` : "sem seção reconhecível (seção 2)"}`);
   if (cmp) RES.push(`- Seus fatos: ${cmp.expressoes.length} expressão(ões) deles aparece(m) no precedente; ele NÃO menciona: ${cmp.ausentes.slice(0, 6).join(", ") || "nenhum termo seu"} (seção 3)`);
   RES.push(`- Superação: ${citam.length} julgado(s) posterior(es) citam este processo (${citam.filter((x) => frasesX(x).distincao.length).length} com frase de distinção); ${mudam.length} do mesmo tema com frase de mudança (quase sempre falsa); ${opostosN} do mesmo tema com resultado oposto (em regra, fato diferente) (seção 5)`);
+  RES.push(`- Situação (indício, sem verde): ${semaforo({ modificado: cad.modificado, conferir: cad.conferir, citamComSinal: citam.filter((x) => frasesX(x).distincao.length || frasesX(x).mudanca.length).length, opostos: opostosN, mudam: mudam.length })} (seções 5 e 5-A)`);
   RES.push(`- Leading case: ${lc.qualificados[0] ? `${lc.qualificados[0].nr} · id ${lc.qualificados[0].id}` : "sem candidato nos recibos"} (seção 6)`);
   L.splice(3, 0, "", ...RES);
   // formato "resumo" (17/10/2026): camada 1 e os ids para abrir; ~420 tokens contra ~1.840 do completo (medido em 40 acórdãos)

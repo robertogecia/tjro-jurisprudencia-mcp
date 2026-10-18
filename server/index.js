@@ -11,8 +11,23 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { verificarCitacao } from "./verificar.js";
-import { buscarRecibos, recalcularRecibos, RECIBOS_LIMITE_MAX, listarRecibos, indiceLeve } from "./recibos.js";
+import { buscarRecibos, recalcularRecibos, RECIBOS_LIMITE_MAX, listarRecibos, indiceLeve, recibosDoProcesso } from "./recibos.js";
 import { auditarCitacoes } from "./auditoria.js";
+import { citadosPor } from "./cadeia.js";
+import { citacoesDoTexto } from "./precedentes.js";
+/** v1.40.0: o que um acórdão já lido cita (recibo local, sem rede). */
+function citadosTexto(nr) {
+  const rs = recibosDoProcesso(nr).filter((x) => x.texto && /AC[ÓO]RD/.test(String(x.tipo || "").toUpperCase()));
+  if (!rs.length) return `Sem ACÓRDÃO deste processo nos recibos locais. Leia antes com obter_inteiro_teor_tjro (grava o recibo); a direção "citados" não consulta o portal.`;
+  const iso = (d) => String(d || "").split("/").reverse().join("-");
+  const out = [];
+  for (const r of rs.sort((a, b) => (iso(b.data_julgamento) > iso(a.data_julgamento) ? 1 : -1))) {
+    const c = citadosPor(r, citacoesDoTexto);
+    out.push(`**O que cita o acórdão id ${r.id_documento} (${r.data_julgamento || "sem data"})** — ${c.nTj} do TJRO, ${c.nSup} de STJ/STF:`, ...(c.linhas.length ? c.linhas : ["- Nenhum processo citado pelo número."]), "");
+  }
+  out.push("_Lido do recibo local. Citação marcada como TRANSCRITO provavelmente foi feita pelo julgado transcrito, não por este: indício (acertou 7 de 9 numa amostra cega nova; deixa passar parte), confira no texto. Para quem cita ESTE processo, use direcao=\"citam\" (consulta o portal)._");
+  return out.join("\n");
+}
 import { avisoGrafiaRelator } from "./relatores.js";
 import {
   ORDENACOES,
@@ -480,11 +495,13 @@ server.registerTool(
     inputSchema: {
       nr_processo: z.string().describe("Número CNJ completo do julgado citado (20 dígitos), com ou sem máscara."),
       limite: z.number().int().min(1).max(50).optional().describe("Quantos mostrar (1 a 50; padrão 10)."),
+      direcao: z.enum(["citam", "citados"]).optional().describe("\"citam\" (padrão) = quem cita este processo, no portal. \"citados\" = o que ESTE acórdão cita (TJRO, STJ, STF), lido do recibo local, ZERO requisição: cada TJRO citado com câmara do fecho e resultado se já lido aqui, e marca o que só aparece dentro de trecho transcrito de outro julgado."),
     },
     annotations: { title: "Julgados que citam este (TJRO)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
   async (a) => {
     try {
+      if (a.direcao === "citados") return { content: [{ type: "text", text: citadosTexto(a.nr_processo) }] };
       return { content: [{ type: "text", text: await comAvisos(await citacoesDe(a.nr_processo, a.limite ?? 10)) }] };
     } catch (e) {
       return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };

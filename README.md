@@ -205,6 +205,20 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
   amostra nova de 30 citações escritas em estilos variados: achou 12 dos 15 erros plantados e
   não acusou nenhuma das 15 corretas; em 64 notas reais do acervo, nenhum alarme vermelho
   falso. Não diz se o julgado sustenta a tese: isso continua sendo leitura.
+- **Cadeia do processo e semáforo no `distinguir_tjro`** (1.40.0), sem tocar no portal. Uma
+  seção nova lista os julgamentos do MESMO processo já lidos nesta máquina e marca em vermelho o
+  que modificou o acórdão depois: juízo de retratação exercido, embargos acolhidos que mudaram o
+  dispositivo (honorários, juros, sucumbência, resultado) ou anulação. Embargos acolhidos em que
+  a regra não acha a mudança saem em laranja, "confira". O resumo ganha a linha "Situação", um
+  semáforo **sem verde**: vermelho, laranja ou branco. Branco quer dizer "nenhum sinal aqui", nunca
+  "está vigente". Medido às cegas com dois rotuladores: nas amostras de ajuste, 36 de 37
+  marcações vermelhas corretas; numa amostra nova de 39 casos difíceis, nenhum vermelho falso,
+  2 das 3 modificações reais em laranja e 1 que passou.
+- **`julgados_que_citam_tjro` com `direcao="citados"`** (1.40.0) mostra o que UM acórdão já lido
+  cita, sem consulta: cada processo do TJRO com câmara do fecho e resultado, se já foi lido
+  aqui, e as citações a STJ e STF. Marca como indício a citação que parece estar só dentro da
+  ementa de outro julgado transcrita no voto. Às cegas, a marca acertou 7 de 9 e deixou passar
+  parte; até os rotuladores divergiram em metade dos casos, então confira no texto.
 - **Linha de custódia no inteiro teor.** Cada ACÓRDÃO e VOTO abertos vêm com uma linha
   dizendo quantos trechos são de outros julgados (e que fatia do voto isso é), onde começa o
   voto que pode ser o vencido e onde começa a ementa da casa. É a mesma conta que vai para
