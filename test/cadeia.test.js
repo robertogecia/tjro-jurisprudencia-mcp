@@ -104,3 +104,10 @@ test("listaDeLeitura: parágrafo-padrão do mesmo gabinete conta 1 relator e cai
   assert.match(out, /0800003-59\.2025\.8\.22\.0000 — citado em 3 processo\(s\) por 2 relator/);
   assert.match(out, /7000002-50\.2023\.8\.22\.0002 — citado em 2 processo\(s\) por 2 relator/);
 });
+
+test("norm1: vetor + join dá a mesma saída (acentos, aspas, travessões, espaços, emoji) e aguenta texto grande sem estourar", async () => {
+  const { norm1 } = await import("../server/custodia.js");
+  assert.equal(norm1("Ação “Câmara” – Rô\tÇ\n— 🔴 X"), "acao 'camara' - ro c - 🔴 x");
+  const grande = "Apelação cível. Negativação indevida. ".repeat(60000);
+  assert.equal(norm1(grande).length, grande.length);
+});

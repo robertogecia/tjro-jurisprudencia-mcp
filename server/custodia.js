@@ -36,7 +36,9 @@ export const CUSTODIA_VERSAO = 4;   // v4 (1.16.0): trechos_obiter
 const _cache = new Map();
 /** minúsculas, sem acento, aspas e travessões unificados — 1 unidade UTF-16 → 1 unidade. */
 export function norm1(s) {
-  let o = "";
+  // 18/10/2026: `o += d` por caractere montava uma árvore de milhões de nós (cons-strings) por recibo: a 1ª leitura de 6.400
+  // recibos (131 MB) pedia mais de 2 GB de heap e o RSS ficava em 3 GB, com só 340 MB vivos. Vetor + join: mesma saída, pico baixo.
+  const out = new Array(s.length);
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     let d = _cache.get(c);
@@ -50,9 +52,9 @@ export function norm1(s) {
       }
       _cache.set(c, d);
     }
-    o += d;
+    out[i] = d;
   }
-  return o;
+  return out.join("");
 }
 
 // ------------------------------------------------------------------ atribuição ---
