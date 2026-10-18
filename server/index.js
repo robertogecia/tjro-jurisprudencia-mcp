@@ -411,8 +411,8 @@ server.registerTool(
     title: "Lista de leitura de um tema: processos mais citados ainda não lidos (sem rede)",
     description:
       "Para um TEMA (grupos de sinônimos, como em buscar_recibos_tjro), lê os acórdãos do tema JÁ LIDOS nesta máquina e diz quais processos do TJRO eles mais citam " +
-      "e que ainda NÃO foram lidos aqui (citado por N processos distintos do tema), quais já foram lidos e os STJ/STF mais citados — ZERO requisição. " +
-      "Serve para aumentar a cobertura onde importa: a rede local é rasa (em 18/10/2026, só ~5% dos processos citados tinham sido lidos), e o \"mais citado\" do distinguir_tjro conta citações sem conhecer o citado. " +
+      "e que ainda NÃO foram lidos aqui (por relatores distintos e por processos do tema), quais já foram lidos e os STJ/STF mais citados — ZERO requisição. " +
+      "Serve para aumentar a cobertura onde importa: a rede local costuma ser rasa (na máquina do autor, em 18/10/2026, só ~5% dos processos citados tinham sido lidos), e o \"mais citado\" do distinguir_tjro conta citações sem conhecer o citado. " +
       "Mais citado é candidato a ler, não leading case nem prova de vigência. Abra no máximo 3 por pesquisa, um por vez, com obter_inteiro_teor_tjro.",
     inputSchema: {
       grupos: z.array(z.array(z.string())).optional().describe('Sinônimos: [["consignado","RMC"],["dobro","repetição"]] (OU dentro do grupo, E entre grupos).'),

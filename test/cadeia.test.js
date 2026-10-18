@@ -72,7 +72,7 @@ test("listaDeLeitura: mais citados do tema NÃO lidos, contados por processo cit
   g({ id_processo_documento: 1, nr_processo: NR, tipo: "ACÓRDÃO", dtjulgamento_str: "10/01/2025", ds_modelo_documento: `Consignado em dobro. Ver ${NAO_LIDO} e 7000002-50.2023.8.22.0002.` + fecho("RECURSO NÃO PROVIDO") });
   g({ id_processo_documento: 2, nr_processo: "70000025020238220002", tipo: "ACÓRDÃO", dtjulgamento_str: "10/02/2025", ds_modelo_documento: `Consignado em dobro. Ver ${NAO_LIDO} e ${NAO_LIDO}.` + fecho("RECURSO PROVIDO") });
   const out = listaDeLeitura({ grupos: [["consignado"], ["dobro"]] }, citacoesDoTexto, p);
-  assert.match(out, new RegExp(`${NAO_LIDO.replace(/\./g, "\\.")} — citado por 2`));
+  assert.match(out, new RegExp(`${NAO_LIDO.replace(/\./g, "\\.")} — citado em 2 processo\\(s\\) por 2 relator`));
   assert.match(out, /Já lidos e citados pelo tema:\*\* 7000002-50\.2023\.8\.22\.0002 \(1\)/);
   assert.match(listaDeLeitura({}, citacoesDoTexto, p), /Informe o tema/);
 });
@@ -88,4 +88,19 @@ test("cadeia agrupa por SESSÃO do fecho: acórdão reemitido (mesma sessão, ou
   const c = cadeiaDoProcesso(a, p);
   assert.equal(c.itens.length, 1);
   assert.equal(c.modificado.length, 0);
+});
+
+test("listaDeLeitura: parágrafo-padrão do mesmo gabinete conta 1 relator e cai abaixo de citação por 2 relatores", async () => {
+  const { listaDeLeitura } = await import("../server/cadeia.js");
+  _limparMemoParaTeste();
+  const p = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-relatores-"));
+  const g = (s) => { const r = recibo(s); fs.writeFileSync(path.join(p, `${r.id_documento}.json`), JSON.stringify(r)); };
+  const BLOCO = "0800003-59.2025.8.22.0000", OUTRO = "7000002-50.2023.8.22.0002";
+  const nrs = ["70000013420248220001", "70000040220258220001", "70000050720258220001"];
+  g({ id_processo_documento: 1, nr_processo: nrs[0], tipo: "ACÓRDÃO", nome_relator_acordao: "PAULO KIYOCHI MORI", ds_modelo_documento: `Tarifa de avaliação. ${BLOCO}. ${OUTRO}.` });
+  g({ id_processo_documento: 2, nr_processo: nrs[1], tipo: "ACÓRDÃO", nome_relator_acordao: "PAULO KIYOCHI MORI", ds_modelo_documento: `Tarifa de avaliação. ${BLOCO}.` });
+  g({ id_processo_documento: 3, nr_processo: nrs[2], tipo: "ACÓRDÃO", nome_relator_acordao: "JOSE ANTONIO ROBLES", ds_modelo_documento: `Tarifa de avaliação. ${OUTRO}. ${BLOCO}.` });
+  const out = listaDeLeitura({ grupos: [["tarifa"], ["avaliação"]] }, citacoesDoTexto, p);
+  assert.match(out, /0800003-59\.2025\.8\.22\.0000 — citado em 3 processo\(s\) por 2 relator/);
+  assert.match(out, /7000002-50\.2023\.8\.22\.0002 — citado em 2 processo\(s\) por 2 relator/);
 });

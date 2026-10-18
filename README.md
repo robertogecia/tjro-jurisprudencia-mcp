@@ -216,8 +216,9 @@ Três coisas novas, e nenhuma delas gasta consulta no portal quando o acórdão 
   2 das 3 modificações reais em laranja e 1 que passou.
 - **`lista_de_leitura_tjro`** (1.41.0), sem tocar no portal: para um tema, os processos do TJRO
   que os acórdãos já lidos mais citam e que você ainda não abriu, os já lidos e os STJ/STF mais
-  citados. A rede de citações desta máquina é rasa (cerca de 5% dos citados tinham sido lidos em
-  18/10/2026); a lista diz onde abrir primeiro. "Mais citado" é candidato a ler, não leading case.
+  citados. A rede de citações local costuma ser rasa (na máquina do autor, cerca de 5% dos citados tinham
+  sido lidos em 18/10/2026); a lista diz onde abrir primeiro, contando relatores distintos para
+  não confundir o parágrafo-padrão de um gabinete com jurisprudência da câmara. "Mais citado" é candidato a ler, não leading case.
   O formato `ficha` do `distinguir_tjro` passou a levar `situacao_local`, que o lint da
   `peticao-rg` usa para barrar ficha de acórdão modificado depois.
 - **`julgados_que_citam_tjro` com `direcao="citados"`** (1.40.0) mostra o que UM acórdão já lido

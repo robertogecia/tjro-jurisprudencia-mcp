@@ -3,7 +3,7 @@
 // O que importa para quem vai citar: o acórdão foi MODIFICADO depois no próprio processo? (juízo de retratação exercido após tema
 // do STJ/STF, embargos acolhidos com efeito modificativo, anulação). Isso é o sinal mais forte de "não cite este" que existe nos recibos.
 import { recibosDoProcesso, soDigitos, listarRecibos, regexTermo } from "./recibos.js";
-import { extrairOrgaoComOrigem, fold, cnj, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO, dataDoFecho } from "./lib.js";
+import { extrairOrgaoComOrigem, fold, cnj, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO, dataDoFecho, extrairRelatorDoTexto } from "./lib.js";
 // mesmo rótulo do distinguir (precedentes.js), sem import circular
 const rotulo = (r) => { const ro = resultadoComOrigem(r.texto, r.tipo); const k = rotuloDoConjunto(ro.conjunto, r.classe, ro.embargos); return k ? ROTULOS_RESULTADO[k] : ""; };
 
@@ -177,8 +177,17 @@ export function citadosPor(r, citacoesDoTexto, pasta) {
 }
 
 
+// Relator como chave de contagem: último sobrenome (≥ 4 letras), sem títulos nem Filho/Júnior/Neto. "PAULO KIYOCHI MORI" e
+// "Des. Kiyochi Mori" contam como um. Sem relator: chave própria do processo (conta como um relator distinto).
+const NAO_SOBRENOME = new Set("desembargador desembargadora juiz juiza convocado convocada relator relatora redistribuido redistribuida prevencao substituido substituida filho junior neto sobrinho".split(" "));
+function chaveRelator(x) {
+  const nome = fold(String(x.relator_indice || extrairRelatorDoTexto(x.texto || "") || "")).replace(/[^a-z ]+/g, " ");
+  const ws = nome.split(" ").filter((w) => w.length >= 4 && !NAO_SOBRENOME.has(w));
+  return ws.length ? ws[ws.length - 1] : "";
+}
+
 /** v1.41.0 — lista de leitura dirigida (sem rede). A rede local é rasa: dos processos do TJRO citados nos acórdãos lidos, só ~5%
- * foram lidos (medido em 18/10/2026: 268 de 4.940). Para um TEMA (grupos de sinônimos, como em buscar_recibos_tjro), diz quais
+ * foram lidos (medido na máquina do autor em 18/10/2026: 268 de 4.940). Para um TEMA (grupos de sinônimos, como em buscar_recibos_tjro), diz quais
  * processos os acórdãos lidos do tema mais citam e que esta máquina ainda NÃO leu — para abrir poucos, um por vez, dentro do ritmo. */
 export function listaDeLeitura({ consulta = "", grupos = null, limite = 10 } = {}, citacoesDoTexto, pasta) {
   const gs = (Array.isArray(grupos) ? grupos : []).map((g) => (Array.isArray(g) ? g : [g]).map((x) => String(x).trim()).filter(Boolean)).filter((g) => g.length);
@@ -196,21 +205,24 @@ export function listaDeLeitura({ consulta = "", grupos = null, limite = 10 } = {
     for (const c of citacoesDoTexto(x.texto)) {
       if (/^\d{7}-\d{2}\.\d{4}\.8\.22\.\d{4}$/.test(c)) {
         const b = soDigitos(c); if (b === a) continue;
-        if (!cit.has(b)) cit.set(b, { c, quem: new Map() });
+        if (!cit.has(b)) cit.set(b, { c, quem: new Map(), rels: new Set() });
         cit.get(b).quem.set(a, x.id_documento);
+        cit.get(b).rels.add(chaveRelator(x) || "?" + a);
       } else { if (!sup.has(c)) sup.set(c, new Set()); sup.get(c).add(a); }
     }
   }
-  const ord = [...cit.values()].map((o) => ({ ...o, n: o.quem.size, lido: lidos.has(soDigitos(o.c)) })).sort((p, q) => q.n - p.n || (p.c < q.c ? -1 : 1));
+  // 18/10/2026: ordena por RELATORES distintos e depois por processos — o mesmo gabinete copiando o próprio parágrafo-padrão em vários
+  // votos inflava "citado por N" (tema tarifa de avaliação: 5 processos "citados por 4", todos pelos mesmos 3 acórdãos).
+  const ord = [...cit.values()].map((o) => ({ ...o, n: o.quem.size, k: o.rels.size, lido: lidos.has(soDigitos(o.c)) })).sort((p, q) => q.k - p.k || q.n - p.n || (p.c < q.c ? -1 : 1));
   const naoLidos = ord.filter((o) => !o.lido), jaLidos = ord.filter((o) => o.lido);
   const L = [`**Lista de leitura (sem rede)** — tema: ${gs.map((g) => "(" + g.join(" OU ") + ")").join(" E ")}`,
     `- Acórdãos lidos do tema: ${tema.length} (${procTema.size} processos). Processos do TJRO que eles citam: ${ord.length}; já lidos aqui: ${jaLidos.length}${ord.length ? ` (${Math.round(100 * jaLidos.length / ord.length)}%)` : ""}.`, ""];
   const top = naoLidos.filter((o) => o.n >= 2).slice(0, Math.max(1, Math.min(30, limite)));
-  L.push(top.length ? "**Mais citados pelo tema e NÃO lidos aqui** (citado por N processos distintos do tema):" : "Nenhum processo não lido é citado por 2 ou mais processos do tema.");
-  for (const o of top) L.push(`- ${o.c} — citado por ${o.n} · ex.: ids ${[...o.quem.values()].slice(0, 3).join(", ")}`);
+  L.push(top.length ? "**Mais citados pelo tema e NÃO lidos aqui** (por relatores distintos, depois por processos; muitos processos de 1 relator costuma ser parágrafo-padrão do gabinete):" : "Nenhum processo não lido é citado por 2 ou mais processos do tema.");
+  for (const o of top) L.push(`- ${o.c} — citado em ${o.n} processo(s) por ${o.k} relator(es) · ex.: ids ${[...o.quem.values()].slice(0, 3).join(", ")}`);
   if (jaLidos.length) L.push("", `**Já lidos e citados pelo tema:** ${jaLidos.slice(0, 5).map((o) => `${o.c} (${o.n})`).join("; ")} — abra com distinguir_tjro (resumo), sem rede.`);
   const ts = [...sup].map(([c, q]) => [c, q.size]).filter(([, n]) => n >= 2).sort((p, q) => q[1] - p[1] || (p[0] < q[0] ? -1 : 1)).slice(0, 5);
-  if (ts.length) L.push("", `**STJ/STF mais citados pelo tema:** ${ts.map(([c, n]) => `${c} (${n})`).join("; ")} — confira no MCP do STJ/JusRatio; "muito citado" não é "certo" (o EAREsp 676.608/RS é o mais citado do acervo local e tem número em disputa).`);
+  if (ts.length) L.push("", `**STJ/STF mais citados pelo tema:** ${ts.map(([c, n]) => `${c} (${n})`).join("; ")} — confira no MCP do STJ/JusRatio; "muito citado" não é "certo": número repetido de voto em voto pode estar errado na origem.`);
   L.push("", "_Mais citado é candidato a ler, não leading case nem prova de vigência. Abra no máximo 3 por pesquisa, um por vez (obter_inteiro_teor_tjro respeita o ritmo do portal); depois rode de novo — os lidos saem da lista._");
   return L.join("\n");
 }
