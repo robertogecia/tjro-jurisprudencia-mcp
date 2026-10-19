@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## 1.41.3
+
+A descrição da extensão, mostrada ao instalar ou atualizar, agora diz quem a criou e, em linguagem simples, o que ela faz. Nenhuma ferramenta mudou.
+
 ## v1.38.0
 
 Eficiência, tokens e método, com red-team agêntico (4 caçadores de modelos distintos, verificadores de outro modelo): 23 achados, 22 confirmados, todos fechados; a rodada final deu 0 divergências Node×Python em 129 comparações.
