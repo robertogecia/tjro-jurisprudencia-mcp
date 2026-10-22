@@ -16,7 +16,12 @@ test("livro-razão: anota, relê em ordem e nunca grava texto de busca", () => {
   assert.equal(r.length, 2);
   assert.ok(r[0].t < r[1].t);
   const cru = fs.readFileSync(f, "utf-8");
-  assert.ok(!/segredo|123/.test(cru));
+  // Como VALOR de texto: o pid do processo (ex. 51230) pode conter "123" e não é dado de busca — falhou no CI do macOS em 22/10/2026.
+  assert.ok(!/"segredo"|"123"/.test(cru), cru);
+  for (const linha of cru.split("\n").filter(Boolean)) {
+    const j = JSON.parse(linha);
+    assert.ok(!("consulta" in j) && !("nr_processo" in j), linha);
+  }
 });
 
 test("livro-razão: rotaciona sem passar do limite", () => {
