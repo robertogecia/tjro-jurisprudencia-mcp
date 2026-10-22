@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## 1.41.7
+
+O desfecho da sentença de primeiro grau (procedente, improcedente, extinção) ficou mais fiel: a advertência de multa por embargos protelatórios no rodapé não faz mais a sentença parecer decisão de embargos, e as expressões "isto posto" e "posto isto" passam a marcar o dispositivo. Nos acórdãos guardados, as sentenças cíveis sem rótulo caíram de 384 para 297 de 875. Em duas amostras conferidas às cegas, 23 certos e 1 errado em cada.
+
 ## 1.41.6
 
 A checagem de versão nova agora acontece no máximo uma vez por semana: a extensão registra a data da última checagem no seu computador e, nas outras sessões, só lembra da versão já vista. Nada da pesquisa sai do computador.
