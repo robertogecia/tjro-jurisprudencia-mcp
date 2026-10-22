@@ -2165,6 +2165,9 @@ test("desfechoDaSentenca: procedente, parcial, improcedente, extinto, homologado
   assert.equal(desfechoDaSentenca(_sent("Ante o exposto, JULGO PROCEDENTE o pedido inicial para condenar o réu.")), "PROCEDENTE");
   assert.equal(desfechoDaSentenca(_sent("Ante o exposto, julgo parcialmente procedentes os pedidos para condenar o réu e rejeitar o dano moral.")), "PARCIAL");
   assert.equal(desfechoDaSentenca(_sent("Ante o exposto, JULGO IMPROCEDENTE o pedido inicial.")), "IMPROCEDENTE");
+  // 22/10/2026: a advertência de multa por embargos no rodapé NÃO é sentença integrativa
+  assert.equal(desfechoDaSentenca(_sent("Isto posto, JULGO IMPROCEDENTES os pedidos. Advirta-se que a oposição de embargos de declaração meramente protelatórios ensejará multa do art. 1.026, § 2º, do CPC. Se opostos embargos de declaração, intime-se a parte contrária.")), "IMPROCEDENTE");
+  assert.equal(desfechoDaSentenca(_sent("Posto isso, CONHEÇO DOS EMBARGOS DE DECLARAÇÃO opostos e JULGO PROCEDENTE para sanar a omissão, mantendo a sentença.")), null);
   assert.equal(desfechoDaSentenca(_sent("Ante o exposto, julgo extinta a ação, sem resolução do mérito, nos termos do art. 485, I, do CPC.")), "EXTINTO");
   assert.equal(desfechoDaSentenca(_sent("Ante o exposto, HOMOLOGO o acordo celebrado entre as partes e extingo o processo com resolução do mérito.")), "HOMOLOGADO");
   assert.equal(desfechoDaSentenca(_sent("Posto isso, acolho os embargos de declaração, para sanar a omissão.")), null, "decisão de ED não é sentença de mérito");
