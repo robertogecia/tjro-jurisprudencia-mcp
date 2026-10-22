@@ -8,6 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { checarSemanal } from "./semana.js";
 import { camposAlheios, linhaCustodia, CUSTODIA_VERSAO, norm1 } from "./custodia.js";
 import { linhaFavoravel } from "./partes.js";
 import { fatosDoJulgado, FATOS_MAX, FATOS_MAX_SENT, RE_ALEGACAO, secoesDaEmenta, teseDaEmenta, desfechoDaSentenca, ROTULOS_SENTENCA } from "./posicao.js";
@@ -2613,7 +2614,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.41.5";
+export const VERSAO = "1.41.6";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
@@ -2659,13 +2660,34 @@ export async function checarVersaoNova({
   }
 }
 
+export const ARQUIVO_AVISO_VERSAO = (env = process.env) =>
+  env.TJRO_MCP_ARQUIVO_AVISO_VERSAO || path.join(os.homedir(), ".tjro-jurisprudencia-aviso-versao.json");
+
+// Uma consulta ao GitHub por semana (registro local com a data da última checagem); nas demais sessões a sugestão
+// sai do registro, sem rede. Com `fetchImpl` injetado (teste) e sem `arquivoAviso`, não há registro.
+export async function checarVersaoSemanal({
+  atual = VERSAO,
+  fetchImpl = globalThis.fetch,
+  env = process.env,
+  timeoutMs = 2000,
+  arquivoAviso,
+  agora,
+} = {}) {
+  if (env.TJRO_MCP_SEM_AVISO_ATUALIZACAO === "1") return null;
+  const arquivo = arquivoAviso ?? (fetchImpl === globalThis.fetch || env.TJRO_MCP_ARQUIVO_AVISO_VERSAO ? ARQUIVO_AVISO_VERSAO(env) : null);
+  return checarSemanal({
+    arquivo, atual, versaoMaisNova, agora,
+    consultar: () => checarVersaoNova({ atual: "0.0.0", fetchImpl, env, timeoutMs }),
+  });
+}
+
 export const avisoAtualizacao = (novaVersao) =>
   `_Há uma versão mais nova desta extensão (v${novaVersao}; a instalada é a v${VERSAO})._ Se o usuário quiser, pode pedir ao Claude para baixar a versão já conferida, ou baixar em: ${RELEASES_PAGINA}`;
 
 let checagem = null;
 let avisoDado = false;
 export function iniciarChecagemVersao(opcoes) {
-  if (!checagem) checagem = checarVersaoNova(opcoes);
+  if (!checagem) checagem = checarVersaoSemanal(opcoes);
   return checagem;
 }
 // Crédito + (uma vez) aviso de versão. Nunca atrasa a resposta além do timeout da checagem.

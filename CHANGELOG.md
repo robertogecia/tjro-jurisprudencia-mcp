@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## 1.41.6
+
+A checagem de versão nova agora acontece no máximo uma vez por semana: a extensão registra a data da última checagem no seu computador e, nas outras sessões, só lembra da versão já vista. Nada da pesquisa sai do computador.
+
 ## 1.41.5
 
 O campo autor da extensão agora mostra @robertogrecia. Nenhuma ferramenta mudou.
