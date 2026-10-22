@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## 1.41.5
+
+O campo autor da extensão agora mostra @robertogrecia. Nenhuma ferramenta mudou.
+
 ## 1.41.4
 
 O subtítulo da extensão agora traz o crédito do autor e a descrição foi reescrita em parágrafos, em linguagem acessível a advogados. Nenhuma ferramenta mudou.
