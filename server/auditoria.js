@@ -4,7 +4,7 @@
 // e — se o acórdão já foi lido nesta máquina — câmara do FECHO e relator contra o que a peça afirma ao lado do número.
 // Citação a STJ/STF só é listada: quem confere é o MCP do STJ / JusRatio. Nada aqui diz que o julgado sustenta a tese.
 import { recibosDoProcesso } from "./recibos.js";
-import { extrairOrgaoComOrigem, extrairRelatorDoTexto, relatorDiverge, fold } from "./lib.js";
+import { extrairOrgaoComOrigem, extrairRelatorDoTexto, compararRelator, fold } from "./lib.js";
 import { citacoesDoTexto } from "./precedentes.js";
 
 const RE_NUM = /(?<![0-9])(\d{7})-?(\d{2})\.?(\d{4})\.?(\d)\.?(\d{2})\.?(\d{4})(?![0-9])/g;
@@ -65,6 +65,30 @@ function dataNoTexto(br, texto) {
   return num.test(tf) || ext.test(tf);
 }
 
+// Leva A (red team 22/10/2026): a data da peça casava com QUALQUER data do inteiro teor — a da sentença de 1º grau ("proferida em
+// 02/02/2022") ou a de um REsp citado no voto — e a linha saía ✅ "data". Agora só vale a data do JULGAMENTO: o fecho (do último
+// "acordam os Magistrados/Desembargadores" em diante, 1.500 caracteres: proclamação, "Porto Velho, 05 de outubro de 2026" e
+// assinatura), o rótulo de sessão ou data do julgamento no cabeçalho, e a assinatura final de documento sem fecho. NÃO entram os
+// últimos N caracteres soltos: nas ementas do modelo CNJ a "Jurisprudência relevante citada" fica colada ao fecho e traz
+// "j. 21/03/2024" de outros processos (medido nos recibos reais). Sem âncora, a data não é confirmada pelo texto (fica a do índice).
+const RE_FECHO_ACORDAM = /acordam\s+os\s+(?:magistrados|desembargadores)/gi;
+const RE_ROTULO_SESSAO = /(?:sess[ãa]o(?:\s+(?:virtual|presencial|ordin[áa]ria|extraordin[áa]ria|telepresencial|h[íi]brida|de\s+julgamento))*\s*(?:de|do\s+dia|realizada\s+em|iniciada\s+em|:)|data\s+d[oe]\s+julgamento\s*:?)/gi;
+const RE_ASSINATURA = /(?:Porto\s+Velho|Ji-Paran[aá]|Cacoal|Vilhena|Ariquemes|Guajar[aá]-Mirim|Rolim\s+de\s+Moura|Jaru|Ouro\s+Preto\s+do\s+Oeste)\s*(?:\/\s*RO)?\s*,?\s*(?:\d{1,2}\s*(?:º|o)?\s+de\s+[A-Za-zç]+\s+de\s+\d{4}|\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/gi;
+export function regiaoDoJulgamento(texto) {
+  const t = String(texto || "");
+  const partes = [];
+  let ult = -1;
+  for (const m of t.matchAll(RE_FECHO_ACORDAM)) ult = m.index;
+  if (ult >= 0) partes.push(t.slice(ult, ult + 1500));
+  const cab = t.slice(0, 2500);
+  for (const m of cab.matchAll(RE_ROTULO_SESSAO)) partes.push(cab.slice(m.index, m.index + m[0].length + 60));
+  const cauda = t.slice(-600);
+  let ass = null;
+  for (const m of cauda.matchAll(RE_ASSINATURA)) ass = m;
+  if (ass) partes.push(ass[0]);
+  return partes.join(" \n ");
+}
+
 export function auditarCitacoes(texto, pasta) {
   const t = String(texto || "").slice(0, AUDITORIA_MAX_CHARS);
   if (!t.trim()) return "Cole o texto da peça (ou o trecho com as citações) em `texto`.";
@@ -88,22 +112,43 @@ export function auditarCitacoes(texto, pasta) {
     const avisos = [];
     const confira = [];
     if (a.datas.size) {
-      const comData = alvo.filter((r) => a.datas.has(r.data_julgamento) || [...a.datas].some((dt) => dataNoTexto(dt, r.texto)));
+      const comData = alvo.filter((r) => a.datas.has(r.data_julgamento) || [...a.datas].some((dt) => dataNoTexto(dt, regiaoDoJulgamento(r.texto))));
       if (comData.length) alvo = comData;
       else {
         const perto = [...a.datas].every((dt) => [...julg.keys()].some((k) => Math.abs(diaDe(dt) - diaDe(k)) <= 45 * 864e5));
-        (perto ? confira : avisos).push(`a peça diz julgado em ${[...a.datas].join(" / ")}; os julgamentos lidos deste processo são de ${[...julg.keys()].join(", ")}${perto ? " (até 45 dias: o índice pode guardar a data da assinatura, não a da sessão)" : ""}`);
+        // a data existe no corpo (sentença, precedente citado, juntada), mas não como data deste julgamento
+        const noCorpo = [...a.datas].filter((dt) => alvo.some((r) => dataNoTexto(dt, r.texto)));
+        (perto ? confira : avisos).push(`a peça diz julgado em ${[...a.datas].join(" / ")}; os julgamentos lidos deste processo são de ${[...julg.keys()].join(", ")}${perto ? " (até 45 dias: o índice pode guardar a data da assinatura, não a da sessão)" : ""}${noCorpo.length ? ` — ${noCorpo.join(" / ")} aparece no texto, mas não como data do julgamento (fecho, sessão ou assinatura): pode ser a da sentença ou de um precedente citado no voto` : ""}`);
       }
     }
     const fechos = [...new Set(alvo.map((r) => extrairOrgaoComOrigem(r.texto)).filter((o) => o && o.origem === "fecho").map((o) => o.orgao))];
     if (a.camaras.size && fechos.length) {
       const errada = [...a.camaras].filter((c) => !fechos.some((f) => fold(f) === fold(c)));
       if (errada.length) avisos.push(`a peça diz ${errada.join(" / ")}, o FECHO diz ${fechos.join(" / ")} (vale o fecho: o cadastro mostra a câmara atual do processo, não a que julgou)`);
+    } else if (a.camaras.size) {
+      // Red team 22/10/2026: sem fecho legível (só a ementa gravada pela busca, fecho fora do padrão) não houve comparação —
+      // nunca ✅. O órgão do índice entra só como indício: é a câmara ATUAL do processo, não a que julgou.
+      const cad = [...new Set(alvo.map((r) => r.orgao_indice).filter(Boolean))];
+      confira.push(`câmara da peça (${[...a.camaras].join(" / ")}) NÃO conferida: o recibo lido não tem o fecho legível (só ementa/índice ou redação fora do padrão)${cad.length ? ` — cadastro: ${cad.join(" / ")}, que não é a câmara que julgou` : ""}; abra o ACÓRDÃO com obter_inteiro_teor_tjro`);
     }
     const rels = [...new Set(alvo.map((r) => extrairRelatorDoTexto(r.texto) || r.relator_indice).filter(Boolean))];
+    // rodada 2: relator que só veio do índice do portal (recibo sem "Relator:" no texto) não foi LIDO no acórdão
+    const relLido = alvo.some((r) => extrairRelatorDoTexto(r.texto));
     if (a.relatores.size && rels.length) {
-      const errados = [...a.relatores].filter((p) => rels.every((x) => relatorDiverge(p, x)));
+      // Leva A (22/10/2026): um sobrenome em comum não confere mais ("Raduan Miguel Filho" × "Alexandre Miguel"); vale o melhor
+      // resultado entre os relatores lidos deste julgamento, e o ambíguo (nome único de mais de um desembargador, forma curta com
+      // outro último sobrenome) sai 🟠, nunca ✅.
+      const ORDEM = { confere: 0, ambiguo: 1, diverge: 2 };
+      const melhor = (p) => rels.map((x) => compararRelator(p, x)).reduce((m, r) => (r && (m === null || ORDEM[r] < ORDEM[m]) ? r : m), null);
+      const res = [...a.relatores].map((p) => [p, melhor(p)]);
+      const errados = res.filter(([, r]) => r === "diverge").map(([p]) => p);
+      const ambiguos = res.filter(([, r]) => r === "ambiguo").map(([p]) => p);
       if (errados.length) confira.push(`a peça dá como relator ${errados.join(" / ")}, o acórdão lido tem ${rels.join(" / ")} (relator muda entre julgamentos do mesmo processo — IRDR, embargos, convocação: confira qual julgamento a peça cita)`);
+      const curtos = res.filter(([, r]) => r === null).map(([p]) => p);
+      if (curtos.length) confira.push(`relator da peça (${curtos.join(" / ")}) NÃO conferido: nome curto demais para comparar com o do acórdão lido (${rels.join(" / ")})`);
+      if (ambiguos.length) confira.push(`relator da peça (${ambiguos.join(" / ")}) só bate EM PARTE com o do acórdão lido (${rels.join(" / ")}): nome único que serve a mais de um desembargador, ou sobrenome final diferente — escreva o nome como está no acórdão`);
+    } else if (a.relatores.size) {
+      confira.push(`relator da peça (${[...a.relatores].join(" / ")}) NÃO conferido: o recibo lido não traz o relator; abra o ACÓRDÃO com obter_inteiro_teor_tjro`);
     }
     const quem = alvo.map((r) => `id ${r.id_documento} · ${r.tipo || "?"} · ${r.data_julgamento || "data ?"}`).join("; ");
     const fechoTxt = fechos.length ? `fecho: ${fechos.join(" / ")}` : "câmara do fecho não legível";
@@ -111,7 +156,8 @@ export function auditarCitacoes(texto, pasta) {
     else if (confira.length) { cont.confira++; L.push(`🟠 ${num} — lido nesta máquina (${quem}; ${fechoTxt}). CONFIRA: ${confira.join("; ")}.`); }
     else {
       cont.ok++;
-      const conf = [a.camaras.size ? "câmara" : null, a.relatores.size ? "relator" : null, a.datas.size ? "data" : null].filter(Boolean);
+      // só o que foi de fato comparado (câmara sem fecho e relator sem relator já foram para `confira` acima)
+      const conf = [a.camaras.size && fechos.length ? "câmara" : null, a.relatores.size && rels.length ? (relLido ? "relator" : "relator (só contra o índice do portal, não lido no acórdão)") : null, a.datas.size ? "data" : null].filter(Boolean);
       L.push(`✅ ${num} — lido nesta máquina (${quem}; ${fechoTxt}). ${conf.length ? `Bate com a peça: ${conf.join(", ")}.` : "A peça não diz câmara, relator nem data ao lado do número: nada a comparar."}`);
     }
   }

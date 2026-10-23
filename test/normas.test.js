@@ -31,6 +31,9 @@ import {
 _setArquivoEstadoParaTeste(path.join(os.tmpdir(), "_teste_disjuntor_tjro_normas.json"));
 _resetDisjuntorParaTeste();
 process.env.TJRO_MCP_DIR_CACHE = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-normas-"));
+// Red team 22/10/2026 (achado 19): obterNorma grava o recibo da norma na pasta de recibos; sem esta linha o teste
+// gravava norma-999999903.json (norma fictícia) em ~/.tjro-jurisprudencia-recibos, a pasta REAL do usuário.
+process.env.TJRO_MCP_DIR_RECIBOS = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-normas-recibos-"));
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 const fx = (n) => fs.readFileSync(path.join(aqui, "fixtures", "normas", n), "utf8");
@@ -270,6 +273,9 @@ test("obterNorma: id inválido é ErroNorma; 404 ou página sem campos = inexist
   const d = await obterNorma("999999903", fetchFalso(200, DET_LC));
   assert.equal(d.tipo, "Lei Complementar");
   assert.equal(d.id, "999999903");
+  // o recibo da norma fictícia vai para a pasta temporária do teste, nunca para a pasta real
+  assert.ok(fs.existsSync(path.join(process.env.TJRO_MCP_DIR_RECIBOS, "norma-999999903.json")));
+  assert.ok(process.env.TJRO_MCP_DIR_RECIBOS.startsWith(os.tmpdir()));
 });
 
 test("constantes: 10 por página, tabelas com os códigos do formulário", () => {

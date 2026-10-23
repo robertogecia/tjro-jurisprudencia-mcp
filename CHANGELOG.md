@@ -2,6 +2,21 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## 1.41.8
+
+A conferência das citações ficou mais rigorosa e mais honesta. Correções feitas depois de uma revisão adversarial:
+
+- **Auditoria de citações.** A ferramenta não diz mais que a citação "bate" quando não chegou a comparar a câmara, o relator ou a data; nesse caso informa o que deixou de conferir.
+- **Relator.** O nome do relator passa a ser conferido pelo nome completo, e não por um único sobrenome que outro desembargador também tenha.
+- **Voz do tribunal.** Ementa de outro tribunal transcrita dentro do acórdão não é mais tratada como palavra do TJRO.
+- **Relator vencido.** Quando o relator ficou vencido, a ferramenta avisa, para que o voto dele não seja citado como se fosse a posição da câmara.
+- **Reticências.** Se o trecho citado usa "[...]" e a parte omitida continha uma negação ("não", "nunca"), a ferramenta alerta que o corte pode ter invertido o sentido.
+- **"Provido em parte".** O resultado parcial do recurso é preservado, sem virar "provido" ou "não provido".
+- **Desfecho da sentença.** A leitura do resultado da sentença de primeiro grau ficou mais conservadora: a sentença que só julga embargos de declaração não recebe mais rótulo de mérito, e, quando o texto traz desfechos opostos, a ferramenta prefere ficar sem rótulo a arriscar um errado.
+- **Privacidade.** O diário de erros não guarda mais o nome do relator.
+- **Testes.** Os testes automáticos não mexem mais na pasta do usuário.
+- **Estabilidade.** Corrigidos casos em que a ferramenta podia travar.
+
 ## 1.41.7
 
 O desfecho da sentença de primeiro grau (procedente, improcedente, extinção) ficou mais fiel: a advertência de multa por embargos protelatórios no rodapé não faz mais a sentença parecer decisão de embargos, e as expressões "isto posto" e "posto isto" passam a marcar o dispositivo. Nos acórdãos guardados, as sentenças cíveis sem rótulo caíram de 384 para 297 de 875. Em duas amostras conferidas às cegas, 23 certos e 1 errado em cada.

@@ -830,7 +830,8 @@ test("inteiro teor: julgamentos distintos sob o mesmo número são listados com 
   assert.match(out, /Inteiro teor no portal \(ACÓRDÃO, id 501\): https:\/\/juris\.tjro\.jus\.br\/jurisprudencia\/\?id=501&/);
   assert.match(out, /· id 501 · link https:\/\/juris\.tjro\.jus\.br\/jurisprudencia\/\?id=501&/);
   assert.match(out, /· id 777 · link https:\/\/juris\.tjro\.jus\.br\/jurisprudencia\/\?id=777&/);
-  assert.match(out, /Índice: 3ª Câmara Cível · cabeçalho desta peça: 1ª Câmara Cível — prevalece o texto/);
+  // Leva A (22/10/2026): câmara só do CABEÇALHO não "prevalece" — manda conferir no fecho
+  assert.match(out, /Índice: 3ª Câmara Cível · cabeçalho desta peça: 1ª Câmara Cível — confira no FECHO do acórdão/);
   const segunda = out.split("## ACÓRDÃO — julgado em 2024-11-05")[1];
   assert.doesNotMatch(segunda, /Índice:/); // índice e texto batem: nenhum aviso
 });

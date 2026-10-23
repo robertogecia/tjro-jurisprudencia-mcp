@@ -282,10 +282,23 @@ export const ROTULOS_SENTENCA = { PROCEDENTE: "procedente", PARCIAL: "parcialmen
 // 22/10/2026: "embargos de declaracao" solto pegava a ADVERTÊNCIA de multa do rodapé ("a oposição de embargos de declaração meramente
 // protelatórios ensejará multa…") e calava em ~44% das sentenças cíveis (384 de 875 nos recibos do autor; 11 de 22 silêncios na amostra cega).
 // Agora só conta a sentença que JULGA embargos: "embargos de declaração opostos", "conheço/acolho/rejeito os embargos".
-const RE_S_INTEGRATIVA = /onde se le\b|leia-se|passara a ter a seguinte|embargos de declarac(?:ao|oes) opostos|(?:conheco|acolho|rejeito|nao conheco) d?os embargos|julgo (?:im)?procedentes? os embargos|corrijo (?:de oficio )?o erro material|retifico a sentenca/;
+// Leva B (22/10/2026): com advérbio entre o verbo e "os embargos" ("JULGO PARCIALMENTE PROCEDENTES os embargos de declaração",
+// "acolho em parte os embargos") a sentença integrativa recebia rótulo de mérito. O advérbio só vale com "de declaração": embargos à
+// execução e monitórios julgados parcialmente procedentes têm desfecho de mérito legítimo.
+const RE_S_INTEGRATIVA = /onde se le\b|leia-se|passara a ter a seguinte|embargos de declarac(?:ao|oes) opostos|(?:conheco|acolho|rejeito|nao conheco) d?os embargos|julgo (?:im)?procedentes? os embargos|julgo (?:parcialmente |totalmente |em parte )?(?:im)?procedentes?(?: em parte)? os embargos de declarac|(?:conheco|acolho|rejeito|nao conheco)(?: parcialmente| em parte)? d?os embargos de declarac|dou (?:parcial )?provimento aos embargos de declarac|corrijo (?:de oficio )?o erro material|retifico a sentenca/;
 const RE_S_PARCIAL = /parcialmente (?:procedente|procedentes|acolh)|procedentes? em parte|procedencia parcial|parcial procedencia|julgo parcialmente/;
-const RE_S_IMPROC = /improcedente/;
-const RE_S_PROC = /(?<![a-z0-9])procedente/;
+// Leva B (22/10/2026): o substantivo também conta ("JULGO PELA IMPROCEDÊNCIA dos pedidos e PROCEDENTE o pedido contraposto" virava
+// "procedente": "improcedencia" não era lida e a guarda de desfechos opostos não disparava).
+// O substantivo só conta na fórmula de julgamento ("julgo pela improcedência dos pedidos", "declaro a procedência do pedido"):
+// solto, ele é narrativa ("sentença de improcedência na revisão criminal" da lei de custas transcrita no dispositivo calava um
+// "extinto" certo na medição).
+const SUBST_SENT = String.raw`(?:julgo|julgar|pela|declaro a|decreto a|reconheco a)\s+`;
+const RE_S_IMPROC = new RegExp(String.raw`improcedente|${SUBST_SENT}improcedencia`);
+const RE_S_PROC = new RegExp(String.raw`(?<![a-z0-9])procedente|${SUBST_SENT}procedencia(?! parcial)`);
+const RE_S_IMPROC_G = new RegExp(String.raw`improcedentes?|${SUBST_SENT}improcedencia`, "g");
+// pedido do réu julgado no mesmo dispositivo: o desfecho de um pedido e o do outro costumam ser opostos
+const RE_S_PEDIDO_DO_REU = /pedido contraposto|reconven/;
+const OPOSTO_SENT = { PROCEDENTE: "IMPROCEDENTE", IMPROCEDENTE: "PROCEDENTE" };
 const RE_S_HOMOLOGA = /homologo (?:o |a |, )?(?:o |a )?(?:acordo|transacao|desistencia|pedido de desistencia|renuncia|reconhecimento|composicao|autocomposicao|entabulad)/;
 const RE_S_EXTINTO = /extin\w+[^.]{0,220}sem (?:resolucao|julgamento) (?:do|de) merito|sem (?:resolucao|julgamento) (?:do|de) merito[^.]{0,100}extin/;
 /** Âncoras de dispositivo (fórmula de conclusão + verbo decisório em até 400 car.) depois do cabeçalho, em ordem; tn = norm1 do texto limpo. */
@@ -316,10 +329,16 @@ export function dispositivoDaSentenca(tn) {
   const disp = a[a.length - 1];
   return tn.slice(disp, fimDoDispositivo(tn, disp));
 }
-const PENAL = /acao penal|penal\b|criminal|inquerito|termo circunstanciado|medida protetiva|execucao da pena/;
+const PENAL = /acao penal|penal\b|criminal|inquerito|termo circunstanciado|medida protetiva|execucao da pena|antitoxicos|sumarissimo|\bjuri\b|flagrante|\bprisao\b|infracional/;
+// Leva B (22/10/2026): a classe nem sempre diz que é penal ("Procedimento Especial da Lei Antitóxicos", "Procedimento Sumário",
+// classe vazia) e a condenação virava "procedente". Marcas penais no DISPOSITIVO (não no texto todo: "detenção" e "denúncia"
+// também aparecem em sentença cível) calam o rótulo. "Procedimento sumário" sozinho não entra: o rito sumário era também do CPC/73.
+// Medido nos recibos (1.208 sentenças): "condeno o réu", "Código de Processo Penal", "CPP" e "Juizado Especial Criminal" também
+// aparecem em dispositivo CÍVEL (condenação em dinheiro, ofício ao MP, lei de custas transcrita) e calavam 39 rótulos certos: ficaram fora.
+const PENAL_NO_DISPOSITIVO = /pretensao punitiva|\breclusao\b|\bdetencao\b|\babsolvo\b|art\.? 386|\bdenuncia\b|dosimetria|pena-base|pena base|regime (?:inicial )?(?:fechado|semiaberto|semi-aberto|aberto)|\bdias-multa\b|\bdias multa\b|lei (?:n\S{0,2} ?)?11\.343/;
 function rotuloDoTrecho(d) {
   if (!d || RE_S_INTEGRATIVA.test(d)) return null;
-  const im = RE_S_IMPROC.test(d), pr = RE_S_PROC.test(d.replace(/improcedente/g, " ")), pa = RE_S_PARCIAL.test(d);
+  const im = RE_S_IMPROC.test(d), pr = RE_S_PROC.test(d.replace(RE_S_IMPROC_G, " ")), pa = RE_S_PARCIAL.test(d);
   // homologação + outro desfecho no mesmo dispositivo (vários réus: "julgo improcedente… homologo a desistência quanto ao réu X"): sem rótulo
   if (RE_S_HOMOLOGA.test(d)) return im || pr || pa ? null : "HOMOLOGADO";
   if (pa) return "PARCIAL";
@@ -339,9 +358,28 @@ export function desfechoDaSentenca(tn, classe = "") {
   const ultima = a[a.length - 1];
   const rUlt = rotuloDoTrecho(tn.slice(ultima, fimDoDispositivo(tn, ultima)));
   if (!rUlt) return null;
-  if (a.length > 1 && ultima - a[a.length - 2] < 2500) {
-    const rAnt = rotuloDoTrecho(tn.slice(a[a.length - 2], ultima));
-    if (rAnt && rAnt !== rUlt) return null;
+  // Leva B: TODAS as âncoras dos 2.500 caracteres anteriores, não só a penúltima — "JULGO IMPROCEDENTE o pedido inicial. Em
+  // consequência, condeno… Desse modo, resolvo o mérito… julgo PROCEDENTE o pedido contraposto" tinha a âncora do meio sem
+  // rótulo e o "improcedente" de duas âncoras atrás nunca era comparado.
+  // A penúltima âncora continua estrita (qualquer rótulo diferente cala); das anteriores só o par oposto procedente ×
+  // improcedente cala — "concluo ser improcedente o pedido de danos morais… Ante o exposto, JULGO PARCIALMENTE PROCEDENTE"
+  // é a mesma decisão (medido: 1 rótulo certo perdido com a regra estrita em todas).
+  let k = a.length - 2;
+  for (; k >= 0 && ultima - a[k] < 2500; k--) {
+    const rAnt = rotuloDoTrecho(tn.slice(a[k], a[k + 1]));
+    if (!rAnt || rAnt === rUlt) continue;
+    if (k === a.length - 2 || OPOSTO_SENT[rUlt] === rAnt) return null;
+  }
+  const janela = tn.slice(a[k + 1], fimDoDispositivo(tn, ultima));
+  if (PENAL_NO_DISPOSITIVO.test(janela)) return null;
+  // pedido contraposto ou reconvenção no dispositivo: procedência E improcedência juntas calam o rótulo; "parcialmente
+  // procedente" cala só quando é o pedido do RÉU que foi julgado em parte ("julgo improcedente o pedido inicial e parcialmente
+  // procedente o pedido contraposto") — o parcial do pedido do autor com a reconvenção improcedente é o caso comum e fica.
+  if (RE_S_PEDIDO_DO_REU.test(janela)) {
+    if (rUlt === "PARCIAL") {
+      for (const m of janela.matchAll(new RegExp(RE_S_PARCIAL.source, "g")))
+        if (RE_S_PEDIDO_DO_REU.test(janela.slice(Math.max(0, m.index - 100), m.index + m[0].length + 80))) return null;
+    } else if (RE_S_IMPROC.test(janela) && RE_S_PROC.test(janela.replace(RE_S_IMPROC_G, " "))) return null;
   }
   return rUlt;
 }

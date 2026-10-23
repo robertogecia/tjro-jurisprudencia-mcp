@@ -9,10 +9,11 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { checarSemanal } from "./semana.js";
-import { camposAlheios, linhaCustodia, CUSTODIA_VERSAO, norm1 } from "./custodia.js";
+import { camposAlheios, linhaCustodia, CUSTODIA_VERSAO, norm1, expandirLigaduras } from "./custodia.js";
+export { expandirLigaduras };
 import { linhaFavoravel } from "./partes.js";
 import { fatosDoJulgado, FATOS_MAX, FATOS_MAX_SENT, RE_ALEGACAO, secoesDaEmenta, teseDaEmenta, desfechoDaSentenca, ROTULOS_SENTENCA } from "./posicao.js";
-import { chaveRelator } from "./relatores.js";
+import { chaveRelator, GRAFIAS_RELATOR } from "./relatores.js";
 import { anotarRequisicao, lerRitmo, contextoDoBloqueio, analisarBloqueios, formatarRelatorio } from "./bloqueios.js";
 
 export const SITE = "https://juris.tjro.jus.br";
@@ -174,12 +175,50 @@ export const cnj = (nr) => {
     : String(nr || "");
 };
 
+/** Tira <script>/<style> com o conteúdo, como `/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi` → " ", em tempo LINEAR. Leva B (red team
+ * 22/10/2026): a regex varria até o fim do texto para cada abertura sem fechamento — milhares de "<script>" sem par (HTML
+ * malformado) levavam segundos e travavam o servidor inteiro. Abertura sem fechamento fica no texto (a tag sai depois, com as
+ * demais), como na regex; e se uma não tem fechamento, nenhuma abertura posterior do mesmo tipo tem. */
+export function semScriptStyle(t) {
+  const low = t.toLowerCase();
+  const re = /<(script|style)/gi;
+  const semFecho = new Set();
+  let out = "", pos = 0, gt = -1;
+  for (let m; (m = re.exec(t));) {
+    const tag = m[1].toLowerCase();
+    if (semFecho.has(tag)) continue;
+    if (gt < m.index) { gt = t.indexOf(">", m.index); if (gt < 0) break; }   // nenhum ">" adiante: nada mais casa
+    const fecho = `</${tag}>`;
+    const fim = low.indexOf(fecho, gt + 1);
+    if (fim < 0) { semFecho.add(tag); if (semFecho.size === 2) break; continue; }
+    out += t.slice(pos, m.index) + " ";
+    pos = fim + fecho.length;
+    re.lastIndex = pos;
+  }
+  return pos ? out + t.slice(pos) : t;
+}
+
+/** `t.replace(/<[^>]+>/g, " ")` em tempo linear: a regex também varria até o fim para cada "<" sem ">" adiante (120 mil "<script"
+ * sem ">" levavam ~40 s). Mesma saída: de cada "<" até o próximo ">" (com ao menos 1 caractere entre eles) vira " ". */
+export function semTags(t) {
+  let out = "", pos = 0, gt = -1;
+  for (let i = t.indexOf("<"); i >= 0; i = t.indexOf("<", i + 1)) {
+    if (gt <= i) { gt = t.indexOf(">", i + 1); if (gt < 0) break; }
+    if (gt === i + 1) continue;   // "<>": a regex não casa aqui
+    out += t.slice(pos, i) + " ";
+    pos = gt + 1;
+    i = gt;
+  }
+  return pos ? out + t.slice(pos) : t;
+}
+
+
 export const limpar = (texto, limite = 800) => {
   if (!texto) return "";
   let t = String(texto).replace(/data:image\/[^)"'\s]+/g, ""); // remove imagens base64
-  t = t.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ");
-  t = t.replace(/<[^>]+>/g, " "); // remove tags
-  t = he.decode(t); // decodifica entidades (&Ccedil; etc.)
+  t = semScriptStyle(t);
+  t = semTags(t); // remove tags
+  t = expandirLigaduras(he.decode(t)); // decodifica entidades (&Ccedil; etc.)
   t = t.replace(/\s+/g, " ").trim();
   if (limite && t.length > limite) t = t.slice(0, limite).replace(/\s+\S*$/, "") + "…";
   return t;
@@ -324,6 +363,26 @@ const RE_EMBARGOS_OUTROS = /\bEMBARGOS (DE TERCEIRO|A EXECUCAO|MONITORIOS|INFRIN
 // processo principal (APELAÇÃO), então ehEmbargos falhava e a ementa de ED recebia o resultado
 // da apelação. Lendo só a seção IV (dispositivo e tese) e reconhecendo "embargos de declaração"
 // nela, o rótulo muda em ~6,7% das ementas CNJ sem fecho (medição offline 12/10/2026).
+// Leva B (22/10/2026): "DADO PROVIMENTO (EM PARTE) AO RECURSO" não casava (o conjunto ficava vazio).
+const RE_PROVIMENTO_POSITIVO = /\b(?:PROVI(?:DO|DOS|DA|DAS)\b|D(?:A|AO|AR|OU|ERAM|EU|ADO)(?:-SE| SE)? (?:PARCIAL )?PROVIMENTO)/g;
+// Qualificador PARCIAL. Leva B: aceita o "em parte" separado por vírgula ("RECURSO CONHECIDO E, EM PARTE, PROVIDO",
+// "PROVIDO, EM PARTE", "DOU PROVIMENTO EM PARTE"), que virava "provido" integral. "CONHECIDO EM PARTE E PROVIDO" é
+// conhecimento parcial, não provimento parcial: o "em parte" colado a CONHECID… fica fora.
+const RE_PROVIMENTO_PARCIAL = /\bPARCIAL(MENTE)? PROVI|\bPARCIAL PROVIMENTO|\bPROVIMENTO,? (?:PARCIAL|EM PARTE)\b|\bPROVID[OA]S?,? (?:EM PARTE|PARCIALMENTE)\b|(?<!CONHECID[OA] )(?<!CONHECID[OA]S )\bEM PARTE,? ?(?:E )?PROVID/;
+/** A ocorrência positiva em `i` está negada na própria oração? A oração começa na última pontuação ou conjunção
+ * ("não conheço do recurso do réu E dou provimento ao do autor" continua PROVIDO), em no máximo 60 caracteres.
+ * "Não obstante" não nega. Na dúvida o lado positivo cai — o rótulo some, nunca se inverte. */
+function provimentoNegado(cauda, i) {
+  let antes = cauda.slice(Math.max(0, i - 60), i);
+  let corte = -1;
+  // "E" sem acento é também o "É" dobrado: "não É possível dar provimento" não abre oração nova
+  for (const m of antes.matchAll(/[.,;:]|(?<!\bNAO )\bE\s|\b(?:MAS|POREM|OU)\s/g)) corte = m.index + m[0].length;
+  if (corte >= 0) antes = antes.slice(corte);
+  // Rodada 3 tentou soltar o "não" colado à concessiva ("ainda que não se trate de X dou provimento") e foi revertida
+  // (rodada final, 22/10/2026): reabria o lado invertido quando o "dar provimento" fica DENTRO da concessiva negada, e
+  // "posto que" é causal no foro. Fica a saída conservadora: com "não" na oração, o lado positivo cai e o rótulo some.
+  return /\b(?:NAO(?! OBSTANTE)|NEM|INVIAVEL|IMPOSSIVEL|DESCABE|DESCABIDO|DEIX\w*(?:-SE| SE)? DE)\b|\bSEM $/.test(antes);
+}
 export const resultadoComOrigem = (texto, tipo) => {
   // v1.30.0: RELATÓRIO também não tem dispositivo: a cauda narra a decisão recorrida e o histórico. Nos avisos de
   // "resultado oposto" 25 de 25 casos com RELATÓRIO eram falsos (2 rotuladores cegos), e o relatório sujava o rótulo do julgamento.
@@ -358,14 +417,19 @@ export const resultadoComOrigem = (texto, tipo) => {
   // CONHECIDO") é excluída do lado positivo, por lookbehind.
   if (/\bNAO (SE )?CONHEC/.test(cauda)) r.add("NÃO CONHECIDO");
   if (/(?<!NAO )(?<!NAO SE )\bCONHEC/.test(cauda)) r.add("CONHECIDO");
-  if (/\b(DESPROVI|IMPROVI|NAO PROVI|NEG\w*(-SE| SE)? PROVIMENTO|PROVIMENTO NEGADO)/.test(cauda)) r.add("DESPROVIDO");
-  if (/(?<!NAO )\b(PROVI(DO|DOS|DA|DAS)\b|D(A|AO|AR|OU|ERAM|EU)(-SE| SE)? (PARCIAL )?PROVIMENTO)/.test(cauda)) r.add("PROVIDO");
+  // Red team 22/10/2026: a negação nem sempre é colada ao verbo — "a que NÃO SE DÁ provimento", "NÃO HÁ COMO dar
+  // provimento", "NÃO É O CASO DE dar provimento", "DEIXO DE dar provimento" viravam PROVIDO (lado invertido; no fecho,
+  // o julgamento inteiro). Essas formas saem do lado positivo; só a negação colada ao verbo conta como desprovimento.
+  if (/\b(DESPROVI|IMPROVI|NAO PROVI|NEG\w*(-SE| SE)? PROVIMENTO|PROVIMENTO NEGADO|NAO (SE )?(LHE )?D(A|AO|AR|OU|ERAM|EU)(-SE| SE|-LHE| LHE)? (PARCIAL )?PROVIMENTO|DEIX\w*(-SE| SE)? DE DAR (PARCIAL )?PROVIMENTO)/.test(cauda)) r.add("DESPROVIDO");
+  // Rodada 2 (22/10/2026): a lista fechada no lookbehind deixava passar "não há como SE dar", "não é possível dar",
+  // "inviável dar", "não vejo como dar", "não LHE dou". Agora a negação é procurada na MESMA oração, antes do verbo.
+  if ([...cauda.matchAll(RE_PROVIMENTO_POSITIVO)].some((m) => !provimentoNegado(cauda, m.index))) r.add("PROVIDO");
   // "embargos NÃO acolhidos" é rejeição, não acolhimento (validação cega 12/10/2026).
   if (/\bREJEIT|\bNAO ACOLH/.test(cauda)) r.add("REJEITADO");
   if (/(?<!NAO )\bACOLH/.test(cauda)) r.add("ACOLHIDO");
   // PARCIAL é qualificador do PROVIDO (o par OPOSTOS não muda): "parcial
   // provimento", "parcialmente provido", "provido em parte".
-  if (/\bPARCIAL(MENTE)? PROVI|\bPARCIAL PROVIMENTO|\bPROVIMENTO PARCIAL|\bPROVID[OA]S? EM PARTE|\bPROVID[OA]S? PARCIALMENTE/.test(cauda)) r.add("PARCIAL");
+  if (RE_PROVIMENTO_PARCIAL.test(cauda)) r.add("PARCIAL");
   if (embargos) {
     // v1.31.0: "embargos PARCIALMENTE acolhidos/providos" (ou "acolhidos em parte") guarda o qualificador PARCIAL: o esquema só
     // tinha PARCIAL para provimento e esses embargos viravam "acolhido" (6 das 12 divergências da amostra cega de 12/10/2026).
@@ -602,6 +666,8 @@ const RE_FECHO = /acordam\s+os\s+(?:Magistrados|Desembargadores)\s+d(?:as|os|a|o
 // julgado (red team 04/09/2026, achados 5 e 7). "\b" após o tipo impede
 // "Especializada" ≈ "Especial". Cabeçalho que nomeia colegiado sem número
 // (Reunidas, Pleno) não confia na câmara numerada ao lado: é a de origem.
+const RE_CLASSE_OUTRO_ORGAO = /revis[ãa]o\s+criminal|embargos\s+infringentes|a[çc][ãa]o\s+rescis[óo]ria/i;
+const RE_CAMARA_ALHEIA_ANTES = /(?:(?:contra|face\s+d|em\s+face\s+d)[oe]?\s+(?:o\s+|v\.\s*|r\.\s*)*ac[óo]rd[ãa]o|ac[óo]rd[ãa]o\s+(?:revisad|rescindend|revisand|embargad|impugnad|recorrid|atacad|guerread)\w*|(?:proferid|prolatad|lavrad)[oa]s?\b|julgad[oa]s?\s+pel[ao]s?|decis[ãa]o\s+(?:colegiada\s+)?d[ao]s?)[^.;]{0,60}$/i;
 export const extrairOrgaoComOrigem = (texto) => {
   const t = String(texto || "");
   const doFecho = new Map();
@@ -614,7 +680,12 @@ export const extrairOrgaoComOrigem = (texto) => {
   if (doFecho.size) return doFecho.size === 1 ? { orgao: [...doFecho.values()][0], origem: "fecho" } : null;
   const cab = t.slice(0, 600);
   if (/\b(Reunidas|Pleno)\b/i.test(cab)) return null;
-  const achados = new Set([...cab.matchAll(RE_CAMARA)].map(nomeCamara));
+  // Leva A (red team 22/10/2026): RELATÓRIO/VOTO de revisão criminal, embargos infringentes ou rescisória nomeia, no alto, a câmara
+  // do acórdão REVISADO ("revisão criminal ... contra o acórdão da 1ª Câmara Criminal") sem dizer quem julga — e o aviso mandava
+  // citar essa câmara. Nessas classes o cabeçalho não diz a câmara do julgamento: sem fecho, nada. E câmara precedida de
+  // "contra o acórdão", "acórdão revisado/embargado", "proferido pela", "julgado pela" é a de OUTRO julgamento em qualquer classe.
+  if (RE_CLASSE_OUTRO_ORGAO.test(cab)) return null;
+  const achados = new Set([...cab.matchAll(RE_CAMARA)].filter((m) => !RE_CAMARA_ALHEIA_ANTES.test(cab.slice(Math.max(0, m.index - 90), m.index))).map(nomeCamara));
   return achados.size === 1 ? { orgao: [...achados][0], origem: "cabeçalho" } : null;
 };
 export const extrairOrgaoDoTexto = (texto) => extrairOrgaoComOrigem(texto)?.orgao ?? null;
@@ -628,8 +699,11 @@ export const orgaoDiverge = (doTexto, doIndice) => {
   if (!/^\d/.test(a) && !/^\d/.test(b) && (a.includes(b) || b.includes(a))) return false;
   return true;
 };
+// Leva A (22/10/2026): com a comparação de relator mais estrita, o lixo depois do nome no cabeçalho ("DES. KIYOCHI MORI Interpostos
+// em 19/05/2023", "... Distribuído por Sorteio", "... Impedido", "... substituído por DALMO", "(PRESIDENTE DA") virava nome — medido
+// nos recibos reais: 155 avisos falsos de relator divergente e 201 de ambíguo antes deste corte.
 const ROTULOS_APOS_RELATOR =
-  /\s+(Revisor|Vogal|Presidente|Processo|Agravante|Agravad[oa]|Apelante|Apelad[oa]|Embargante|Embargad[oa]|Recorrente|Recorrid[oa]|Origem|Data|Relat[oó]rio|Ementa|Assunto|Classe|[ÓO]rg[ãa]o|Sess[ãa]o)\b.*$/i;
+  /(?:\s+(?:Revisor|Vogal|Presidente|Processo|Agravante|Agravad[oa]|Apelante|Apelad[oa]|Embargante|Embargad[oa]|Recorrente|Recorrid[oa]|Origem|Data|Relat[oó]rio|Ementa|Assunto|Classe|[ÓO]rg[ãa]o|Sess[ãa]o|Interpost[oa]s?|Distribu[íi]d[oa]s?|Distribui[çc][ãa]o|Redistribu[íi]\w*|Impedid[oa]|Suspeit[oa]|Declara[çc][ãa]o|Substitu[íi]d[oa]|Titularidade|Gabinete|Turma|C[âa]mara|Juntad[oa]|Em\s+substitui[çc][ãa]o|Convocad[oa]\s+(?:em|para|pel[oa])|Vencid[oa])\b|\s*\((?![aA]\))).*$/i;
 export const extrairRelatorDoTexto = (texto) => {
   // Só o cabeçalho: o corpo cita julgados alheios com "Relator:" próprios.
   const cab = String(texto || "").slice(0, 1500);
@@ -640,20 +714,49 @@ export const extrairRelatorDoTexto = (texto) => {
   const paraAcordao = /(?:Relator|Redator)(?:a)?\s+(?:para|p\/|p\.)\s*o?\s*ac[óo]rd[ãa]o\s*:\s*([^\n;:]{3,90})/i.exec(cab);
   const m = paraAcordao || /Relator(?:a)?(?:\s*\(a\))?\s*:\s*([^\n;:]{3,90})/i.exec(cab);
   if (!m) return null;
-  const nome = m[1].replace(ROTULOS_APOS_RELATOR, "").trim().split(/\s+/).slice(0, 6).join(" ");
+  // "Relator: A substituído por B": quem relata é B (o índice também traz B); sem o nome de B no trecho, não arrisca
+  let bruto = m[1];
+  const sub = /\s+(?:substitu[íi]d[oa]|em\s+substitui[çc][ãa]o\s+a)\s+(?:por|pel[oa])?\s*/i.exec(bruto);
+  if (sub) { bruto = bruto.slice(sub.index + sub[0].length); if (!/[A-Za-zÀ-ÿ]{4,}/.test(bruto.replace(ROTULOS_APOS_RELATOR, ""))) return null; }
+  const nome = bruto.replace(ROTULOS_APOS_RELATOR, "").trim().split(/\s+/).slice(0, 6).join(" ");
   return nome.length >= 3 ? nome : null;
 };
 const TITULOS = new Set([
   "desembargador", "desembargadora", "juiz", "juiza", "convocado", "convocada",
   "ministro", "ministra", "relator", "relatora", "substituto", "substituta",
+  "direito", "presidente", "redator", "redatora",
 ]);
-const sobrenomes = (nome) => fold(nome).split(/[^a-z]+/).filter((w) => w.length >= 4 && !TITULOS.has(w));
-export const relatorDiverge = (doTexto, doIndice) => {
-  if (!doTexto || !doIndice || doIndice === "—") return false;
-  const a = sobrenomes(doTexto);
-  const b = new Set(sobrenomes(doIndice));
-  return a.length > 0 && b.size > 0 && !a.some((w) => b.has(w));
-};
+// Leva A (red team 22/10/2026): o agnome não identifica ninguém — "Raduan Miguel FILHO" e "Miguel Monico NETO" casavam com
+// qualquer outro Filho/Neto — e um sobrenome em comum não basta ("Raduan Miguel Filho" × "Alexandre Miguel" saía igual).
+const AGNOMES = new Set(["filho", "filha", "junior", "neto", "neta", "sobrinho", "sobrinha", "segundo", "terceiro"]);
+export const nomesDoRelator = (nome) => fold(nome).split(/[^a-z]+/).filter((w) => w.length >= 4 && !TITULOS.has(w) && !AGNOMES.has(w) && w !== "desa");
+// Relatores conhecidos (semente de grafias): para dizer se um nome ÚNICO ("Rel. Des. Miguel") aponta para um só desembargador.
+const NOMES_CONHECIDOS = Object.keys(GRAFIAS_RELATOR).map(nomesDoRelator).filter((x) => x.length);
+/** Relator informado (peça, ou cabeçalho do texto) × relator do acórdão (texto ou índice): "confere" | "ambiguo" | "diverge" | null (nada a comparar).
+ * Confere: todos os nomes informados estão no do acórdão (com 2+ nomes, ou nome único que só um relator conhecido tem), ou o acórdão traz a
+ * forma curta e o ÚLTIMO sobrenome coincide sem nenhum nome dele faltar no informado. Ambíguo: nome único de mais de um relator (ou de
+ * relator fora da semente), ou forma curta com último sobrenome diferente ("Marcos Alaor Diniz Grangeia" × "Alaor Diniz"). Diverge: cada
+ * lado tem nome que o outro não tem ("Raduan Miguel Filho" × "Alexandre Miguel"). Na dúvida, nunca "confere". */
+export function compararRelator(informado, doAcordao, conhecidos = NOMES_CONHECIDOS) {
+  if (!informado || !doAcordao || doAcordao === "—") return null;
+  const al = nomesDoRelator(informado), bl = nomesDoRelator(doAcordao);
+  if (!al.length || !bl.length) return null;
+  const A = new Set(al), B = new Set(bl);
+  const aEmB = [...A].every((w) => B.has(w)), bEmA = [...B].every((w) => A.has(w));
+  if (aEmB && bEmA) return "confere";
+  if (aEmB) {
+    if (A.size >= 2) return "confere";
+    const [w] = A;
+    const comW = conhecidos.filter((k) => k.includes(w));
+    const ehOAcordao = (k) => k.length === B.size && k.every((x) => B.has(x));
+    return comW.length === 1 && ehOAcordao(comW[0]) ? "confere" : "ambiguo";
+  }
+  if (bEmA) return al[al.length - 1] === bl[bl.length - 1] ? "confere" : "ambiguo";
+  return "diverge";
+}
+// Compatibilidade: "diverge" de fato (cada lado com nome que o outro não tem). O ambíguo não é divergência, mas também não confere:
+// quem precisa de ✅ usa compararRelator.
+export const relatorDiverge = (doTexto, doIndice) => compararRelator(doTexto, doIndice) === "diverge";
 
 // Agrega correções "você quis dizer" de TODOS os tokens da consulta. A API devolve
 // uma entrada por token e por variante com/sem acento (mesmo offset); usa-se a
@@ -2119,15 +2222,30 @@ export function formatInteiro(data, nrProcesso) {
     // Índice × texto: o campo do cadastro pode divergir do que o acórdão diz.
     const avisos = [];
     const org = extrairOrgaoComOrigem(corpo);
-    if (org && orgaoDiverge(org.orgao, orgao(s)))
+    // Leva A (22/10/2026): câmara só do CABEÇALHO (relatório, voto, ementa) não "prevalece": manda conferir no fecho; e se outra peça
+    // do MESMO julgamento tem fecho legível, quem decide é ele (a Citação do topo já sai com a câmara do fecho).
+    const fechoNoJulgamento = org && org.origem !== "fecho" && dataDe(s)
+      ? unicos.some(([x, c]) => x !== s && dataDe(x) === dataDe(s) && extrairOrgaoComOrigem(c)?.origem === "fecho") : false;
+    if (org && org.origem === "fecho" && orgaoDiverge(org.orgao, orgao(s)))
       avisos.push(
-        `⚠️ Índice: ${orgao(s)} · ${org.origem === "fecho" ? 'fecho do acórdão ("acordam os Magistrados...")' : "cabeçalho desta peça"}: ` +
+        `⚠️ Índice: ${orgao(s)} · fecho do acórdão ("acordam os Magistrados..."): ` +
           `${org.orgao} — prevalece o texto (o cadastro mostra a câmara atual do processo, não a que julgou; cite pela câmara que o acórdão declara).`
       );
+    else if (org && !fechoNoJulgamento && orgaoDiverge(org.orgao, orgao(s)))
+      avisos.push(
+        `⚠️ Índice: ${orgao(s)} · cabeçalho desta peça: ${org.orgao} — confira no FECHO do acórdão ("acordam os Magistrados...") antes de citar ` +
+          `qualquer das duas: o cadastro mostra a câmara atual do processo, e o cabeçalho de relatório/voto pode nomear a câmara de outro julgamento.`
+      );
     const relTexto = extrairRelatorDoTexto(corpo);
-    if (relatorDiverge(relTexto, relator(s)))
+    // Leva A: um sobrenome em comum já não basta ("Raduan Miguel Filho" × "Alexandre Miguel"); forma ambígua também avisa.
+    const cmpRel = compararRelator(relTexto, relator(s));
+    if (cmpRel === "diverge")
       avisos.push(
         `⚠️ Índice: relator ${relator(s)} · cabeçalho desta peça: "${relTexto}" — pode ser relator sorteado vencido ou o do acórdão embargado; confira no acórdão antes de citar.`
+      );
+    else if (cmpRel === "ambiguo")
+      avisos.push(
+        `⚠️ Índice: relator ${relator(s)} · cabeçalho desta peça: "${relTexto}" — os nomes só coincidem em parte; confira no acórdão qual desembargador relatou antes de citar.`
       );
     // "Favorável a quem": só no ACÓRDÃO (a ementa não tem partes nem fecho) e só
     // aqui, no inteiro teor — o cabeçalho da busca não traz partes legíveis.
@@ -2486,13 +2604,28 @@ const lerIndiceBusca = (pasta) => {
 };
 const gravarIndiceBusca = (pasta, idx) => {
   const tmp = path.join(pasta, `.${INDICE_BUSCA}.${process.pid}.tmp`);
-  fs.writeFileSync(tmp, JSON.stringify(idx));
-  fs.renameSync(tmp, path.join(pasta, INDICE_BUSCA));
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(idx));
+    fs.renameSync(tmp, path.join(pasta, INDICE_BUSCA));
+  } catch (e) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* nada a fazer */ }
+    throw e;
+  }
 };
+export const TMP_ORFAO_MS = 3600 * 1000;
 // Recibos de busca ocupam espaço sem que ninguém os tenha pedido: acima do teto (300 MB), os MAIS ANTIGOS saem até 80% do teto.
 // Nunca se apaga recibo de inteiro teor (o arquivo é relido e só some se ainda for "busca").
 export function podarRecibosDeBusca(pasta = dirRecibos(), maxBytes = RECIBOS_BUSCA_MAX_BYTES()) {
   let removidos = 0;
+  // temporário órfão (gravação interrompida por disco cheio ou queda do processo) com mais de 1 hora: sai
+  try {
+    const agora = Date.now();
+    for (const f of fs.readdirSync(pasta)) {
+      if (!/^\.(?:\d+|\.busca-indice\.json)\.\d+\.tmp$/.test(f)) continue;
+      const cam = path.join(pasta, f);
+      try { if (agora - fs.statSync(cam).mtimeMs > TMP_ORFAO_MS) fs.rmSync(cam, { force: true }); } catch { /* sumiu */ }
+    }
+  } catch { /* higiene */ }
   try {
     const idx = lerIndiceBusca(pasta);
     let total = Object.values(idx).reduce((a, v) => a + (Number(v[0]) || 0), 0);
@@ -2516,11 +2649,11 @@ export function podarRecibosDeBusca(pasta = dirRecibos(), maxBytes = RECIBOS_BUS
 // `origem: "inteiro"` (padrão): sobrescreve, e assim promove o recibo de busca a recibo completo.
 export function gravarRecibos(data, pasta = dirRecibos(), { origem = "inteiro" } = {}) {
   let n = 0;
+  const daBusca = origem === "busca";
+  const novos = {};
+  const promovidos = [];
   try {
     fs.mkdirSync(pasta, { recursive: true });
-    const daBusca = origem === "busca";
-    const novos = {};
-    const promovidos = [];
     for (const h of data?.hits?.hits || []) {
       const r = recibo(h._source || {}, new Date(), origem);
       if (!r) continue;
@@ -2528,21 +2661,32 @@ export function gravarRecibos(data, pasta = dirRecibos(), { origem = "inteiro" }
       if (daBusca && fs.existsSync(alvo)) continue;
       const tmp = path.join(pasta, `.${r.id_documento}.${process.pid}.tmp`);
       const bruto = JSON.stringify(r);
-      fs.writeFileSync(tmp, bruto);
-      fs.renameSync(tmp, alvo);
+      try {
+        fs.writeFileSync(tmp, bruto);
+        fs.renameSync(tmp, alvo);
+      } catch (e) {
+        // Leva B (red team 22/10/2026): disco cheio no meio do laço deixava o temporário parcial órfão na pasta e — como o
+        // índice só era gravado depois do laço — os recibos JÁ gravados ficavam fora da poda para sempre (a busca seguinte
+        // os pula por já existirem). Agora o temporário sai, o laço para e o índice registra o que foi gravado (finally).
+        try { fs.rmSync(tmp, { force: true }); } catch { /* nada a fazer */ }
+        throw e;
+      }
       if (daBusca) novos[r.id_documento] = [Buffer.byteLength(bruto), Date.now()];
       else promovidos.push(r.id_documento);
       n++;
     }
-    if (daBusca && n) {
-      gravarIndiceBusca(pasta, { ...lerIndiceBusca(pasta), ...novos });
-      podarRecibosDeBusca(pasta);
-    } else if (promovidos.length) {
-      const idx = lerIndiceBusca(pasta);
-      if (promovidos.some((id) => id in idx)) { for (const id of promovidos) delete idx[id]; gravarIndiceBusca(pasta, idx); }
-    }
   } catch {
     /* recibo é conferência extra, nunca condição da pesquisa */
+  } finally {
+    try {
+      if (daBusca && Object.keys(novos).length) {
+        gravarIndiceBusca(pasta, { ...lerIndiceBusca(pasta), ...novos });
+        podarRecibosDeBusca(pasta);
+      } else if (promovidos.length) {
+        const idx = lerIndiceBusca(pasta);
+        if (promovidos.some((id) => id in idx)) { for (const id of promovidos) delete idx[id]; gravarIndiceBusca(pasta, idx); }
+      }
+    } catch { /* índice é higiene: falha (disco ainda cheio) não quebra a pesquisa */ }
   }
   return n;
 }
@@ -2614,7 +2758,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.41.7";
+export const VERSAO = "1.41.8";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

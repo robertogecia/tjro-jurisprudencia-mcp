@@ -23,6 +23,8 @@ export function sanitizar(texto, max = 300) {
     .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "<email>")
     .replace(/https?:\/\/[^\s)"']+/g, (u) => { try { const x = new URL(u); return `${x.origin}${x.pathname}`; } catch { return "<url>"; } })
     .replace(/["“”][^"“”]{4,}["“”]/g, "«…»")
+    // 2ª camada (leva B): nome depois de "relator(a)" nunca vai ao diário, venha de onde vier ("relator DES. FULANO · 2ª Câmara")
+    .replace(/\b(relator(?:a)?(?:\(a\))?(?: do acórdão)?:?)\s+(?![<(])[^·|()\n,;]{2,80}/giu, (x, r) => `${r} <nome>${/\s$/.test(x) ? " " : ""}`)
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
@@ -42,6 +44,16 @@ export function descreverArgs(args) {
 }
 
 const MARCADORES_PARCIAIS = /\[PESQUISA (?:NÃO REALIZADA|INCOMPLETA)\b/;
+/** Leva B (red team 22/10/2026): numa resposta PARCIAL o diário gravava os 300 primeiros caracteres — o CABEÇALHO, que traz o
+ * relator pesquisado ("Linha do tempo por ano (ACÓRDÃO · relator DES. FULANO …)") — e perdia a causa, que vem depois. Agora só
+ * a LINHA do marcador [PESQUISA …] (a causa) é gravada; sem marcador, o texto inteiro (resposta de erro). */
+export function trechoDaFalha(texto) {
+  const t = String(texto ?? "");
+  const m = MARCADORES_PARCIAIS.exec(t);
+  if (!m) return t;
+  const fim = t.indexOf("\n", m.index);
+  return t.slice(m.index, fim < 0 ? t.length : fim);
+}
 
 /** Anota uma falha. `erro` (exceção) ou `texto` (resposta de erro da ferramenta). Nunca lança. */
 export function registrarErro({ ferramenta, erro, texto, args, ms, parcial = false, agora = new Date() }) {
@@ -90,7 +102,7 @@ export function comDiario(server) {
       try {
         const t = r?.content?.[0]?.text ?? "";
         if (nome !== "diagnostico_erros_tjro" && (r?.isError || MARCADORES_PARCIAIS.test(t)) && tipoDoErro(t) !== "limite_de_ritmo")
-          registrarErro({ ferramenta: nome, texto: t, args: a, ms: Date.now() - t0, parcial: !r?.isError });
+          registrarErro({ ferramenta: nome, texto: trechoDaFalha(t), args: a, ms: Date.now() - t0, parcial: !r?.isError });
       } catch { /* nunca quebra a ferramenta */ }
       return r;
     });

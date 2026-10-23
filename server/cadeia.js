@@ -4,6 +4,7 @@
 // do STJ/STF, embargos acolhidos com efeito modificativo, anulação). Isso é o sinal mais forte de "não cite este" que existe nos recibos.
 import { recibosDoProcesso, soDigitos, listarRecibos, regexTermo } from "./recibos.js";
 import { extrairOrgaoComOrigem, fold, cnj, resultadoComOrigem, rotuloDoConjunto, ROTULOS_RESULTADO, dataDoFecho, extrairRelatorDoTexto } from "./lib.js";
+import { dvCnjValido } from "./auditoria.js";
 // mesmo rótulo do distinguir (precedentes.js), sem import circular
 const rotulo = (r) => { const ro = resultadoComOrigem(r.texto, r.tipo); const k = rotuloDoConjunto(ro.conjunto, r.classe, ro.embargos); return k ? ROTULOS_RESULTADO[k] : ""; };
 
@@ -177,13 +178,14 @@ export function citadosPor(r, citacoesDoTexto, pasta) {
 }
 
 
-// Relator como chave de contagem: último sobrenome (≥ 4 letras), sem títulos nem Filho/Júnior/Neto. "PAULO KIYOCHI MORI" e
+// Relator como chave de contagem: os DOIS últimos nomes (≥ 4 letras), sem títulos nem Filho/Júnior/Neto. "PAULO KIYOCHI MORI" e
 // "Des. Kiyochi Mori" contam como um. Sem relator: chave própria do processo (conta como um relator distinto).
+// Leva A (22/10/2026): só o último sobrenome juntava "ALEXANDRE MIGUEL" e "RADUAN MIGUEL FILHO" num relator ("miguel").
 const NAO_SOBRENOME = new Set("desembargador desembargadora juiz juiza convocado convocada relator relatora redistribuido redistribuida prevencao substituido substituida filho junior neto sobrinho".split(" "));
 function chaveRelator(x) {
   const nome = fold(String(x.relator_indice || extrairRelatorDoTexto(x.texto || "") || "")).replace(/[^a-z ]+/g, " ");
   const ws = nome.split(" ").filter((w) => w.length >= 4 && !NAO_SOBRENOME.has(w));
-  return ws.length ? ws[ws.length - 1] : "";
+  return ws.slice(-2).join(" ");
 }
 
 /** v1.41.0 — lista de leitura dirigida (sem rede). A rede local é rasa: dos processos do TJRO citados nos acórdãos lidos, só ~5%
@@ -199,12 +201,14 @@ export function listaDeLeitura({ consulta = "", grupos = null, limite = 10 } = {
   const tema = todos.filter((x) => /AC[ÓO]RD|EMENTA/.test(String(x.tipo || "").toUpperCase()) && res.every((g) => g.some((re) => { re.lastIndex = 0; return re.test(x._tn || ""); })));
   if (!tema.length) return "Nenhum acórdão lido nesta máquina casa com esse tema. Zero aqui não é \"não localizado\": busque no portal com buscar_jurisprudencia_tjro.";
   const procTema = new Set(tema.map((x) => soDigitos(x.nr_processo)));
-  const cit = new Map(), sup = new Map();
+  const cit = new Map(), sup = new Map(), dvInvalidos = new Set();
   for (const x of tema) {
     const a = soDigitos(x.nr_processo);
     for (const c of citacoesDoTexto(x.texto)) {
       if (/^\d{7}-\d{2}\.\d{4}\.8\.22\.\d{4}$/.test(c)) {
         const b = soDigitos(c); if (b === a) continue;
+        // Leva A: número com dígito verificador inválido não vai para a lista (gastaria cota do portal com número inexistente)
+        if (!dvCnjValido(b)) { dvInvalidos.add(c); continue; }
         if (!cit.has(b)) cit.set(b, { c, quem: new Map(), rels: new Set() });
         cit.get(b).quem.set(a, x.id_documento);
         cit.get(b).rels.add(chaveRelator(x) || "?" + a);
@@ -221,6 +225,7 @@ export function listaDeLeitura({ consulta = "", grupos = null, limite = 10 } = {
   L.push(top.length ? "**Mais citados pelo tema e NÃO lidos aqui** (por relatores distintos, depois por processos; muitos processos de 1 relator costuma ser parágrafo-padrão do gabinete):" : "Nenhum processo não lido é citado por 2 ou mais processos do tema.");
   for (const o of top) L.push(`- ${o.c} — citado em ${o.n} processo(s) por ${o.k} relator(es) · ex.: ids ${[...o.quem.values()].slice(0, 3).join(", ")}`);
   if (jaLidos.length) L.push("", `**Já lidos e citados pelo tema:** ${jaLidos.slice(0, 5).map((o) => `${o.c} (${o.n})`).join("; ")} — abra com distinguir_tjro (resumo), sem rede.`);
+  if (dvInvalidos.size) L.push("", `⚠️ DV inválido (número provavelmente errado na origem; não consulte o portal com ele): ${[...dvInvalidos].sort().slice(0, 10).join("; ")}${dvInvalidos.size > 10 ? ` e mais ${dvInvalidos.size - 10}` : ""}.`);
   const ts = [...sup].map(([c, q]) => [c, q.size]).filter(([, n]) => n >= 2).sort((p, q) => q[1] - p[1] || (p[0] < q[0] ? -1 : 1)).slice(0, 5);
   if (ts.length) L.push("", `**STJ/STF mais citados pelo tema:** ${ts.map(([c, n]) => `${c} (${n})`).join("; ")} — confira no MCP do STJ/JusRatio; "muito citado" não é "certo": número repetido de voto em voto pode estar errado na origem.`);
   L.push("", "_Mais citado é candidato a ler, não leading case nem prova de vigência. Abra no máximo 3 por pesquisa, um por vez (obter_inteiro_teor_tjro respeita o ritmo do portal); depois rode de novo — os lidos saem da lista._");

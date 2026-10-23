@@ -350,7 +350,7 @@ server.registerTool(
       "Comparação por palavra inteira, tolerante a caixa, acento e pontuação; mínimo de 4 palavras; `[...]` separa fragmentos que devem aparecer " +
       "em ordem, a no máximo 1.500 caracteres um do outro (não costura a ementa ao fim do voto). " +
       "✅ pode vir com ALERTA DE ATRIBUIÇÃO: TRANSCRIÇÃO (ementa do STJ/outro TJ copiada no voto — não é palavra do TJRO), VOTO DIVERGENTE (pode ser o " +
-      "vencido), ENTRE ASPAS (o tribunal citando alguém), ALEGAÇÃO DA PARTE, NEGAÇÃO (negativa logo antes do recorte) e OBITER DICTUM? (\"ainda que assim não fosse\", " +
+      "vencido), ENTRE ASPAS (o tribunal citando alguém), ALEGAÇÃO DA PARTE, NEGAÇÃO (negativa logo antes do recorte), NEGAÇÃO OMITIDA NO CORTE (o `[...]` tira a negativa que rege o fragmento seguinte) e OBITER DICTUM? (\"ainda que assim não fosse\", " +
       "\"a título de argumentação\": o resultado não dependeu da frase). Trecho com alerta não entra na ficha como posição do órgão sem resolver a atribuição. " +
       "A nota POSIÇÃO NO JULGADO diz ONDE a frase está — seção da ementa do CNJ (caso em exame / questão / razões de decidir / dispositivo e tese), relatório, " +
       "fundamentação ou dispositivo do voto, fecho — e é a evidência para preencher ratio_ou_dictum na ficha; decidir continua sendo de quem lê. É a mesma heurística que o recibo leva ao lint da peticao-rg. " +

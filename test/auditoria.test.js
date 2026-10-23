@@ -83,3 +83,49 @@ test("citacoesDoTexto: classe-base, AgInt/EDcl no mesmo REsp contam uma vez; cla
   assert.deepEqual(citacoesDoTexto("OAB nº MS5871A; TJ-MS - AC: 0800 MS 0800197-56.2018.8.12.0041; art. 186 do CC 2002"), []);
   assert.deepEqual(citacoesDoTexto("(STJ - AREsp: 1615833 MS 2019/0334073-4, Relator"), ["AREsp 1615833"]);
 });
+
+// Red team 22/10/2026: câmara/relator que a peça afirma e que o recibo NÃO permite comparar (só ementa gravada pela
+// busca, fecho fora do padrão, sem "Relator:") não podem sair ✅ "Bate com a peça" — saem 🟠 "não conferidos".
+test("câmara/relator sem fecho nem relator legível no recibo: 🟠 'não conferido', nunca ✅", () => {
+  _limparMemoParaTeste();
+  const p = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-auditoria-semfecho-"));
+  const C = "70000016820238220001"; // 7000001-68.2023.8.22.0001
+  assert.ok(dvCnjValido(C));
+  const g = (s, origem) => { const r = recibo(s, new Date(), origem); fs.writeFileSync(path.join(p, `${r.id_documento}.json`), JSON.stringify(r)); };
+  // só EMENTA, origem busca, órgão do índice = 3ª CC, sem fecho e sem relator
+  g({ id_processo_documento: 111, nr_processo: C, tipo: "EMENTA", dtjulgamento_str: "05/05/2024", ds_orgao_julgador_colegiado: "3ª Câmara Cível",
+    ds_modelo_documento: "EMENTA APELAÇÃO CÍVEL. TARIFA. Recurso não provido." }, "busca");
+  const out = auditarCitacoes(`(TJRO, Apelação 7000001-68.2023.8.22.0001, 2ª Câmara Cível, Rel. Des. Fulano de Tal Inventado, j. 05/05/2024).`, p);
+  const l = linha(out, "7000001-68");
+  assert.doesNotMatch(l, /^✅/);
+  assert.doesNotMatch(l, /Bate com a peça: câmara/);
+  assert.match(l, /^🟠 .*câmara da peça \(2ª Câmara Cível\) NÃO conferida/);
+  assert.match(l, /relator da peça \(Fulano de Tal Inventado\) NÃO conferido/);
+  assert.match(l, /cadastro: 3ª Câmara Cível/);
+  assert.match(out, /✅ 0 conferido/);
+
+  // fecho com redação fora do padrão ("acordam os Desembargadores da 1ª Câmara Cível, à unanimidade") e sem relator
+  g({ id_processo_documento: 12, nr_processo: B, tipo: "ACÓRDÃO", dtjulgamento_str: "05/03/2024",
+    ds_modelo_documento: "RELATÓRIO Apelação. VOTO Nego provimento. Acordam os Desembargadores da 1ª Câmara Cível, à unanimidade, negar provimento." });
+  const out2 = auditarCitacoes(`Apelação 7000002-50.2023.8.22.0002, 3ª Câmara Cível, Rel. Des. Fulano Beltrano de Tal, j. 05/03/2024.`, p);
+  assert.match(linha(out2, "7000002-50"), /^🟠 .*NÃO conferida/);
+
+  // a peça só dá a data, e a data bate: continua ✅ (só data)
+  const out3 = auditarCitacoes(`Apelação 7000001-68.2023.8.22.0001, j. 05/05/2024.`, p);
+  assert.match(linha(out3, "7000001-68"), /^✅ .*Bate com a peça: data\./);
+});
+
+// Rodada 2 (22/10/2026): relator que bate só com o ÍNDICE do portal (recibo sem "Relator:" no texto) não foi lido no
+// acórdão — o ✅ diz isso, em vez de "Bate com a peça: relator" sem ressalva.
+test("relator conferido só contra o índice do portal: ✅ com a ressalva 'não lido no acórdão'", () => {
+  _limparMemoParaTeste();
+  const p = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-auditoria-relindice-"));
+  const g = (s) => { const r = recibo(s); fs.writeFileSync(path.join(p, `${r.id_documento}.json`), JSON.stringify(r)); };
+  g({ id_processo_documento: 21, nr_processo: A, tipo: "ACÓRDÃO", dtjulgamento_str: "21/11/2023", nome_relator_acordao: "SANSÃO SALDANHA",
+    ds_modelo_documento: "RELATÓRIO Trata-se de apelação." + fecho("1ª Câmara Cível") });
+  const l = linha(auditarCitacoes(`Apelação 7000001-34.2024.8.22.0001, 1ª Câmara Cível, Rel. Des. Sansão Saldanha.`, p), "7000001-34");
+  assert.match(l, /^✅ .*Bate com a peça: câmara, relator \(só contra o índice do portal, não lido no acórdão\)/);
+  // controle: com "Relator:" no texto, o relator foi lido — sem ressalva
+  const l2 = linha(auditarCitacoes(`Apelação 7000001-34.2024.8.22.0001, 1ª Câmara Cível, Rel. Des. Sansão Saldanha.`, pasta()), "7000001-34");
+  assert.match(l2, /^✅ .*Bate com a peça: câmara, relator\./);
+});

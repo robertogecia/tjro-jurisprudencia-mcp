@@ -33,6 +33,10 @@
  * declarada, cabeçalho fora, unanimidade e 1ª pessoa na divergência; medida às cegas). */
 export const CUSTODIA_VERSAO = 4;   // v4 (1.16.0): trechos_obiter
 
+/** Expande as ligaduras tipográficas (ﬀ ﬁ ﬂ ﬃ ﬄ ﬅ ﬆ) em letras: norm1 é 1 → 1 e guardava só a 1ª letra ("ﬁnanceira" → "fnanceira"),
+ * e a frase literal saía "NÃO ENCONTRADO" (red team 22/10/2026; 1 dos 6.429 recibos locais tem "Indeﬁro"). */
+export const expandirLigaduras = (s) => String(s ?? "").replace(/[\uFB00-\uFB06]/g, (c) => c.normalize("NFKC"));
+
 const _cache = new Map();
 /** minúsculas, sem acento, aspas e travessões unificados — 1 unidade UTF-16 → 1 unidade. */
 export function norm1(s) {
@@ -72,7 +76,40 @@ const RE_TEM_JULGAMENTO = /\b(?:rel\b|rel\.|rela|relator|relatora|relatoria|julg
 // Acórdão: FULANO Data de julgamento: 10/06/2021."). Sem ela, o bloco da ementa transcrita não tinha fim e o seguinte o
 // atravessava, marcando como transcrição a voz do relator (relato de uso de 13/10/2026, id 26358276).
 const RE_ATRIB_PJE = /\bprocesso\s+n\S{0,2}\s*\d{7}-\d{2}\s?\.\s?\d{4}\s?\.\s?(?:\d\.\d{2}|\d{3})\s?\.\s?\d{4}[^]{0,300}?\bdata de julgamento:?\s*\d{1,2}\/\d{1,2}\/\d{4}\.?/g;
-const RE_ATRIB_SOLTA = /\b(?:tj-?[a-z]{2}|tjro|stj|stf)\s*[-,]\s*(?:resp|aresp|agint|agrg|edcl|re|are|hc|rhc|apelacao|ac|ai)\b[^.\n]{0,200}\brel\b/g;
+// Leva B (red team 22/10/2026): o número oficial do STJ tem ponto de milhar ("STJ - REsp 1.578.553/SP, Rel. Min.") e "[^.]" parava
+// nele — a atribuição não era vista e a ementa do STJ saía como voz do relator do TJRO. Agora o ponto seguido de dígito passa,
+// "AgInt no REsp" / "EDcl nos EDcl no AREsp" entram entre a sigla e a classe, e ":" também separa.
+const RE_ATRIB_SOLTA = /\b(?:tj-?[a-z]{2}|tjro|stj|stf)\s*[-,:]\s*(?:(?:agint|agrg|edcl)\s+n[oa]s?\s+(?:(?:agint|agrg|edcl)\s+n[oa]s?\s+)?)?(?:resp|aresp|agint|agrg|edcl|re|are|hc|rhc|apelacao|ac|ai)\b(?:[^.\n]|\.(?=\d)){0,200}\brel\b/g;
+
+const RE_ATRIB_SOLTA_ANTIGA = /\b(?:tj-?[a-z]{2}|tjro|stj|stf)\s*[-,]\s*(?:resp|aresp|agint|agrg|edcl|re|are|hc|rhc|apelacao|ac|ai)\b[^.\n]{0,200}\brel\b/;
+const RE_LISTA_CNJ = /\bjurisprudencia relevante citada\b/, LISTA_CNJ_MAX = 1500;
+
+// Leva B: a referência solta ("STJ - REsp 1.578.553/SP, Rel. Min. Fulano, 3ª Turma, j. 10/10/2020.") terminava no 1º ". " — o de
+// "Rel." —, e o resto da referência ("Min. Fulano, …, nov./2025.") ficava fora: a frase seguinte do relator ("Portanto, …") não
+// era vista como retomada. O fim agora é a DATA da referência (julgamento/DJe, encadeadas a até 40 caracteres), procurada antes
+// do 1º ". " que não fecha abreviatura, da 1ª aspa e de 300 caracteres; sem data, fica como antes. Ir até o ". " seguinte
+// engolia a fala do relator quando a referência não termina em ponto ("…DJ 22/02/2022, altero, de ofício, a sentença…").
+const ABREVIATURAS = new Set(["rel", "min", "des", "desa", "desemb", "dr", "dra", "n", "no", "nos", "j", "p", "art", "arts", "fl", "fls", "ex", "sr", "sra",
+  "conv", "ac", "ap", "t", "v", "u", "pub", "publ", "julg", "cf", "c", "ed", "ob", "op", "cit", "pag", "pg", "proc", "inc", "par", "al", "red", "rela", "ministro", "ministra"]);
+const RE_DATA_REF = /(?<![0-9])(?:\d{1,2}o?[./-]\d{1,2}[./-]\d{2,4}|(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\.?\/\d{4})(?![0-9])/g;
+function fimDaReferencia(tn, de, ate) {
+  let lim = Math.min(ate, de + 300, tn.length);
+  for (let k = tn.indexOf(". ", de); k >= 0 && k < lim; k = tn.indexOf(". ", k + 2)) {
+    const w = /(?<![a-z0-9])([a-z]+)$/.exec(tn.slice(Math.max(0, k - 12), k));
+    if (!w || !ABREVIATURAS.has(w[1])) { lim = k + 1; break; }
+  }
+  const aspa = tn.indexOf("'", de);
+  if (aspa >= 0 && aspa < lim) lim = aspa;
+  const r = new RegExp(RE_DATA_REF.source, "g");
+  r.lastIndex = de;
+  let fim = -1;
+  for (let m; (m = r.exec(tn)) && m.index < lim;) {
+    if (fim >= 0 && m.index - fim > 40) break;
+    fim = m.index + m[0].length;
+  }
+  if (fim < 0) return -1;
+  return tn[fim] === "." ? fim : fim - 1;   // devolve a posição do último caractere da referência
+}
 
 /** Parênteses de atribuição em [ini, fim): [[início, fim-exclusivo], …] em ordem. */
 export function atribuicoes(tn, ini = 0, fim = tn.length) {
@@ -93,8 +130,15 @@ export function atribuicoes(tn, ini = 0, fim = tn.length) {
   r.lastIndex = ini;
   for (let m; (m = r.exec(tn)) && m.index < fim;) {
     if (out.some(([x, y]) => m.index >= x && m.index < y)) continue;
-    const pt = tn.indexOf(". ", m.index + m[0].length);
-    out.push([m.index, pt >= 0 && pt - m.index < 400 ? pt + 1 : m.index + m[0].length]);
+    // item da lista "Jurisprudência relevante citada:" do modelo CNJ de ementa (a da casa ou a transcrita): é referência, não
+    // atribuição de bloco — com o ponto de milhar aceito (leva B), a ementa da PRÓPRIA casa passava a sair como transcrição
+    // (só para o que a forma ANTIGA não pegava: o que ela já marcava continua igual)
+    const antiga = new RegExp(RE_ATRIB_SOLTA_ANTIGA.source, "y");
+    antiga.lastIndex = m.index;
+    if (!antiga.test(tn) && RE_LISTA_CNJ.test(tn.slice(Math.max(0, m.index - LISTA_CNJ_MAX), m.index))) { r.lastIndex = m.index + 1; continue; }
+    let pt = fimDaReferencia(tn, m.index + m[0].length, m.index + 400);
+    if (pt < 0) { pt = tn.indexOf(". ", m.index + m[0].length); if (pt - m.index >= 400) pt = -1; }
+    out.push([m.index, pt >= 0 ? pt + 1 : m.index + m[0].length]);
   }
   const rp = new RegExp(RE_ATRIB_PJE.source, "g");
   rp.lastIndex = ini;
@@ -122,6 +166,9 @@ export const RE_VOZ_PROPRIA = /\b(?:nesse sentido|neste sentido|com efeito|no ca
 const RE_VOZ_FORTE = /\b(?:e como voto|e o voto|voto por|voto pelo|passo a|compulsando|nesse sentido|neste sentido)\b/;
 const TOLERA_FRACA = 4000;
 const RE_CARA_DE_EMENTA = /\brecurso\s+(?:\w+\s+){0,3}(?:conhecido|provido|desprovido|improvido|nao provido)\b|\btese de julgamento\b|\bcaso em exame\b|\bquestao em discussao\b|\bdispositivos? relevantes?\b|\bsentenca (?:mantida|reformada)\b|\bapelacao\s+(?:civel\s+)?(?:conhecida|provida|desprovida)\b/;
+// Leva B: o relator retoma a palavra logo depois da atribuição ("— STJ, REsp 2.228.094, Rel. Min. X, nov./2025. Portanto, enquanto
+// não houver…"): o trecho até a atribuição seguinte é dele, não uma 2ª ementa em sequência.
+const RE_RETOMA_RELATOR = /^[\s.,;)'"-]*(?:portanto|logo|assim|desse modo|destarte)\b/;
 export const ENCADEIA_MAX = 1200, ABERTURA_MAX = 9000, RECUO = 300;
 
 // ": " seguido de cabeçalho de ementa — "…desta Corte: APELAÇÃO CÍVEL. AÇÃO DECLARATÓRIA…" ou
@@ -168,7 +215,7 @@ export function faixasTranscritas(tn, inicio = 0, fim = tn.length, bruto = null)
         !RE_VOZ_FORTE.test(tn.slice(x, a)));
       ini = Math.min(limpa ?? Infinity, tolerada ?? Infinity);
       if (ini === Infinity) ini = abre[abre.length - 1];
-    } else if (faixas.length && !RE_VOZ_PROPRIA.test(intervalo) &&
+    } else if (faixas.length && !RE_VOZ_PROPRIA.test(intervalo) && !RE_RETOMA_RELATOR.test(intervalo) &&
       (intervalo.length < ENCADEIA_MAX || (intervalo.length < 6000 && RE_CARA_DE_EMENTA.test(intervalo)))) {
       ini = piso;   // ementas em sequência, sem o relator falar entre elas
     } else if (q >= piso && a - q < 3000) {
@@ -203,6 +250,7 @@ const RE_RETORNO = /(?<![a-z0-9])(?:apelantes?|apelad[oa]s?|agravantes?|agravad[
 // abre com "[...]" está copiando. No texto norm1 a reticência "…" vira um ponto só.
 const RE_ANUNCIO_ELISAO = /:\s*(?:\[\s*\.(?:\s*\.){0,2}\s*\]|\(\s*\.(?:\s*\.){0,2}\s*\))/g;
 export const DECLARADA_MAX = 9000, DECLARADA_MIN = 200;
+const RE_CAB_UM = /\b(?:VOTO|EMENTA|AC[ÓO]RD[ÃA]O)\b\s+[A-ZÀ-Ý]/;
 
 /** Faixas [ini, fim) de blocos que o relator anuncia transcrever (sentença, decisão, acórdão anterior). */
 export function faixasDeclaradas(tn, bruto, inicio = 0, fim = tn.length) {
@@ -213,19 +261,31 @@ export function faixasDeclaradas(tn, bruto, inicio = 0, fim = tn.length) {
     for (let m; (m = r.exec(tn)) && m.index < fim;) inicios.push(m.index + m[0].length);
   }
   inicios.sort((x, y) => x - y);
+  // Leva B (red team 22/10/2026): cada anúncio varria o texto até o FIM atrás do vocabulário de retorno; com centenas de
+  // anúncios e nenhum retorno, o custo era quadrático (13 s em 816 KB, síncrono). A 1ª ocorrência a partir de uma posição é a
+  // mesma para qualquer posição entre a anterior e ela: guarda-se a última achada (ou "nenhuma") e só se busca de novo além dela.
+  const rr = new RegExp(RE_RETORNO.source, "g");
+  const proxima = (re, txt) => {
+    let de = -1, m = null;
+    return (p) => {
+      if (de >= 0 && p >= de && (m === null || p <= m.index)) return m;
+      re.lastIndex = p; m = re.exec(txt); de = p;
+      return m;
+    };
+  };
+  const retorno = proxima(rr, tn);
   for (const ini of inicios) {
     if (out.length && ini < out[out.length - 1][1]) continue;
     const limite = Math.min(fim, ini + DECLARADA_MAX);
     // o retorno conta a partir do INÍCIO DA FRASE em que o vocabulário de 2º grau aparece
-    const rr = new RegExp(RE_RETORNO.source, "g");
-    rr.lastIndex = ini + 40;
     let fimBloco = -1;
-    const mr = rr.exec(tn);
+    const mr = retorno(ini + 40);
     if (mr && mr.index < limite) {
       const pt = Math.max(tn.lastIndexOf(". ", mr.index), tn.lastIndexOf("] ", mr.index), tn.lastIndexOf(") ", mr.index));
       fimBloco = pt > ini ? pt + 1 : mr.index;
     }
-    const cab = bruto.slice(ini, limite).search(/\b(?:VOTO|EMENTA|AC[ÓO]RD[ÃA]O)\b\s+[A-ZÀ-Ý]/);   // cabeçalho de seção em caixa alta
+    // \b no início da fatia (bruto.slice) vale como fronteira: a busca é na fatia, como antes — limitada a DECLARADA_MAX
+    const cab = bruto.slice(ini, limite).search(RE_CAB_UM);
     if (cab >= 0 && (fimBloco < 0 || ini + cab < fimBloco)) fimBloco = ini + cab;
     if (fimBloco < 0 || fimBloco - ini < DECLARADA_MIN) continue;
     out.push([ini, fimBloco]);
@@ -288,6 +348,12 @@ export function faixaDivergente(tn, bruto, inicio = 0, fim = tn.length, transcri
 }
 
 // ------------------------------------------------------------- cauda da casa ---
+// dispositivo em 1ª pessoa: só o voto o tem — a ementa da casa diz "Recurso desprovido", nunca "nego provimento"
+// Rodada 3 tentou mais fórmulas de fecho ("Em razão do exposto", "Por tais fundamentos") e conector curto ("Assim, dou
+// provimento", "Portanto, conheço"), com filtro do item "IV. Dispositivo" da ementa CNJ; foi revertida na rodada final
+// (22/10/2026): a ementa da casa usa esses conectores e passava a ser descartada à toa. Fica a lista da rodada 2.
+const RE_DISPOSITIVO_1A_PESSOA = /\b(?:ante o exposto|diante do exposto|pelo exposto|em face do exposto|posto isso|isto posto|por essas razoes|por tais razoes|com essas consideracoes)\b,?[^.]{0,80}?\b(?:nego|dou|conheco|rejeito|acolho|julgo|voto)\b/;
+
 /** {ini, fecho} do documento ACÓRDÃO: `ini` é onde começa a cauda que é voz do próprio TJRO (ementa + fecho);
  * sem fecho, os dois valem o fim do texto. */
 export function vozDaCasa(tn, bruto) {
@@ -297,20 +363,50 @@ export function vozDaCasa(tn, bruto) {
   if (fecho < 0) return { ini: tn.length, fecho: tn.length };
   let em = -1;
   // 1.16.0: também "Ementa :" em caixa mista (achado na medição cega da POSIÇÃO: a ementa da casa virava fim do voto)
-  for (const m of bruto.slice(0, fecho).matchAll(/\bEMENTA\b|\bEmenta[ \t]*:/g)) em = m.index;
-  if (em >= 0 && fecho - em < 20000) return { ini: em, fecho };
-  // sem o rótulo EMENTA (formato da Res. CNJ 2023, que começa direto no cabeçalho em caixa alta): a ementa começa
-  // logo depois do último voto — "É como voto." do relator ou "Acompanho…"/"De acordo." do último vogal
+  for (const m of bruto.slice(0, fecho).matchAll(/\bEMENTA\b|\bEmenta[ \t]*:/g)) {
+    // red team 22/10/2026: rótulo anunciado pelo voto ("conforme a seguinte ementa:", "assim ementado:") é de julgado transcrito
+    if (/\b(?:seguinte|assim|cuja|com a|na|da)\s+ementa\b|\bementad[oa]\b/.test(tn.slice(Math.max(0, m.index - 150), m.index))) continue;
+    em = m.index;
+  }
+  // red team 22/10/2026 (rodada 2): o rótulo EMENTA só é descartado com INDÍCIO de que está dentro de um voto — ele vem
+  // depois do cabeçalho VOTO e uma fórmula que só voto tem COMEÇA depois dele ("É como voto", "Ante o exposto, nego
+  // provimento"). A 1ª rodada usava o FIM do último voto ("Acompanho…" sem ponto atravessava o rótulo; "de acordo." do
+  // texto da ementa — "impossibilidade de acordo." — jogava a voz da casa para o meio dela) e descartava a ementa
+  // posta no ALTO do documento: 74 de 3.840 acórdãos reais pioraram.
+  let descartado = false;
+  if (em >= 0 && fecho - em < 20000) {
+    // cabeçalho RELATÓRIO/VOTO em qualquer caixa ("Relatório", "Voto"): a ementa posta no ALTO, antes deles, é a da casa
+    const cabVoto = tn.search(/\b(?:relatorio|voto)\b/);
+    const depois = tn.slice(em, fecho);
+    const fimRel = depois.search(/\be como (?:voto|meu voto)\b|\be o (?:voto|meu voto)\./);
+    const disp = depois.search(RE_DISPOSITIVO_1A_PESSOA);
+    if (!(cabVoto >= 0 && cabVoto < em && (fimRel >= 0 || disp >= 0))) return { ini: em, fecho };
+    descartado = true;
+  }
+  // sem o rótulo EMENTA (formato da Res. CNJ 2023, que começa direto no cabeçalho em caixa alta), ou com o rótulo
+  // dentro de um voto: a ementa da casa começa logo depois do último voto — "É como voto." do relator,
+  // "Acompanho…"/"De acordo." do último vogal ou o dispositivo em 1ª pessoa do relator
   let fimVotos = -1;
-  for (const m of tn.slice(0, fecho).matchAll(/\be como (?:voto|meu voto)\b\.?|\be o (?:voto|meu voto)\.|\bacompanho\b[^.]{0,120}\.|\bde acordo\./g))
+  for (const m of tn.slice(0, fecho).matchAll(/\be como (?:voto|meu voto)\b\.?|\be o (?:voto|meu voto)\.|\bacompanho\b[^.]{0,120}\.|\bde acordo\.|\bcom (?:o|a) (?:relator|relatora|divergencia)\./g))
     fimVotos = m.index + m[0].length;
+  if (descartado) {
+    // dispositivo do relator sem "É como voto" ("Ante o exposto, nego provimento ao recurso."): o voto acaba no ponto
+    const rd = new RegExp(RE_DISPOSITIVO_1A_PESSOA.source, "g");
+    rd.lastIndex = em;
+    let ult = -1;
+    for (let m; (m = rd.exec(tn)) && m.index < fecho;) ult = m.index + m[0].length;
+    if (ult > fimVotos) {
+      const ponto = tn.indexOf(". ", ult);
+      fimVotos = ponto >= 0 && ponto < fecho ? ponto + 1 : fimVotos;
+    }
+  }
   return { ini: fimVotos >= 0 && fecho - fimVotos < 20000 ? fimVotos : fecho, fecho };
 }
 
 // "POR MAIORIA, VENCIDO O RELATOR", "VENCIDOS A RELATORA E O DESEMBARGADOR…", "NOS TERMOS DO VOTO DIVERGENTE…,
 // LAVRARÁ O ACÓRDÃO": quem perdeu foi o RELATOR — o voto dele, que vem primeiro, é o vencido. Em 3 dos 5
 // acórdãos com divergência dos recibos medidos (23/09/2026) foi assim.
-const RE_RELATOR_VENCIDO = /\bvencid[oa]s?\s+(?:o|a)\s+relator|\brelator(?:a)?\s+vencid|\bnos termos do voto divergente\b|\blavrara o acordao\b|\brelator(?:a)? para o acordao\b/;
+const RE_RELATOR_VENCIDO = /\bvencid[oa]s?\s+(?:(?:em parte|parcialmente)\s+)?(?:o|a)\s+relator|\brelator(?:a)?\s+vencid|\bnos termos do voto divergente\b|\blavrara o acordao\b|\brelator(?:a)? para o acordao\b/;
 
 const RE_UNANIME = /\bunanimidade\b|\bunanime\b|\bunanimemente\b/;
 const RE_MAIORIA = /\bmaioria\b|\bvencid[oa]s?\b|\bvoto de desempate\b|\bvoto medio\b/;
@@ -322,6 +418,36 @@ function votoDoRelator(tn, bruto, ate) {
   r.lastIndex = Math.max(0, rel);
   const v = r.exec(bruto);
   return v && v.index < ate ? v.index : -1;
+}
+
+// cabeçalho de voto de vogal em caixa mista, antecedido da palavra "Voto": "Voto JUIZ Guilherme Ribeiro Baldan",
+// "VOTO Desembargador Fulano", "Voto do Des. Fulano" (Turmas Recursais e gabinetes que não usam o nome em caixa alta)
+const RE_VOGAL_MISTO = /\b(?:VOTO|Voto)\s+(?:(?:DO|DA|do|da)\s+)?(?:DESEMBARGADORA?|Desembargadora?|DES\.|Des\.|Desa\.|JU[IÍ]ZA?|Ju[ií]za?)\s+(?:(?:DE DIREITO|de Direito|CONVOCAD[OA]|[Cc]onvocad[oa])\s+)?[A-ZÀ-Ý]/g;
+const CAB_RELATOR_MAX = 120;
+
+/** Início do voto do vogal que segue o voto do relator que começa em `ini`, ou -1. Procura depois do "É como voto."
+ * do relator; sem ele, depois do cabeçalho do próprio relator ("VOTO DESEMBARGADOR X", até CAB_RELATOR_MAX
+ * caracteres) — um nome em caixa alta no corpo corta a faixa CEDO, o que só encurta a marca. Nunca dentro de citação
+ * ("Rel. DESEMBARGADOR X"). Sem vogal achado, -1: a faixa não sai. */
+function cabecalhoDoVogal(tn, bruto, ini, fim) {
+  const fr = RE_FIM_VOTO_RELATOR.exec(tn.slice(ini, fim));
+  let de = fr ? ini + fr.index : ini + 4;
+  if (!fr) {
+    // pula o cabeçalho do relator colado ao VOTO
+    const c = new RegExp(`^\\s*(?:${RE_VOGAL.source})`).exec(bruto.slice(de, de + CAB_RELATOR_MAX));
+    if (c) de += c[0].length;
+  }
+  let melhor = -1;
+  for (const re of [RE_VOGAL, RE_VOGAL_MISTO]) {
+    const r = new RegExp(re.source, "g");
+    r.lastIndex = de;
+    for (let m; (m = r.exec(bruto)) && m.index < fim;) {
+      if (/\brel(?:ator(?:a)?)?\.?\s*:?\s*$|\bpelo\s+$|\bpela\s+$/i.test(bruto.slice(Math.max(0, m.index - 14), m.index))) continue;
+      if (melhor < 0 || m.index < melhor) melhor = m.index;
+      break;
+    }
+  }
+  return melhor;
 }
 
 // ---------------------------------------------------------------------- aspas ---
@@ -440,6 +566,22 @@ export function faixasAlheias(texto, tipo) {
   if (div && RE_RELATOR_VENCIDO.test(tn.slice(casa.fecho, casa.fecho + 800))) {
     const v = votoDoRelator(tn, texto, div[0]);
     div = v >= 0 ? [v, div[0]] : div;
+  }
+  // red team 22/10/2026: o FECHO proclama maioria com o relator vencido, mas o vogal divergiu sem fórmula reconhecível
+  // ("entendo de forma diversa", "acompanho o voto do Desembargador X") — sem isto o voto vencido saía como palavra do órgão.
+  // A faixa é o voto do relator: do cabeçalho VOTO até o cabeçalho do vogal seguinte (cabecalhoDoVogal).
+  // Rodada 2: a faixa só sai com as DUAS pontas achadas — o cabeçalho VOTO do relator antes da ementa da casa e o
+  // cabeçalho do vogal seguinte. Sem uma delas não há marca: cair no início do corpo ou no fim do voto engolia o
+  // relatório, a questão de ordem e o voto VENCEDOR (recibos 29911948, 29912057, 36882160) ou marcava o cabeçalho
+  // do documento no formato antigo, com os votos depois do fecho (1037526).
+  if (!div && t !== "VOTO VENCEDOR" && casa.fecho < tn.length) {
+    const proclamado = tn.slice(casa.fecho, casa.fecho + 800);
+    const maioria = RE_MAIORIA.test(proclamado) || (/\bnos termos do voto divergente\b/.test(proclamado) && !RE_UNANIME.test(proclamado));
+    if (RE_RELATOR_VENCIDO.test(proclamado) && maioria) {
+      const v = votoDoRelator(tn, texto, fim);
+      const ate = v >= 0 ? cabecalhoDoVogal(tn, texto, v, fim) : -1;
+      if (ate > v && v >= 0) div = [v, ate];
+    }
   }
   const aspas = aspasDoCorpo(texto, tn, corpo, fim, transcritas);
   // as aspas curtas (< ASPAS_MIN) também calam a marca: "ainda que assim não fosse" dentro de citação é de quem o tribunal cita
