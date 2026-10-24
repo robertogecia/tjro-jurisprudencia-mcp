@@ -15,7 +15,9 @@ const RE_RESULTADO = /(?<![a-z0-9])(?:nego|dou|conheco|nao conheco|julgo|rejeito
 // voto acabou de APLICAR ("…só quando irrisórios ou exorbitantes, o que não é o caso dos autos")
 
 /** Seções da ementa no intervalo [ini, fim) do texto: [{nome, a, b}] em ordem; vazio se não houver o modelo do CNJ. */
-const RE_SECAO_EMENTA_N1 = /(?<![a-z0-9])(?:(i{1,3}|iv|v)[ \t\n\r\f\v]*[.)-]?[ \t\n\r\f\v]*)?(caso em exame|quest(?:ao|oes) em discussao|razoes de decidir|dispositivos? e teses?|dispositivo)(?![a-z0-9])/g;
+// 1.41.9 (item 4): "III - Razão de decidir", no singular, em 32 recibos da cópia (24/10/2026) — sem ela a seção II engolia a III e
+// o trecho das razões saía como "QUESTÃO EM DISCUSSÃO" (relato), sem a nota VOZ DA CASA.
+const RE_SECAO_EMENTA_N1 = /(?<![a-z0-9])(?:(i{1,3}|iv|v)[ \t\n\r\f\v]*[.)-]?[ \t\n\r\f\v]*)?(caso em exame|quest(?:ao|oes) em discussao|raz(?:oes|ao) de decidir|dispositivos? e teses?|dispositivo)(?![a-z])/g;
 const RE_CAUDA_EMENTA = /\b(?:Dispositivos? relevantes? citados?|Jurisprud[êe]ncia relevante citada|Legisla[çc][ãa]o relevante citada|Resumo em linguagem simples|RESUMO[ \t]*:)/;
 /** Seções da ementa do CNJ em [ini, fim) — espelho de _secoes_da_ementa (06/10/2026): número romano em qualquer caixa, ou nome
  * abrindo a linha e fechando com ".", ":", quebra ou o item numerado. Busca sobre norm1 (1:1); a linha confere no bruto. */
@@ -28,9 +30,14 @@ export function secoesDaEmenta(texto, ini, fim) {
       const antes = seg.slice(0, i2).replace(/[ \t]+$/, "");
       const depois = seg.slice(i2 + m[2].length, i2 + m[2].length + 4).replace(/^[ \t]+/, "");
       const c = depois.slice(0, 1);
-      if (!(antes === "" || antes.endsWith("\n")) || !(c === "." || c === ":" || c === "\n" || (c !== "" && "0123456789".includes(c)))) continue;
+      // Reataque Fable (25/10/2026): os recibos são texto achatado (sem "\n"), então o rótulo sem romano só valia no início da seção.
+      // Agora vale também depois de fim de frase ("PROVIDO. CASO EM EXAME"), de item numerado ("2. A questão em discussão consiste…")
+      // e com o número da nota colado ("Caso em exame1."): 48 de 56 trechos de relato da parte saíam ✅ pleno com VOZ DA CASA.
+      const inicioDeLinha = antes === "" || antes.endsWith("\n") || /[.;:!?][ \t]*$/.test(antes) || /(?:^|[ \t\n])\d{1,2}[.)][ \t]*(?:a)?$/i.test(antes);
+      const numerado = /(?:^|[ \t\n])\d{1,2}[.)][ \t]*(?:a)?$/i.test(antes);
+      if (!inicioDeLinha || !(numerado || c === "." || c === ":" || c === "\n" || (c !== "" && "0123456789".includes(c)))) continue;
     }
-    const nome = m[2].replace(/^quest(?:ao|oes) em discussao$/, "questao em discussao").replace(/^dispositivos? e teses?$/, "dispositivo e tese");
+    const nome = m[2].replace(/^quest(?:ao|oes) em discussao$/, "questao em discussao").replace(/^dispositivos? e teses?$/, "dispositivo e tese").replace(/^razao de decidir$/, "razoes de decidir");
     if (marcas.length && marcas[marcas.length - 1].nome === nome && ini + m.index - marcas[marcas.length - 1].a < 40) continue;
     marcas.push({ nome, a: ini + m.index });
   }
@@ -114,6 +121,11 @@ const ROTULO = {
   "dispositivo": "ementa › IV. DISPOSITIVO — resultado do julgamento",
   "cauda": "ementa › parte final (dispositivos e jurisprudência citados, resumo) — referência, não tese",
 };
+
+/** Medição cega da amostra A (23/10/2026): "I. CASO EM EXAME" e "II. QUESTÃO EM DISCUSSÃO" da ementa do CNJ RELATAM o caso e a
+ * tese das partes ("Os agravantes sustentam…", "O embargante alega…"): a ementa é da casa, mas essas duas seções não são a voz dela.
+ * `posicao` é o rótulo devolvido por posicaoNoJulgado. */
+export const ehRelatoDaEmenta = (posicao) => posicao === ROTULO["caso em exame"] || posicao === ROTULO["questao em discussao"];
 
 const RE_FIM_VOTO = /\be (?:como|o) (?:voto|meu voto)\b/g;
 /** {relIni, votoIni, fimRelator, dispIni, fimVoto} do voto do relator no texto (ACÓRDÃO/VOTO). No ACÓRDÃO o voto do relator

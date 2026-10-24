@@ -8,6 +8,7 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import { camposAlheios, CUSTODIA_VERSAO } from "../server/custodia.js";
 import { recibo } from "../server/lib.js";
+import { camposCustodia } from "../server/voz.js";
 import { recalcularRecibos } from "../server/recibos.js";
 
 const fx = JSON.parse(readFileSync(new URL("./fixtures/custodia-tjro.json", import.meta.url), "utf8")).documentos;
@@ -19,12 +20,13 @@ const SINTETICOS = [
 ];
 const hashDasSaidas = () => {
   const h = crypto.createHash("sha256");
-  for (const d of [...fx.map((x) => [x.texto, x.tipo]), ...SINTETICOS]) h.update(JSON.stringify(camposAlheios(d[0], d[1])));
+  // 1.41.9 (v5): o hash é o do que vai para o RECIBO — camposCustodia = camposAlheios + camposDeVoz (até a v4, só camposAlheios)
+  for (const d of [...fx.map((x) => [x.texto, x.tipo]), ...SINTETICOS]) h.update(JSON.stringify(CUSTODIA_VERSAO >= 5 ? camposCustodia(d[0], d[1]) : camposAlheios(d[0], d[1])));
   return h.digest("hex").slice(0, 16);
 };
 // Cada versão da custódia fixa o hash das saídas acima. Mudou a heurística e o hash não bate? Suba CUSTODIA_VERSAO em
 // custodia.js e acrescente a nova linha: sem isso os recibos já gravados ficam com o resultado antigo para sempre.
-const HASH_POR_VERSAO = { 2: "e1c27bdf992f6949", 3: "3e6fd3b5f3520966", 4: "db1a0b71a5e01a51" };
+const HASH_POR_VERSAO = { 2: "e1c27bdf992f6949", 3: "3e6fd3b5f3520966", 4: "db1a0b71a5e01a51", 5: "7021fa9ffadac745", 6: "7021fa9ffadac745" };   // v6: as fixtures não mudam; mudam 2 recibos reais (vencido.js)
 
 test("a saída da custódia só muda junto com CUSTODIA_VERSAO", () => {
   const atual = hashDasSaidas();

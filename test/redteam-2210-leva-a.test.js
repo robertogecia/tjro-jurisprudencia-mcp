@@ -94,7 +94,7 @@ test("leva A (2): data da sentença ou de precedente citado no voto NÃO confirm
   for (const dt of ["02/02/2022", "03/05/2019", "10/03/2021"]) {
     const l = cita(dt);
     assert.doesNotMatch(l, /^✅/, dt);
-    assert.match(l, /aparece no texto, mas não como data do julgamento/, dt);
+    assert.match(l, /aparece no texto, mas fora do fecho, da sessão/, dt);   // texto da mensagem revisto na amostra A (23/10/2026)
   }
 });
 

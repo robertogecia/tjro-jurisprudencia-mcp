@@ -9,7 +9,8 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { checarSemanal } from "./semana.js";
-import { camposAlheios, linhaCustodia, CUSTODIA_VERSAO, norm1, expandirLigaduras } from "./custodia.js";
+import { linhaCustodia, CUSTODIA_VERSAO, norm1, expandirLigaduras } from "./custodia.js";
+import { camposCustodia } from "./voz.js";
 export { expandirLigaduras };
 import { linhaFavoravel } from "./partes.js";
 import { fatosDoJulgado, FATOS_MAX, FATOS_MAX_SENT, RE_ALEGACAO, secoesDaEmenta, teseDaEmenta, desfechoDaSentenca, ROTULOS_SENTENCA } from "./posicao.js";
@@ -179,7 +180,10 @@ export const cnj = (nr) => {
  * 22/10/2026): a regex varria até o fim do texto para cada abertura sem fechamento — milhares de "<script>" sem par (HTML
  * malformado) levavam segundos e travavam o servidor inteiro. Abertura sem fechamento fica no texto (a tag sai depois, com as
  * demais), como na regex; e se uma não tem fechamento, nenhuma abertura posterior do mesmo tipo tem. */
-export function semScriptStyle(t) {
+export function semScriptStyle(t, { troca = " ", exigeFimDaAbertura = true } = {}) {
+  // Pendência do red team (22/10/2026): normas.js usava `/<(script|style)[\s\S]*?<\/\1>/gi` → "" (quadrática do mesmo jeito).
+  // `exigeFimDaAbertura: false` + `troca: ""` reproduz aquela regex: o fechamento é procurado logo depois de "<script"/"<style",
+  // sem exigir o ">" da abertura.
   const low = t.toLowerCase();
   const re = /<(script|style)/gi;
   const semFecho = new Set();
@@ -187,13 +191,35 @@ export function semScriptStyle(t) {
   for (let m; (m = re.exec(t));) {
     const tag = m[1].toLowerCase();
     if (semFecho.has(tag)) continue;
-    if (gt < m.index) { gt = t.indexOf(">", m.index); if (gt < 0) break; }   // nenhum ">" adiante: nada mais casa
+    let desde = m.index + m[0].length;
+    if (exigeFimDaAbertura) {
+      if (gt < m.index) { gt = t.indexOf(">", m.index); if (gt < 0) break; }   // nenhum ">" adiante: nada mais casa
+      desde = gt + 1;
+    }
     const fecho = `</${tag}>`;
-    const fim = low.indexOf(fecho, gt + 1);
+    const fim = low.indexOf(fecho, desde);
     if (fim < 0) { semFecho.add(tag); if (semFecho.size === 2) break; continue; }
-    out += t.slice(pos, m.index) + " ";
+    out += t.slice(pos, m.index) + troca;
     pos = fim + fecho.length;
     re.lastIndex = pos;
+  }
+  return pos ? out + t.slice(pos) : t;
+}
+
+// Pontes para as outras extensões (texto único: descrições das ferramentas em index.js; o manifest.json repete o mesmo texto e
+// o teste confere que bate).
+export const PONTE_DATAJUD = "Para saber o que andou em um processo (movimentos e capa), use a extensão Datajud; esta ferramenta trata do texto das decisões.";
+export const PONTE_DJEN = "Para intimações e prazos, use o DJEN; prazo nunca sai desta ferramenta nem do Datajud.";
+export const PONTES = PONTE_DATAJUD + " " + PONTE_DJEN;
+
+/** `t.replace(/<!--[\s\S]*?-->/g, "")` em tempo linear (a regex varria até o fim para cada "<!--" sem "-->" adiante). */
+export function semComentariosHtml(t) {
+  let out = "", pos = 0;
+  for (let i = t.indexOf("<!--"); i >= 0; i = t.indexOf("<!--", pos)) {
+    const fim = t.indexOf("-->", i + 4);
+    if (fim < 0) break;   // sem "-->" adiante: nenhuma abertura posterior fecha
+    out += t.slice(pos, i);
+    pos = fim + 3;
   }
   return pos ? out + t.slice(pos) : t;
 }
@@ -714,13 +740,31 @@ export const extrairRelatorDoTexto = (texto) => {
   const paraAcordao = /(?:Relator|Redator)(?:a)?\s+(?:para|p\/|p\.)\s*o?\s*ac[óo]rd[ãa]o\s*:\s*([^\n;:]{3,90})/i.exec(cab);
   const m = paraAcordao || /Relator(?:a)?(?:\s*\(a\))?\s*:\s*([^\n;:]{3,90})/i.exec(cab);
   if (!m) return null;
-  // "Relator: A substituído por B": quem relata é B (o índice também traz B); sem o nome de B no trecho, não arrisca
+  // "Relator: A substituído por B": quem relata é B (o índice também traz B); sem o nome de B no trecho, não arrisca.
+  // "Relator: A em substituição a(o) B" é o inverso: A substitui B e é quem relata (pendência do red team, 22/10/2026: a regra
+  // devolvia B). O corte de ROTULOS_APOS_RELATOR em "Em substituição" já deixa só A.
   let bruto = m[1];
-  const sub = /\s+(?:substitu[íi]d[oa]|em\s+substitui[çc][ãa]o\s+a)\s+(?:por|pel[oa])?\s*/i.exec(bruto);
+  const sub = /\s+substitu[íi]d[oa]\s+(?:por|pel[oa])?\s*/i.exec(bruto);
   if (sub) { bruto = bruto.slice(sub.index + sub[0].length); if (!/[A-Za-zÀ-ÿ]{4,}/.test(bruto.replace(ROTULOS_APOS_RELATOR, ""))) return null; }
-  const nome = bruto.replace(ROTULOS_APOS_RELATOR, "").trim().split(/\s+/).slice(0, 6).join(" ");
+  const nome = ate6Nomes(bruto.replace(ROTULOS_APOS_RELATOR, "").trim().split(/\s+/)).join(" ");
   return nome.length >= 3 ? nome : null;
 };
+// Medição cega da amostra A (23/10/2026): o corte em 6 PALAVRAS contava título e partícula — "JORGE LUIZ DE MOURA GURGEL DO AMARAL"
+// perdia "AMARAL" e "Juiz de Direito JOSE AUGUSTO ALVES MARTINS" perdia "MARTINS", e a citação correta saía 🟠 ("só bate em parte").
+// Agora contam 6 NOMES (o título "Des./Juiz de Direito/Convocado" e as partículas "de/da/do/dos/das/e" não contam), com teto de
+// 12 palavras no total para o lixo depois do nome continuar fora.
+const PALAVRAS_SEM_PESO = new Set(["de", "da", "do", "das", "dos", "e", "des", "desa", "dr", "dra", "desembargador", "desembargadora", "juiz", "juiza", "direito", "convocado", "convocada", "relator", "relatora", "substituto", "substituta"]);
+function ate6Nomes(palavras) {
+  const out = [];
+  let nomes = 0;
+  for (const p of palavras.slice(0, 12)) {
+    const f = fold(p).replace(/[^a-z]/g, "");
+    if (f && !PALAVRAS_SEM_PESO.has(f)) { if (nomes === 6) break; nomes++; }
+    out.push(p);
+  }
+  while (out.length && PALAVRAS_SEM_PESO.has(fold(out[out.length - 1]).replace(/[^a-z]/g, ""))) out.pop();   // "… GURGEL DO" sem o nome seguinte
+  return out;
+}
 const TITULOS = new Set([
   "desembargador", "desembargadora", "juiz", "juiza", "convocado", "convocada",
   "ministro", "ministra", "relator", "relatora", "substituto", "substituta",
@@ -2591,7 +2635,7 @@ export function recibo(s, agora = new Date(), origem = "inteiro") {
 // vencido), para o lint de citações avisar em vez de aprovar. Lógica e medição em server/custodia.js.
 function alheios(texto, tipo) {
   try {
-    return { ...camposAlheios(texto, tipo), custodia_v: CUSTODIA_VERSAO, normalizacao: "trechos em bruto, recortados de `texto` — normalize com a sua própria função" };
+    return { ...camposCustodia(texto, tipo), custodia_v: CUSTODIA_VERSAO, normalizacao: "trechos em bruto, recortados de `texto` — normalize com a sua própria função" };
   } catch {
     return {};   /* recibo é conferência extra: falha aqui não pode custar o texto */
   }
@@ -2758,7 +2802,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.41.8";
+export const VERSAO = "1.41.9";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

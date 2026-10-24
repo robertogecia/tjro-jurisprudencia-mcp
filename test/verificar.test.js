@@ -79,7 +79,7 @@ test("verificarCitacao: lê o recibo local por id (zero rede), depois por númer
   const trecho = "Assim, evidenciada a falha na prestação do serviço, correta a sentença ao reconhecer o dever de indenizar";
   let out = await verificarCitacao({ id_documento: "501", trecho, pasta });
   assert.match(out, /^\*\*Verificação literal — id 501 \(TJRO, 1 documento\(s\), fonte: recibo local\)\*\*/);
-  assert.match(out, /✅ LITERAL · id 501 · VOTO · 7000000-00\.2025\.8\.22\.0001 · julgado em 01\/02\/2026/);
+  assert.match(out, /✅ LITERAL(?:, [^·]*)? · id 501 · VOTO · 7000000-00\.2025\.8\.22\.0001 · julgado em 01\/02\/2026/);
   out = await verificarCitacao({ nr_processo: "7000000-00.2025.8.22.0001", trecho, pasta });
   assert.match(out, /fonte: recibo local/);
   out = await verificarCitacao({ nr_processo: "7000000-00.2025.8.22.0001", trecho: "frase que não existe em lugar nenhum do voto", pasta });
@@ -99,7 +99,7 @@ test("verificarCitacao: sem recibo, vai ao portal pelo número (função buscar 
   const out = await verificarCitacao({ nr_processo: "7000000-00.2025.8.22.0001", trecho, pasta, buscar });
   assert.equal(chamadas, 1);
   assert.match(out, /fonte: portal/);
-  assert.match(out, /✅ LITERAL · id 77/);
+  assert.match(out, /✅ LITERAL(?:, [^·]*)? · id 77/);
   const falha = await verificarCitacao({ nr_processo: "7000000-00.2025.8.22.0001", trecho, pasta, buscar: async () => { throw new Error("bloqueio"); } });
   assert.match(falha, /^\[VERIFICAÇÃO NÃO REALIZADA\]/);
 });
@@ -357,7 +357,7 @@ test("verificarCitacao: só recibos de busca não provam ausência; ✅ vale; po
   out = await verificarCitacao({ nr_processo: nr, trecho: "uma frase que só existe no acórdão inteiro deste julgamento", pasta, buscar });
   assert.equal(chamadas, 1);
   assert.match(out, /fonte: portal/);
-  assert.match(out, /✅ LITERAL · id 802/);
+  assert.match(out, /✅ LITERAL(?:, [^·]*)? · id 802/);
 });
 
 // v1.33.0 — os alertas dizem ONDE: abertura da parte divergente e a frase do obiter

@@ -25,13 +25,16 @@
  * sem a reconstrução aproximada que o TJSE precisa.
  */
 
-/** Versão da heurística de custódia. SUBA sempre que a saída de camposAlheios mudar para algum texto: o recibo leva
+/** Versão da heurística de custódia. SUBA sempre que a saída de camposAlheios ou de camposDeVoz (voz.js) mudar para algum texto: o recibo leva
  * este número em `custodia_v`, e o servidor refaz ao iniciar os recibos com número diferente ou ausente (antes, depois
  * de cada correção, os recibos já gravados ficavam com o resultado antigo até alguém rodar o recálculo à mão, e o lint
  * lia o campo gravado enquanto o verificador recalculava na hora). Um teste fixa o hash das saídas por versão.
  * 1 = v1.7.16 (sem carimbo) · 2 = v1.10.1 ("Ementa ID" e lista de precedentes do relator) · 3 = v1.13.0 (transcrição
  * declarada, cabeçalho fora, unanimidade e 1ª pessoa na divergência; medida às cegas). */
-export const CUSTODIA_VERSAO = 4;   // v4 (1.16.0): trechos_obiter
+import { sinalDeRelatorVencido, RE_TERMOS_VOTO_DIVERGENTE } from "./vencido.js";
+export const CUSTODIA_VERSAO = 6;   // v6 (1.41.9): fórmulas de relator vencido em vencido.js ("VENCIDO O VOTO DO RELATOR" marca o voto do relator; medido: 2 recibos mudam)
+// v4 (1.16.0): trechos_obiter · v5 (1.41.9): trechos_alegacao_parte, trechos_doutrina e
+// trechos_sentenca_transcrita (voz.js, camposCustodia = camposAlheios + camposDeVoz; é o que vai para o recibo)
 
 /** Expande as ligaduras tipográficas (ﬀ ﬁ ﬂ ﬃ ﬄ ﬅ ﬆ) em letras: norm1 é 1 → 1 e guardava só a 1ª letra ("ﬁnanceira" → "fnanceira"),
  * e a frase literal saía "NÃO ENCONTRADO" (red team 22/10/2026; 1 dos 6.429 recibos locais tem "Indeﬁro"). */
@@ -406,7 +409,7 @@ export function vozDaCasa(tn, bruto) {
 // "POR MAIORIA, VENCIDO O RELATOR", "VENCIDOS A RELATORA E O DESEMBARGADOR…", "NOS TERMOS DO VOTO DIVERGENTE…,
 // LAVRARÁ O ACÓRDÃO": quem perdeu foi o RELATOR — o voto dele, que vem primeiro, é o vencido. Em 3 dos 5
 // acórdãos com divergência dos recibos medidos (23/09/2026) foi assim.
-const RE_RELATOR_VENCIDO = /\bvencid[oa]s?\s+(?:(?:em parte|parcialmente)\s+)?(?:o|a)\s+relator|\brelator(?:a)?\s+vencid|\bnos termos do voto divergente\b|\blavrara o acordao\b|\brelator(?:a)? para o acordao\b/;
+// 1.41.9: as fórmulas moram em vencido.js (fonte única com a auditoria); aqui vale qualquer sinal, inclusive "vencido em parte".
 
 const RE_UNANIME = /\bunanimidade\b|\bunanime\b|\bunanimemente\b/;
 const RE_MAIORIA = /\bmaioria\b|\bvencid[oa]s?\b|\bvoto de desempate\b|\bvoto medio\b/;
@@ -563,7 +566,7 @@ export function faixasAlheias(texto, tipo) {
     const proclamado = tn.slice(casa.fecho, casa.fecho + 1800);
     if (RE_UNANIME.test(proclamado) && !RE_MAIORIA.test(proclamado)) div = null;
   }
-  if (div && RE_RELATOR_VENCIDO.test(tn.slice(casa.fecho, casa.fecho + 800))) {
+  if (div && sinalDeRelatorVencido(tn.slice(casa.fecho, casa.fecho + 800))) {
     const v = votoDoRelator(tn, texto, div[0]);
     div = v >= 0 ? [v, div[0]] : div;
   }
@@ -576,8 +579,8 @@ export function faixasAlheias(texto, tipo) {
   // do documento no formato antigo, com os votos depois do fecho (1037526).
   if (!div && t !== "VOTO VENCEDOR" && casa.fecho < tn.length) {
     const proclamado = tn.slice(casa.fecho, casa.fecho + 800);
-    const maioria = RE_MAIORIA.test(proclamado) || (/\bnos termos do voto divergente\b/.test(proclamado) && !RE_UNANIME.test(proclamado));
-    if (RE_RELATOR_VENCIDO.test(proclamado) && maioria) {
+    const maioria = RE_MAIORIA.test(proclamado) || (RE_TERMOS_VOTO_DIVERGENTE.test(proclamado) && !RE_UNANIME.test(proclamado));
+    if (sinalDeRelatorVencido(proclamado) && maioria) {
       const v = votoDoRelator(tn, texto, fim);
       const ate = v >= 0 ? cabecalhoDoVogal(tn, texto, v, fim) : -1;
       if (ate > v && v >= 0) div = [v, ate];
@@ -598,7 +601,17 @@ export function camposAlheios(texto, tipo) {
   const f = faixasAlheias(texto, tipo);
   // a cauda (ementa da casa + fecho) vai como voz própria: o lint absolve o trecho que está nela, mesmo que o
   // voto tenha transcrito um precedente com a mesma frase (as câmaras reusam ementas-modelo)
-  const voz = f.casaIni < texto.length ? { texto_voz_propria: texto.slice(f.casaIni) } : {};
+  // Reataque Fable (25/10/2026): ementa posta no ALTO — a "casa" ia da ementa ao fecho e engolia RELATÓRIO e VOTO (5 acórdãos reais;
+  // o lint absolvia a alegação da parte do relatório como voz do tribunal). Corta no 1º cabeçalho RELATÓRIO/VOTO (caixa alta, depois
+  // dos 300 primeiros caracteres da ementa) que vier antes do fecho e mantém o fecho.
+  let vozProp = f.casaIni < texto.length ? texto.slice(f.casaIni) : "";
+  if (vozProp && f.fecho > f.casaIni) {
+    const ate = f.fecho - f.casaIni, re = /(?<![A-Za-zÀ-ú])(?:RELAT[ÓO]RIO|VOTO)(?![A-Za-zÀ-ú])/g;
+    re.lastIndex = 300;
+    const h = re.exec(vozProp);
+    if (h && h.index < ate) vozProp = vozProp.slice(0, h.index) + " " + vozProp.slice(ate);
+  }
+  const voz = vozProp ? { texto_voz_propria: vozProp } : {};
   return {
     trechos_transcritos: f.transcritas.map(([a, b]) => texto.slice(a, b)),
     trecho_divergente: f.divergente ? texto.slice(f.divergente[0], f.divergente[1]) : "",

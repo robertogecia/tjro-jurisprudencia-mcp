@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import he from "he";
-import { HEADERS, reservarRequisicao, dirCache, dirRecibos } from "./lib.js";
+import { HEADERS, reservarRequisicao, dirCache, dirRecibos, semScriptStyle, semComentariosHtml, semTags as semTagsLinear } from "./lib.js";
 
 export const ATOS_BASE = "https://atos.tjro.jus.br";
 const TIMEOUT_MS = 30000;
@@ -118,14 +118,26 @@ export function buildNormasUrl(o = {}) {
 }
 
 // ------------------------------------------------------------------- parsers -
+// Pendência do red team (22/10/2026): as regexes `/<(script|style)[\s\S]*?<\/\1>/gi`, `/<!--[\s\S]*?-->/g`,
+// `/<\s*(br|…)[^>]*>/gi` e `/<[^>]+>/g` varriam até o fim do texto para cada abertura sem fechamento (HTML malformado: tempo
+// quadrático, servidor travado). Trocadas pelas versões lineares de lib.js, com a MESMA saída (teste de equivalência em normas.test.js).
+const RE_QUEBRA_TAG = /^<\s*(?:br|\/p|\/div|\/tr|\/li|\/h\d|\/dt|\/dd|hr)/i;
+/** `t.replace(/<\s*(br|\/p|\/div|\/tr|\/li|\/h\d|\/dt|\/dd|hr)[^>]*>/gi, "\n")` em tempo linear. */
+export function quebrasDeLinhaHtml(t) {
+  let out = "", pos = 0, gt = -1;
+  for (let i = t.indexOf("<"); i >= 0; i = t.indexOf("<", i + 1)) {
+    if (gt <= i) { gt = t.indexOf(">", i + 1); if (gt < 0) break; }
+    if (!RE_QUEBRA_TAG.test(t.slice(i, gt))) continue;
+    out += t.slice(pos, i) + "\n";
+    pos = gt + 1;
+    i = gt;
+  }
+  return pos ? out + t.slice(pos) : t;
+}
 const semTags = (h) =>
   he
     .decode(
-      String(h || "")
-        .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
-        .replace(/<!--[\s\S]*?-->/g, "")
-        .replace(/<\s*(br|\/p|\/div|\/tr|\/li|\/h\d|\/dt|\/dd|hr)[^>]*>/gi, "\n")
-        .replace(/<[^>]+>/g, " ")
+      semTagsLinear(quebrasDeLinhaHtml(semComentariosHtml(semScriptStyle(String(h || ""), { troca: "", exigeFimDaAbertura: false }))))
     )
     .replace(/ /g, " ");
 const linhas = (h) =>

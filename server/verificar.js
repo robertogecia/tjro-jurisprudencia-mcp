@@ -10,8 +10,12 @@ import { norm1, expandirLigaduras, faixasAlheias, RE_VOZ_PROPRIA, trechosCitados
 export { trechosCitados, coberturaCitada, ASPAS_SPAN_MAX };
 import { recibo, cnj, dirRecibos } from "./lib.js";
 import { reciboPorId, recibosDoProcesso, soDigitos } from "./recibos.js";
-import { posicaoNoJulgado } from "./posicao.js";
+import { posicaoNoJulgado, ehRelatoDaEmenta } from "./posicao.js";
 import { RE_OBITER } from "./custodia.js";
+// ALEGAÇÃO DA PARTE e DOUTRINA/SENTENÇA TRANSCRITA moraram aqui até a 1.41.9; agora em voz.js (sem mudança de lógica), para o
+// recibo e o lint lerem a mesma conta. Reexportados para quem já importava daqui.
+import { inicioDaFrase, alegacaoDaParte, concessivaNegativa, sentencaAnunciadaAntes, faixasIntroduzidas, INTRODUZIDA_MAX, INTRODUZIDA_MIN, ALEGACAO_DIST_MAX, ALEGACAO_SUJEITO_JANELA, ALEGACAO_CABECA } from "./voz.js";
+export { alegacaoDaParte, faixasIntroduzidas, INTRODUZIDA_MAX, INTRODUZIDA_MIN, ALEGACAO_DIST_MAX, ALEGACAO_SUJEITO_JANELA, ALEGACAO_CABECA };
 export { posicaoNoJulgado };
 
 export const PISO_TRECHO_PALAVRAS = 4, PISO_TRECHO_CHARS = 25, VAO_MAXIMO = 1500;
@@ -19,87 +23,6 @@ const W = "a-z0-9";
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const RE_CORTE = /\[\s*(?:\.\.\.|…)\s*\]|\(\s*(?:\.\.\.|…)\s*\)|…/;
 
-// ALEGAÇÃO DA PARTE (v1.11.0, remedido). A versão portada do TRF1 disparava em ~20% das janelas da voz do próprio
-// tribunal: bastava um "afirmar"/"requerida"/"argumento" nos 400 caracteres anteriores, e cada nome de parte
-// ("requerida", "autor") valia como sujeito. Medida sobre 90 janelas rotuladas à mão (harness/medir-verificador.mjs):
-// precisão de 33% e 58-64% de falso alarme. Agora é estrutural: um VERBO DE RELATO conjugado (sustenta, alega,
-// aduz, defende, requer, pleiteia… e as formas em -ndo e no subjuntivo) com sujeito de parte nos 200 caracteres
-// anteriores, OU no início de frase (o relatório diz "Alega que…", "No mérito, aduz que…" sem repetir o sujeito); o
-// trecho vem a até 350 caracteres e a no máximo 2 frases do verbo; e nenhuma marca de voz do tribunal no meio
-// ("contudo", "verifico", "homologo", "ora,", RE_VOZ_PROPRIA…). Substantivo ("a alegação", "o argumento") nunca conta.
-const VERBO_RELATO = new RegExp(
-  String.raw`(?<![a-z0-9])(?:sustent(?:a|am|ou|aram|ando)|alega(?:m|ram|ndo)?|alegou|aduz(?:em|iu|indo)?|defende(?:m|u|ram|ndo)?|afirma(?:m|ram|ndo)?|afirmou` +
-    String.raw`|argument(?:a|am|ou|ando)|requer(?:em|eu|eram|endo)?|pleite(?:ia|iam|ou|aram|ando)|pugn(?:a|am|ou|ando)|invoc(?:a|am|ou|ando)` +
-    String.raw`|insist(?:e|em|iu|indo)|impugn(?:a|am|ou|ando)|assever(?:a|am|ou|ando)|ressalt(?:a|am|ou)|enfatiz(?:a|am|ou)|reiter(?:a|am|ou)` +
-    String.raw`|postul(?:a|am|ou)|narr(?:a|am|ou)|inform(?:a|am|ou)|disse|suscit(?:a|am|ou)|apont(?:a|am|ou)` +
-    String.raw`|alegue|alegu?em|sustente|sustentem|defenda|defendam|afirme|argumente|pretend(?:a|e|em|eu)|pretendam|ped(?:e|em|iu|iram|indo)|propugn(?:a|am|ou|ando)|acrescent(?:a|am|ou|ando)|destac(?:a|am|ou|ando)|pondera(?:m|ram|ndo)?|ponderou|anota(?:m|ram|ndo)?|anotou|diz)(?![a-z0-9])`,
-  "g"
-);
-const PARTE_NO_TEXTO =
-  /(?<![a-z0-9])(?:apelantes?|apelad[oa]s?|agravantes?|agravad[oa]s?|recorrentes?|recorrid[oa]s?|embargantes?|embargad[oa]s?|autor(?:a|es|as)?|reus?|re|requerentes?|requerid[oa]s?|impetrantes?|impetrad[oa]s?|exequentes?|executad[oa]s?|partes?|banco|instituicao financeira|estado|municipio|uniao|ministerio publico|parquet|defensoria|procuradoria|arguentes?|arguid[oa]s?|reclamantes?|reclamad[oa]s?|seguradora|fundo|cessionari[oa]|devedor[a]?|credor[a]?|locatari[oa]|locador[a]?|consumidor[a]?)(?![a-z0-9])/;
-const SUJEITO_EM_RAZOES = /(?<![a-z0-9])(?:(?:em|nas|suas) (?:suas )?razoes|contrarrazoes)(?![a-z0-9])/;
-const VOZ_DO_TRIBUNAL =
-  /(?<![a-z0-9])(?:contudo|todavia|entretanto|no entanto|ocorre que|porem|de fato|com efeito|sem razao|nao assiste|nao merece|nao prospera|improcede|conheco|constato|constatei|verifico|verifiquei|observo|observei|analisei|tenho que|consigno|cumpre|importante destacar|e importante|e certo|e sabido|como e sabido|ora,|logo,|assim,|portanto|dessa forma|neste caso|nesse caso|nesse cenario|nessa hipotese|no caso|a meu ver|na verdade|diante disso|nessa linha|revela|homologo|condeno|julgo|determino|arbitro|fixo|defiro|indefiro|nego|dou provimento|acolho|rejeito|declaro|reconheco|entendo|concluo|decido|passo a|tem-se|tem se|infere-se|conclui-se|depreende-se|extrai-se|verifica- ?se|constata- ?se|nota-se|observa- ?se|percebe-se|denota-se|ve-se|evidencia-se|trata-se|nao ha duvidas?|nao resta duvida|nao restam duvidas|compete ao|compete a|cabe ao|cabia ao|incumbe|incumbia|com razao|razao assiste|assiste razao)(?![a-z0-9])/;
-export const ALEGACAO_DIST_MAX = 600, ALEGACAO_SUJEITO_JANELA = 200, ALEGACAO_CABECA = 0.4;
-// v1.13.0 (2ª rodada cega, 160 trechos): o relato vale DENTRO DA FRASE. A frase que contém o grosso do trecho precisa
-// trazer o verbo de relato (antes do trecho ou na cabeça dele: "Cacoal/RO. Requereram a declaração…"); frase nova sem
-// verbo de relato é o tribunal ou narração ("Juntou cópia do contrato", "A norma invocada subordina…"). Não conta: verbo
-// negado ("não narra nenhum prejuízo"), impessoal ("reitera-se"), oração concessiva em que o trecho é a principal
-// ("Embora o banco sustente X, os documentos…"), adversativa entre o verbo e o trecho ("…, mas não demonstra"), e
-// atribuição explícita dentro do próprio trecho ("que, segundo o apelado, tem…").
-const ABREV = /(?:^|[^a-z0-9])(?:art|arts|n|no|nos|fl|fls|id|ids|des|desa|dr|dra|sr|sra|min|rel|inc|p|pp|pag|proc|cf|num|ex|exmo|exma|res|sum|ed|v|vol|cap|al|rr|c\/c|ss)$/;
-const RE_ADVERSATIVA = /(?<![a-z0-9])(?:contudo|todavia|entretanto|no entanto|porem|mas(?! tambem))(?![a-z0-9])/;
-const RE_CONCESSIVA = /(?<![a-z0-9])(?:embora|conquanto|ainda que|apesar de|em que pese|nao obstante|a despeito de|malgrado|se bem que)(?![a-z0-9])[^,.;]{0,90}$/;
-// v1.14.0: "ao contrário do que sustenta o apelante, …" é o tribunal refutando — o verbo de relato não abre alegação
-const RE_AO_CONTRARIO = /(?:ao contrario|diferentemente|diversamente|contrariamente)\s+(?:do|ao)\s+que\s+(?:[a-z]+\s+){0,2}$/;
-const RE_ATRIB_EXPLICITA = /(?<![a-z0-9])(?:segundo|conforme|de acordo com|na visao d[eoa]|para)\s+(?:[oa]s?\s+)?(?:parte\s+)?(?:apelantes?|apelad[oa]s?|agravantes?|agravad[oa]s?|recorrentes?|recorrid[oa]s?|embargantes?|embargad[oa]s?|autor(?:a|es|as)?|reus?|requerentes?|requerid[oa]s?|banco|inicial|contestacao)(?![a-z0-9])/;
-
-/** início (no texto) da frase que contém a posição `p`, olhando só para trás até `piso`. Usa o BRUTO: ponto + espaço +
- * maiúscula, descontadas as abreviações ("art. 5º", "Des. Fulano", "fls. 12"). */
-function inicioDaFrase(bruto, tn, piso, p) {
-  let ini = piso;
-  const seg = bruto.slice(piso, p);
-  for (const m of seg.matchAll(/[.;!?]["”’)\]]?\s+(?=["“‘(\[]?[A-ZÀ-Ý0-9])/g)) {
-    if (m[0][0] === "." && ABREV.test(tn.slice(Math.max(piso, piso + m.index - 8), piso + m.index))) continue;
-    ini = piso + m.index + m[0].length;
-  }
-  return ini;
-}
-
-/** O trecho [ini0, fim) (texto norm1; `bruto` com as mesmas posições) é tese que o acórdão relata como DE UMA PARTE? */
-export function alegacaoDaParte(tn, ini0, fim = ini0 + 80, bruto = null) {
-  const cabeca = ini0 + Math.floor((fim - ini0) * ALEGACAO_CABECA);
-  const piso = Math.max(0, ini0 - ALEGACAO_DIST_MAX);
-  const frase0 = inicioDaFrase(bruto || tn, tn, piso, cabeca);
-  // frase que começa DENTRO do trecho ("…do CPC. Diante disso, requer o provimento…"): o verbo pode estar até o fim dele
-  const ate = frase0 > ini0 ? fim : cabeca;
-  const frase = tn.slice(frase0, ate);
-  if (RE_ATRIB_EXPLICITA.test(tn.slice(ini0, fim))) return false;
-  let fimVerbo = -1, explicitoNoTrecho = false;
-  for (const m of frase.matchAll(VERBO_RELATO)) {
-    const pos = frase0 + m.index, depois = tn.slice(pos + m[0].length, pos + m[0].length + 45);
-    if (/^-se/.test(depois)) continue;                                              // "reitera-se", "alega-se"
-    if (/(?:^|[^a-z0-9])(?:nao|nem|jamais|nunca)\s+(?:se\s+)?$/.test(tn.slice(Math.max(frase0, pos - 12), pos))) continue;   // "não narra"
-    if (RE_AO_CONTRARIO.test(tn.slice(Math.max(frase0, pos - 30), pos))) continue;                                         // "ao contrário do que sustenta"
-    const antes = tn.slice(Math.max(frase0, pos - ALEGACAO_SUJEITO_JANELA), pos);
-    // verbo abrindo a frase, com até dois adjuntos curtos antes: "Alega,", "No mérito, aduz", "Ao final, com base nessa retórica, propugna"
-    const noInicio = /^\s*(?:[a-z]+(?: [a-z]+){0,4},\s+){0,2}(?:[a-z]+\s+){0,2}$/.test(tn.slice(frase0, pos));
-    const sujeito = PARTE_NO_TEXTO.test(antes) || SUJEITO_EM_RAZOES.test(antes) || PARTE_NO_TEXTO.test(depois.slice(0, 40).split(/[,.;]| que /)[0]);   // "Alega o agravante que…"
-    if (m[0] === "diz" ? !noInicio : !sujeito && !noInicio) continue;
-    fimVerbo = pos + m[0].length;
-    explicitoNoTrecho = pos >= ini0 && PARTE_NO_TEXTO.test(tn.slice(ini0, pos));     // "o embargante insiste…" dentro do trecho
-  }
-  if (fimVerbo < 0 || explicitoNoTrecho) return false;
-  const entre = tn.slice(fimVerbo, Math.max(fimVerbo, cabeca));
-  if (RE_VOZ_PROPRIA.test(entre) || VOZ_DO_TRIBUNAL.test(entre)) return false;
-  const adv = RE_ADVERSATIVA.exec(entre);
-  // "não X, mas Y" é correlação dentro da própria alegação, não o tribunal respondendo
-  if (adv && !(adv[0] === "mas" && /(?<![a-z0-9])nao(?![a-z0-9])[^.;]{0,70}$/.test(entre.slice(0, adv.index)))) return false;
-  // concessiva antes do verbo + vírgula depois dele: o trecho é a oração principal, do tribunal
-  const ateVerbo = tn.slice(frase0, fimVerbo);
-  if (RE_CONCESSIVA.test(ateVerbo.slice(0, ateVerbo.length)) && tn.slice(fimVerbo, ini0).includes(",")) return false;
-  return true;
-}
 
 // NEGAÇÃO (v1.12.0, remedida em gabarito cego e duplo: a regra herdada disparava com "inexistente", "negativo", "vedada"
 // ou "improcedente" em qualquer ponto dos 60 caracteres anteriores, e com negação que só alcançava a 1ª palavra do
@@ -180,6 +103,7 @@ export function obiterAntesComPos(tn, ini0, fim, bruto, sentenca = false) {
   return m ? { marca: m[0], de: frase0, pos: frase0 + m.index } : null;
 }
 const emUmaLinha = (x) => String(x).replace(/\s+/g, " ").trim();
+const RE_JULGADO_NO_BLOCO = /relator\(?a?\)?(?: do acordao)?\s*:|data de julgamento|(?<![a-z])rel\.\s|\(tj-?[a-z]{2}|(?<![a-z0-9])(?:stj|stf|ementa)(?![a-z0-9])/;
 // A frase onde está a marca, do começo da marca (com 40 caracteres antes) até o trecho; se a marca já está na cabeça do próprio trecho, diz isso.
 export function fraseDoObiter(texto, ob, ini0) {
   if (ob.pos >= ini0) return " A marca está no começo do próprio trecho citado.";
@@ -271,27 +195,108 @@ export function negacaoNoCorte(lac, seguinte = "", anterior = "") {
   return null;
 }
 
+
+// PISO DE SURPRESA POR FRAGMENTO (1.41.9). "a cobrança [...] é [...] devida" saía ✅ LITERAL: cada palavra solta aparece em qualquer
+// acórdão a menos de 1.500 caracteres da anterior. A surpresa do fragmento é a soma, em bits, da frequência inversa de DOCUMENTO das
+// palavras e dos pares de palavras (P(w1)·P(w2|w1)…, tabela gerada dos recibos por harness/gerar-raridade.mjs; termo fora da tabela
+// conta como presente em DF_MIN/2 documentos). Calibrado na cópia dos recibos (6.555; estatística de 24/10/2026): 3.489 citações
+// elididas sintetizadas de texto real × 2.451 costuras de 1–2 palavras em ordem. Com fragmento < 2 bits, ou de 1 palavra, ou total
+// < 24 bits, ou nenhum fragmento de 3+ palavras: 0 costura sai ✅ pleno; ficam com aviso 0,7–1,7% das elididas de fragmentos longos
+// e ~25% das que têm cabeça ou cauda de 2–3 palavras comuns ("[...] é devida") — o aviso é o certo nesses: o fragmento comum não
+// prova que a frase seja aquela. Só vale com 2+ fragmentos (citação sem corte já tem o piso de 4 palavras e 25 caracteres).
+import { TABELA as RARIDADE } from "./raridade-tabela.js";
+export const PISO_FRAGMENTO_BITS = 2, PISO_TOTAL_BITS = 24, FRAGMENTO_LONGO_PALAVRAS = 3, FRAGMENTO_LONGO_3MAIS = 5;
+const bitsPalavra = (w) => Math.log2(RARIDADE.N / (RARIDADE.uni[w] || RARIDADE.DF_MIN / 2));
+/** Surpresa do fragmento (palavras norm1), em bits. */
+export function surpresaFragmento(ws) {
+  if (!ws.length) return 0;
+  let b = bitsPalavra(ws[0]);
+  for (let i = 1; i < ws.length; i++)
+    b += Math.max(0, Math.log2(RARIDADE.N / (RARIDADE.bi[ws[i - 1] + " " + ws[i]] || RARIDADE.DF_MIN / 2)) - bitsPalavra(ws[i - 1]));
+  return b;
+}
+/** Costura de fragmentos curtos? → { frags: [{texto, palavras, bits}], total, motivos } ou null. */
+export function costuraCurta(fragsPalavras) {
+  if (fragsPalavras.length < 2) return null;
+  const fs = fragsPalavras.map((ws) => ({ texto: ws.join(" "), palavras: ws.length, bits: surpresaFragmento(ws) }));
+  const total = fs.reduce((s, f) => s + f.bits, 0), motivos = [];
+  const curtos = fs.filter((f) => f.palavras < 2 || f.bits < PISO_FRAGMENTO_BITS);
+  if (curtos.length) motivos.push(`fragmento(s) abaixo do piso (${PISO_FRAGMENTO_BITS} bits ou 1 palavra): ${curtos.map((f) => `«${f.texto}» ${f.bits.toFixed(1)} bits`).join(", ")}`);
+  if (total < PISO_TOTAL_BITS) motivos.push(`surpresa total ${total.toFixed(1)} bits (piso ${PISO_TOTAL_BITS})`);
+  if (!fs.some((f) => f.palavras >= FRAGMENTO_LONGO_PALAVRAS)) motivos.push(`nenhum fragmento com ${FRAGMENTO_LONGO_PALAVRAS}+ palavras`);
+  // Reataque Fable (24/10/2026): 3+ fragmentos de 3 palavras de frases vizinhas passavam sem aviso em 20% (sintético). Com 3 ou mais
+  // fragmentos, ao menos um precisa ter FRAGMENTO_LONGO_3MAIS palavras (um pedaço de frase de verdade).
+  if (fs.length >= 3 && !fs.some((f) => f.palavras >= FRAGMENTO_LONGO_3MAIS)) motivos.push(`${fs.length} fragmentos e nenhum com ${FRAGMENTO_LONGO_3MAIS}+ palavras`);
+  return motivos.length ? { frags: fs, total, motivos } : null;
+}
+
+// CASAMENTO APROXIMADO (1.41.9), só para o que não muda o conteúdo: hífen de quebra de linha ("con- trato"), hífen invisível U+00AD
+// (norm1 o mantém e ele partia a palavra) e o ponto de milhar ("1.000" = "1000", o mesmo valor). Números, dígitos e negadores continuam
+// exatos: nenhuma palavra é omitida nem trocada, não há distância de edição. Palavra do texto partida por quebra não casa pela METADE
+// ("procedente" dentro de "im- procedente" deixa de casar).
+const RE_QUEBRA_TEXTO = /[a-z](?:\u00ad|-\s+)[a-z]/;
+const SEP_QUEBRA = String.raw`(?:\u00ad\s*|-\s+)?`;
+// só número solto ("e1.025" e "2019.822" de número CNJ não são milhar)
+const RE_MILHAR = /(?<![\dA-Za-zÀ-ÿ.,])\d{1,3}(?:\.\d{3})+(?!\d|[.,]?[A-Za-zÀ-ÿ]|[.]\d)/g;
+function padraoPalavra(w, quebra) {
+  if (/^\d{4,}$/.test(w)) {
+    // 1000 ≡ 1.000 (todos os pontos de milhar ou nenhum); com pontos, nunca o começo de número maior ("1.000" dentro de "1.000.000")
+    const r = w.length % 3, gs = [];
+    if (r) gs.push(w.slice(0, r));
+    for (let i = r; i < w.length; i += 3) gs.push(w.slice(i, i + 3));
+    return `(?:${w}|${gs.join(String.raw`\.`)}${String.raw`(?!\.\d{3}(?!\d))`})`;
+  }
+  if (quebra && /^[a-z]{2,}$/.test(w)) return w.split("").join(SEP_QUEBRA);
+  return esc(w);
+}
+/** O trecho como a pessoa o colou: hífen invisível fora, quebra "con- trato" juntada, milhar sem ponto. */
+// `hifen`: a 2ª tentativa mantém o hífen ("Trata- se" → "Trata-se"), para o texto que tem o composto/ênclise SEM a quebra
+const limparTrecho = (s, milhar = true, hifen = false) => { const x = String(s || "").replace(/\u00ad/g, "").replace(/([a-zà-ÿ])-\s+([a-zà-ÿ])/g, hifen ? "$1-$2" : "$1$2"); return milhar ? x.replace(RE_MILHAR, (m) => m.replace(/\./g, "")) : x; };
+// metade final de palavra partida no texto depois de PREFIXO NEGATIVO ("im- procedente", "in- devido", "des- provido", "ir- regular"):
+// "procedente" não casa ali. Medido na cópia: quase todo "x- y" do portal é composto ou ênclise ("trata- se", "fático- probatório"), e
+// bloquear toda metade perdia citação legítima; só o prefixo que inverte o sentido é bloqueado (negadores continuam exatos).
+const RE_METADE_ANTES = /(?<![a-zà-ÿ])(?:(?:in|im|i|ir|des|dis|n[ãa]o)(?:\u00ad\s*|-\s+)|n[ãa]o-)$/i;   // "não-incidência" colado também
+const metadeDePalavra = (bruto, a) => RE_METADE_ANTES.test(bruto.slice(Math.max(0, a - 12), a)) && /[a-zà-ÿ]/i.test(bruto[a] || "");
+
 /** Confere `trecho` em `texto` (documento do TJRO do `tipo` dado). Posições em norm1 = posições no bruto. */
+// Reataque Fable (24/10/2026), regressão: o trecho colado do PDF com quebra de hífen ("Trata- se", "manifestou- se", "fático-
+// probatório") era juntado num token só ("tratase") e não casava com o texto que tem "Trata-se" (❌ em 61% dos recibos reais). Se a
+// 1ª tentativa (quebra juntada) não casa e o trecho tem "x- y" entre LETRAS, tenta de novo mantendo o hífen; números e negadores
+// seguem exatos (só muda o separador entre duas letras).
 export function conferirTrecho(texto, trecho, tipo) {
+  const r = conferirTrecho0(texto, trecho, tipo, false);
+  if (!r.ok && r.fragmento !== undefined && /[a-zà-ÿ]-\s+[a-zà-ÿ]/.test(String(trecho || ""))) {
+    const r2 = conferirTrecho0(texto, trecho, tipo, true);
+    if (r2.ok) return r2;
+  }
+  return r;
+}
+function conferirTrecho0(texto, trecho, tipo, hifen) {
   // leva B: ligadura (ﬁ, ﬂ) vira letras dos DOIS lados antes de comparar — norm1 é 1 → 1 e ficava só com a 1ª letra
   texto = expandirLigaduras(texto);
-  trecho = expandirLigaduras(trecho);
+  const comPontos = limparTrecho(expandirLigaduras(trecho), false, hifen);   // o piso de tamanho conta o trecho como foi escrito
+  trecho = limparTrecho(expandirLigaduras(trecho), true, hifen);
   const frags = String(trecho || "").split(RE_CORTE).map((f) => f.trim()).filter(Boolean);
   if (!frags.length) return { ok: false, erro: "trecho vazio" };
-  const util = norm1(frags.join(" ")).trim();
+  const util = norm1(comPontos.split(RE_CORTE).map((f) => f.trim()).filter(Boolean).join(" ")).trim();
   const nPal = (util.match(new RegExp(`[${W}]+`, "g")) || []).length;
   if (nPal < PISO_TRECHO_PALAVRAS || util.length < PISO_TRECHO_CHARS)
     return { ok: false, erro: `trecho curto demais para conferência útil (mínimo ${PISO_TRECHO_PALAVRAS} palavras e ${PISO_TRECHO_CHARS} caracteres): qualquer acórdão contém isso` };
-  const tn = norm1(String(texto || ""));
+  const bruto = String(texto || "");
+  const tn = norm1(bruto);
+  const quebra = RE_QUEBRA_TEXTO.test(tn);
   let pos = 0, ini0 = null;
-  const spans = [];
+  const spans = [], fragsPalavras = [];
   for (const f of frags) {
     const palavras = norm1(f).match(new RegExp(`[${W}]+`, "g"));
     if (!palavras) return { ok: false, fragmento: f };
-    const re = new RegExp(`(?<![${W}])` + palavras.map(esc).join(`[^${W}]+`) + `(?![${W}])`);
-    const m = re.exec(tn.slice(pos));
+    fragsPalavras.push(palavras);
+    const re = new RegExp(`(?<![${W}])` + palavras.map((w) => padraoPalavra(w, quebra)).join(`[^${W}]+`) + `(?![${W}])`, "g");
+    re.lastIndex = pos;
+    let m = re.exec(tn);
+    while (m && metadeDePalavra(bruto, m.index)) { re.lastIndex = m.index + 1; m = re.exec(tn); }
     if (!m) return { ok: false, fragmento: f };
-    const a = pos + m.index, b = a + m[0].length;
+    const a = m.index, b = a + m[0].length;
     if (spans.length && a - spans[spans.length - 1][1] > VAO_MAXIMO)
       return { ok: false, fragmento: f, erro: `o fragmento aparece, mas a ${a - spans[spans.length - 1][1]} caracteres do anterior (máximo ${VAO_MAXIMO}): \`[...]\` não pode costurar partes distantes do acórdão` };
     spans.push([a, b]);
@@ -299,13 +304,43 @@ export function conferirTrecho(texto, trecho, tipo) {
     pos = b;
   }
   const alertas = [], notas = [];
+  const cost = costuraCurta(fragsPalavras);
+  if (cost)
+    alertas.push(`FRAGMENTOS CURTOS (costura de [...]): os fragmentos estão no documento, na ordem, mas são comuns demais para provar que a frase citada é a do acórdão — ${cost.motivos.join("; ")}. Palavras soltas aparecem em qualquer acórdão a poucas linhas umas das outras. Cite a frase inteira, ou fragmentos maiores, e confira o contexto.`);
   const fx = faixasAlheias(String(texto || ""), tipo);
-  const emTranscricao = spans.some(([a, b]) => fx.transcritas.some(([x, y]) => sobrepoe(a, b, x, y)));
+  // Medição cega da amostra A (23/10/2026): qualquer sobreposição rotulava o trecho inteiro como TRANSCRIÇÃO — o voto divergente
+  // VENCEDOR de v16 levou o alerta por duas palavras finais ("Vejamos: Apelação cível."). Agora, como no VOTO DIVERGENTE, conta a
+  // MAIORIA do trecho; o trecho que só encosta no bloco leva um aviso próprio, sem ser rotulado como transcrição.
+  const tocaTranscricao = spans.some(([a, b]) => fx.transcritas.some(([x, y]) => sobrepoe(a, b, x, y)));
+  const cobTranscrita = tocaTranscricao ? coberturaCitada(fx.transcritas, ini0, pos) : 0;
+  const emTranscricao = tocaTranscricao && cobTranscrita * 2 > pos - ini0;
   const naCasa = !fx.ementaDaCasa && fx.casaIni < tn.length && spans.every(([a]) => a >= fx.casaIni);
-  if (fx.ementaDaCasa) notas.push("VOZ DA CASA: o documento é a EMENTA do próprio julgado.");
+  // v1.15.0: onde o trecho está (seção da ementa, relatório/fundamentação/dispositivo do voto) e marca de obiter
+  const posicao = posicaoNoJulgado(String(texto || ""), tipo, ini0, pos, fx);
+  // Medição cega da amostra A (23/10/2026): na ementa da casa, "I. CASO EM EXAME" e "II. QUESTÃO EM DISCUSSÃO" relatam a tese da
+  // parte ("Os agravantes sustentam…") e a ferramenta afirmava VOZ DA CASA sem rodar ALEGAÇÃO DA PARTE. Nessas duas seções não há
+  // nota de voz da casa e a alegação da parte é procurada como no voto.
+  const relatoNaEmenta = (naCasa || fx.ementaDaCasa) && !emTranscricao && ehRelatoDaEmenta(posicao);
+  if (relatoNaEmenta) { /* sem VOZ DA CASA: a seção relata o caso, a POSIÇÃO NO JULGADO diz qual */ }
+  else if (fx.ementaDaCasa) notas.push("VOZ DA CASA: o documento é a EMENTA do próprio julgado.");
   else if (naCasa) notas.push("VOZ DA CASA: o trecho está na ementa/fecho do próprio acórdão (parte que é palavra do TJRO, mesmo que o voto transcreva frase igual de outro julgado).");
-  if (emTranscricao)
+  // 1.41.9 (item 4): o bloco transcrito anunciado como a SENTENÇA/decisão de origem ("Em sentença, consignou o juízo de origem:
+  // [...]") é o 1º grau do MESMO processo, não "outro julgado/tribunal". Só o tipo muda; o alerta continua (voz.js).
+  const blocoSent = emTranscricao ? (() => {
+    const b = fx.transcritas.map(([x, y]) => [x, y, Math.max(0, Math.min(pos, y) - Math.max(ini0, x))]).sort((p, q) => q[2] - p[2])[0];
+    // a custódia une blocos vizinhos: depois de uma atribuição de julgado ("Relator(a) do Acórdão", "Data de julgamento", STJ, ementa) entre o
+    // início do bloco e o trecho, o trecho já pode ser o julgado transcrito em seguida — aí fica TRANSCRIÇÃO
+    return b && !RE_JULGADO_NO_BLOCO.test(tn.slice(b[0], ini0)) ? sentencaAnunciadaAntes(String(texto || ""), tn, b[0]) : null;
+  })() : null;
+  if (emTranscricao && blocoSent)
+    alertas.push(`SENTENÇA TRANSCRITA: o trecho está no bloco em que o voto transcreve a sentença/decisão de 1º grau deste processo («${emUmaLinha(blocoSent).slice(-160)}») — é o juízo de origem falando, não o TJRO. Se o acórdão adota a sentença (por seus próprios fundamentos, art. 46 da Lei 9.099/95), diga isso ao citar; senão, cite o que o voto decidiu sobre ela.`);
+  else if (emTranscricao)
     alertas.push("TRANSCRIÇÃO: o trecho está dentro de bloco que o voto transcreve de OUTRO julgado/tribunal — não é palavra do TJRO neste processo. Se for citar, cite como o TJRO citando; melhor: pesquise o original.");
+  else if (tocaTranscricao) {
+    const [x, y] = fx.transcritas.find(([a, b]) => sobrepoe(ini0, pos, a, b));
+    const ponta = emUmaLinha(String(texto || "").slice(Math.max(ini0, x), Math.min(pos, y))).slice(0, 120);
+    alertas.push(`ENCOSTA EM TRANSCRIÇÃO: ${cobTranscrita} de ${pos - ini0} caracteres do trecho estão num bloco que o voto transcreve de outro julgado — o grosso não está no bloco, mas a ponta («${ponta}») é de outro texto. Corte o trecho fora do bloco transcrito antes de citar.`);
+  }
   // v1.14.0: conta a MAIORIA do trecho dentro da faixa (trecho que só encosta na fronteira — "…é como voto. DECLARAÇÃO DE
   // VOTO…" — não é o vencido), e o alerta já traz a proclamação do fecho, para o agente ler quem venceu sem reabrir o acórdão.
   if (fx.divergente && coberturaCitada([fx.divergente], ini0, pos) * 2 > pos - ini0)
@@ -317,9 +352,23 @@ export function conferirTrecho(texto, trecho, tipo) {
     const abreCit = cit.find(([x, y]) => x <= ini0 + (pos - ini0) / 2 && y >= ini0);
     if (dentro * 2 > pos - ini0 && !(abreCit && RE_TESE_PROPRIA.test(tn.slice(Math.max(0, abreCit[0] - 80), abreCit[0]))))
       alertas.push("ENTRE ASPAS: o trecho parece estar dentro de aspas no acórdão — é o tribunal citando alguém (doutrina, lei, sentença, outro julgado). Confira de quem é a frase antes de atribuí-la ao TJRO.");
+    else {
+      // a MAIORIA do trecho dentro do bloco anunciado (como no VOTO DIVERGENTE)
+      // Reataque Fable (24/10/2026): as MESMAS faixas do recibo (início 0, fim na voz da casa) — com fim no trecho, a retomada do
+      // relator achada depois dele não fechava o bloco aqui e fechava no recibo (29 pontos em 25 documentos divergiam do lint)
+      const intro = faixasIntroduzidas(tn, String(texto || ""), 0, fx.casaIni)
+        .find(([x, y]) => coberturaCitada([[x, y]], ini0, pos) * 2 > pos - ini0);
+      if (intro && intro[2] === "DOUTRINA?")
+        notas.push(`DOUTRINA? (baixa confiança): o trecho vem depois de um introdutor com dois-pontos («${emUmaLinha(String(texto || "").slice(Math.max(0, intro[0] - 90), intro[0]))}») que pode anunciar texto alheio, mas a frase não nomeia autor — é provável que seja o próprio relator explicando. Confira se há citação de doutrina antes de atribuir ao TJRO.`);
+      else if (intro && intro[2] === "DOUTRINA")
+        alertas.push(`DOUTRINA: o trecho vem depois de o voto anunciar uma lição doutrinária (ou outro texto citado) com dois-pontos («${emUmaLinha(String(texto || "").slice(Math.max(0, intro[0] - 90), intro[0]))}»), sem aspas — é o autor citado, não o TJRO. Cite como doutrina citada no acórdão, ou confira onde o voto retoma a palavra.`);
+      else if (intro)
+        alertas.push(`SENTENÇA TRANSCRITA: o trecho vem depois de o voto anunciar a transcrição da sentença/decisão com dois-pontos («${emUmaLinha(String(texto || "").slice(Math.max(0, intro[0] - 90), intro[0]))}»), sem aspas — é o 1º grau falando (pode ser só o relato do juiz), não o TJRO. Se o acórdão adota a sentença, diga isso ao citar.`);
+    }
     if (alegacaoDaParte(tn, ini0, pos, String(texto || "")))
       alertas.push("ALEGAÇÃO DA PARTE: o texto relata o que uma parte (apelante, banco, Estado…) sustenta, alega ou requer logo antes do trecho — pode ser tese da parte, não decisão do tribunal. Confira no relatório/voto quem fala.");
-  }
+  } else if (relatoNaEmenta && alegacaoDaParte(tn, ini0, pos, String(texto || "")))
+    alertas.push("ALEGAÇÃO DA PARTE: o trecho está na seção da ementa que RELATA o caso (caso em exame / questão em discussão) e vem depois de a parte sustentar, alegar ou requerer — é a tese da parte resumida na ementa, não o que o tribunal decidiu. Cite pelas razões de decidir ou pelo dispositivo.");
   if (negacaoAntes(tn, ini0, pos, String(texto || "")))
     alertas.push(negacaoProxima(tn, ini0) ? "NEGAÇÃO: há negativa logo antes do trecho — o recorte pode inverter o julgado. Não citar sem ler a frase inteira."
       : "NEGAÇÃO (distante)?: há uma negativa algumas palavras antes do trecho, fora dele. Na maioria das vezes ela fecha a própria oração e não inverte o recorte (medido às cegas), mas leia a frase inteira antes de citar.");
@@ -333,21 +382,38 @@ export function conferirTrecho(texto, trecho, tipo) {
     alertas.push(`NEGAÇÃO OMITIDA NO CORTE: o [...] tira «${curto}»${negTxt === omitido ? ", negativa que rege o trecho seguinte" : `, com a negativa «${negTxt}» regendo o trecho seguinte`} — o recorte pode inverter o julgado. Não citar sem a negativa ou sem ler a frase inteira.`);
     break;
   }
-  // v1.15.0: onde o trecho está (seção da ementa, relatório/fundamentação/dispositivo do voto) e marca de obiter
-  const posicao = posicaoNoJulgado(String(texto || ""), tipo, ini0, pos, fx);
   if (posicao) notas.push(`POSIÇÃO NO JULGADO: ${posicao}.`);
-  const ob = !emTranscricao && !naCasa && !fx.ementaDaCasa && !alertas.some((a) => a.startsWith("ENTRE ASPAS")) ? obiterAntesComPos(tn, ini0, pos, String(texto || ""), String(tipo || "").trim().toUpperCase() === "SENTENÇA") : null;   // frase alheia entre aspas não é obiter do tribunal
+  const ob = !emTranscricao && !naCasa && !fx.ementaDaCasa && !alertas.some((a) => a.startsWith("ENTRE ASPAS") || a.startsWith("DOUTRINA:") || a.startsWith("SENTENÇA TRANSCRITA:")) ? obiterAntesComPos(tn, ini0, pos, String(texto || ""), String(tipo || "").trim().toUpperCase() === "SENTENÇA") : null;   // frase alheia entre aspas não é obiter do tribunal
+  // 1.41.9 (item 3): conteúdo de concessiva negativa ("ainda que não…, dou provimento"): o tribunal admite o ponto e decide apesar
+  // dele. Fora de transcrição e de texto alheio (aspas, doutrina, sentença), como o OBITER; vale também na ementa da casa.
+  const conc = !ob && !emTranscricao && !alertas.some((a) => a.startsWith("ENTRE ASPAS") || a.startsWith("DOUTRINA:") || a.startsWith("SENTENÇA TRANSCRITA:")) ? concessivaNegativa(tn, ini0, pos) : null;
+  if (conc)
+    alertas.push(`OBITER DICTUM? (concessiva): o trecho é o conteúdo de uma oração concessiva («${emUmaLinha(String(texto || "").slice(conc.a, conc.b))}») — o tribunal ADMITE o ponto e decide APESAR dele; não é a razão do resultado e, citado sem a oração principal («${conc.posposta ? "…" : ""}${emUmaLinha(String(texto || "").slice(conc.pi, conc.pf))}${conc.posposta ? "" : "…"}»), pode parecer apoiar o resultado oposto. Cite a frase inteira ou só a oração principal.`);
   if (ob)
     alertas.push(`OBITER DICTUM?: o trecho vem sob «${ob.marca}» — raciocínio hipotético ou fundamento alternativo; o resultado do julgado não dependeu dele. Vale como reforço, não como ratio decidendi; cite dizendo que é obiter.${fraseDoObiter(String(texto || ""), ob, ini0)}`);
   const contexto = String(texto || "").slice(Math.max(0, ini0 - 120), pos + 120).replace(/\s+/g, " ").trim();
-  return { ok: true, alertas, notas, contexto, spans };
+  // 1.41.9: "só confirma com evidência". Sem alerta NÃO é prova de que a frase é do tribunal (medição cega de 24/10/2026: 17 de 43
+  // trechos ✅ sem alerta eram relatório de parte, sentença/artigo/voto de outro tribunal transcritos sem marca). A voz do TJRO só
+  // é afirmada com marca positiva: ementa/fecho do próprio acórdão. Voto: LITERAL, mas a voz fica por conferir.
+  const naoEVoz = /^(?:RELAT[ÓO]RIO|antes do voto|cabeçalho da peça|cabeçalho da sentença)/.test(posicao || "");
+  // Reataque Fable (24/10/2026): "casa" não é prova por si — (1) formato antigo com fecho no alto e relatório/voto/voto vencido depois
+  // (33 de 39 ✅ falsos): cabeçalho RELATÓRIO/VOTO dentro da casa antes do trecho, ou trecho a mais de 2.000 caracteres do fecho, tira a
+  // confirmação; (2) tese da parte relatada na ementa fora das seções I/II; (3) texto entre aspas dentro da ementa (lei, tema, IRDR).
+  const brutoT = String(texto || "");
+  const casaIni = fx.ementaDaCasa ? 0 : fx.casaIni;
+  const cabAntes = /(?<![A-Za-zÀ-ú])(?:RELAT[ÓO]RIO|VOTO(?:\s+VENCID[OA]|\s+DIVERGENTE|\s+VENCEDOR)?|DECLARA[ÇC][ÃA]O\s+DE\s+VOTO|SENTEN[ÇC]A)\b/.test(brutoT.slice(casaIni, ini0));
+  const longeDoFecho = !fx.ementaDaCasa && fx.fecho < tn.length && ini0 - fx.fecho > 1000;
+  const aspasNaCasa = coberturaCitada(trechosCitados(brutoT), ini0, pos) * 2 > pos - ini0;
+  const parteNaCasa = alegacaoDaParte(tn, ini0, pos, brutoT);
+  const vozConfirmada = !alertas.length && !naoEVoz && notas.some((n) => n.startsWith("VOZ DA CASA")) && !cabAntes && !longeDoFecho && !aspasNaCasa && !parteNaCasa;
+  return { ok: true, alertas, notas, contexto, spans, vozConfirmada, naoEVoz };
 }
 
 /** Recibos a partir de uma resposta do portal (mesmo formato de gravarRecibos), sem tocar no disco. */
 export const recibosDeResposta = (data) => ((data?.hits?.hits) || []).map((h) => recibo(h._source || {})).filter(Boolean);
 
 const RODAPE =
-  `\nCobre o TEXTO INTEIRO de cada documento (ementa, relatório, voto, fecho) e diz DE QUEM é a frase: TRANSCRIÇÃO (ementa de outro tribunal/julgado copiada no voto), VOTO DIVERGENTE (pode ser o vencido), ENTRE ASPAS, ALEGAÇÃO DA PARTE, NEGAÇÃO (antes do trecho ou omitida pelo \`[...]\`) e OBITER DICTUM? (raciocínio hipotético/alternativo). Trecho com alerta NÃO entra na ficha como posição do órgão sem resolver a atribuição. A nota POSIÇÃO NO JULGADO diz ONDE a frase está (seção da ementa do CNJ, relatório, fundamentação ou dispositivo do voto): é a evidência para \`ratio_ou_dictum\` da ficha, não a decisão. ` +
+  `\nCobre o TEXTO INTEIRO de cada documento (ementa, relatório, voto, fecho) e diz DE QUEM é a frase: TRANSCRIÇÃO (ementa de outro tribunal/julgado copiada no voto), VOTO DIVERGENTE (pode ser o vencido), ENTRE ASPAS, ALEGAÇÃO DA PARTE, DOUTRINA, SENTENÇA TRANSCRITA, NEGAÇÃO (antes do trecho ou omitida pelo \`[...]\`), FRAGMENTOS CURTOS (costura de \`[...]\` com pedaços comuns demais para provar a frase) e OBITER DICTUM? (raciocínio hipotético/alternativo ou conteúdo de concessiva negativa). Trecho com alerta NÃO entra na ficha como posição do órgão sem resolver a atribuição. A nota POSIÇÃO NO JULGADO diz ONDE a frase está (seção da ementa do CNJ, relatório, fundamentação ou dispositivo do voto): é a evidência para \`ratio_ou_dictum\` da ficha, não a decisão. ` +
   `Comparação por palavra inteira, tolerante a caixa, acento e pontuação; mínimo de ${PISO_TRECHO_PALAVRAS} palavras; \`[...]\` separa fragmentos em ordem, a até ${VAO_MAXIMO} caracteres. Se ❌: não cite entre aspas — parafraseie, ou confira no portal. A heurística é a mesma do recibo que o lint da peticao-rg lê: ✅ aqui e erro lá não deveriam divergir; se divergirem, vale o lint.`;
 
 /**
@@ -402,6 +468,12 @@ export async function verificarCitacao({ nr_processo, id_documento, trecho, busc
     const r = conferirTrecho(d.texto, trecho, d.tipo);
     let marca = r.ok ? "✅ LITERAL" : "❌ NÃO ENCONTRADO";
     if (r.ok && r.alertas.length) marca = "✅ LITERAL, MAS COM ALERTA DE ATRIBUIÇÃO";
+    // 1.41.9: costura de fragmentos curtos não é ✅ LITERAL pleno — os pedaços existem, a frase não está provada
+    if (r.ok && r.alertas.some((a) => a.startsWith("FRAGMENTOS CURTOS"))) marca = "✅ FRAGMENTOS ACHADOS, MAS A COSTURA NÃO PROVA A FRASE (FRAGMENTOS CURTOS)";
+    // 1.41.9: sem marca positiva de voz o selo não é ✅ pleno (a ausência de alerta não prova de quem é a frase)
+    if (r.ok && !r.alertas.length && !r.vozConfirmada)
+      marca = r.naoEVoz ? "✅ LITERAL, MAS NÃO É VOZ DO TRIBUNAL (RELATÓRIO/NARRAÇÃO): é o relato do processo ou das partes"
+        : "✅ LITERAL, VOZ NÃO CONFIRMADA: a frase existe no documento, mas nada prova que seja do TJRO (pode ser parte, sentença, lei ou outro tribunal transcritos sem marca) — leia o contexto antes de atribuir";
     algumOk = algumOk || r.ok;
     const motivo = r.ok ? "trecho encontrado literalmente" : (r.erro || "trecho NÃO encontrado literalmente neste documento");
     linhas.push(`${marca} · id ${d.id_documento} · ${d.tipo || "?"} · ${cnj(d.nr_processo)} · julgado em ${d.data_julgamento || "?"} · ${motivo}`);

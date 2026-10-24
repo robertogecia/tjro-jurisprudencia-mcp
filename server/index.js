@@ -30,6 +30,7 @@ function citadosTexto(nr) {
 }
 import { avisoGrafiaRelator } from "./relatores.js";
 import {
+  PONTES,
   ORDENACOES,
   JANELA_MAXIMA,
   POR_PAGINA_MAX,
@@ -94,6 +95,7 @@ server.registerTool(
     title: "Buscar jurisprudência do TJRO",
     description:
       "Pesquisa jurisprudência do Tribunal de Justiça de Rondônia (TJRO) no portal público JURIS. " +
+      PONTES + " " +
       "Cobre ~4 milhões de documentos (ementas, acórdãos, sentenças, votos) de 1º e 2º grau. " +
       "Fonte dos precedentes LOCAIS de Rondônia, de todos os períodos. " +
       "Cada resultado traz citação pronta para peça, o ID DO DOCUMENTO (chave única daquela decisão) e link direto para a decisão no portal. " +
@@ -302,6 +304,7 @@ server.registerTool(
     description:
       "Retorna o texto integral dos documentos de UM processo do TJRO (acórdão, ementa, voto, relatório), " +
       "com citação pronta para peça e link do portal. " +
+      PONTES + " " +
       "Use o nr_processo devolvido por buscar_jurisprudencia_tjro quando precisar do teor completo, não só da ementa. " +
       "Parâmetro obrigatório: nr_processo (número CNJ). O id do documento NÃO é parâmetro e não substitui o número: a ferramenta busca pelo processo e devolve todos os julgamentos dele, cada um com o seu id; para citar um deles, use o id que aparece na resposta. " +
       "Se o processo tiver julgamentos distintos (original, embargos, segundos embargos), a resposta lista todos com data, relator e id " +
@@ -350,8 +353,8 @@ server.registerTool(
       "Comparação por palavra inteira, tolerante a caixa, acento e pontuação; mínimo de 4 palavras; `[...]` separa fragmentos que devem aparecer " +
       "em ordem, a no máximo 1.500 caracteres um do outro (não costura a ementa ao fim do voto). " +
       "✅ pode vir com ALERTA DE ATRIBUIÇÃO: TRANSCRIÇÃO (ementa do STJ/outro TJ copiada no voto — não é palavra do TJRO), VOTO DIVERGENTE (pode ser o " +
-      "vencido), ENTRE ASPAS (o tribunal citando alguém), ALEGAÇÃO DA PARTE, NEGAÇÃO (negativa logo antes do recorte), NEGAÇÃO OMITIDA NO CORTE (o `[...]` tira a negativa que rege o fragmento seguinte) e OBITER DICTUM? (\"ainda que assim não fosse\", " +
-      "\"a título de argumentação\": o resultado não dependeu da frase). Trecho com alerta não entra na ficha como posição do órgão sem resolver a atribuição. " +
+      "vencido), ENTRE ASPAS (o tribunal citando alguém), ALEGAÇÃO DA PARTE, DOUTRINA e SENTENÇA TRANSCRITA (livro ou sentença de origem transcritos), NEGAÇÃO (negativa logo antes do recorte), NEGAÇÃO OMITIDA NO CORTE (o `[...]` tira a negativa que rege o fragmento seguinte) e OBITER DICTUM? (\"ainda que assim não fosse\", " +
+      "\"a título de argumentação\", ou o conteúdo de uma concessiva negativa — \"ainda que não…, dou provimento\": o resultado não dependeu da frase). Trecho com alerta não entra na ficha como posição do órgão sem resolver a atribuição. " +
       "A nota POSIÇÃO NO JULGADO diz ONDE a frase está — seção da ementa do CNJ (caso em exame / questão / razões de decidir / dispositivo e tese), relatório, " +
       "fundamentação ou dispositivo do voto, fecho — e é a evidência para preencher ratio_ou_dictum na ficha; decidir continua sendo de quem lê. É a mesma heurística que o recibo leva ao lint da peticao-rg. " +
       "Prefira id_documento (o id da peça citada); com só o número, confere em todos os documentos do processo já lidos.",

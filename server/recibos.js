@@ -9,7 +9,8 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
 import { dirRecibos, cnj, link, relator, extrairOrgaoComOrigem, extrairRelatorDoTexto } from "./lib.js";
-import { norm1, camposAlheios, CUSTODIA_VERSAO } from "./custodia.js";
+import { norm1, CUSTODIA_VERSAO } from "./custodia.js";
+import { camposCustodia } from "./voz.js";
 import { rankearPorConsulta } from "./vocabulario.js";
 
 // memo por (arquivo, mtime): 600+ recibos de até 100 KB não se releem a cada chamada.
@@ -240,13 +241,14 @@ function trechoEmVolta(texto, tn, re) {
 }
 
 // ------------------------------------------------------------ recálculo da custódia ---
-const CAMPOS_CUSTODIA = ["trechos_transcritos", "trecho_divergente", "trechos_entre_aspas", "trechos_obiter", "texto_voz_propria"];
+const CAMPOS_CUSTODIA = ["trechos_transcritos", "trecho_divergente", "trechos_entre_aspas", "trechos_obiter", "texto_voz_propria",
+  "trechos_alegacao_parte", "trechos_doutrina", "trechos_sentenca_transcrita"];   // 1.41.9 (custódia v5): os três de voz.js
 const NORMALIZACAO = "trechos em bruto, recortados de `texto` — normalize com a sua própria função";
 const cedeAoEventLoop = () => new Promise((r) => setImmediate(r));
 
 /**
  * Refaz a custódia dos recibos gravados por uma heurística diferente da atual (sem `custodia_v` ou com número
- * diferente de CUSTODIA_VERSAO). Só os campos que camposAlheios produz mudam; texto, id, tipo e data ficam como estão.
+ * diferente de CUSTODIA_VERSAO). Só os campos que camposCustodia (voz.js) produz mudam; texto, id, tipo e data ficam como estão.
  * Atômico (arquivo temporário + rename) e sem sobrescrever um recibo que mudou desde a leitura (outro processo pode
  * estar gravando o mesmo). `forcar` recalcula todos, ignorando o carimbo (harness). `gravar:false` só conta.
  * Assíncrono em blocos: no 1º início depois de uma atualização são centenas de arquivos, e a busca do usuário não
@@ -270,7 +272,7 @@ export async function recalcularRecibos({ pasta = dirRecibos(), gravar = true, f
     if (!forcar && rec.custodia_v === CUSTODIA_VERSAO) continue;
     r.desatualizados++;
     let novo;
-    try { novo = camposAlheios(rec.texto, rec.tipo); } catch { r.ignorados++; continue; }   // custódia falhou: deixa como está
+    try { novo = camposCustodia(rec.texto, rec.tipo); } catch { r.ignorados++; continue; }   // custódia falhou: deixa como está
     const mudouCampo = CAMPOS_CUSTODIA.some((c) => JSON.stringify(rec[c]) !== JSON.stringify(novo[c]));
     if (mudouCampo) {
       r.alterados++;

@@ -19,7 +19,9 @@ function pasta() {
   const p = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-auditoria-"));
   const g = (s) => { const r = recibo(s); fs.writeFileSync(path.join(p, `${r.id_documento}.json`), JSON.stringify(r)); };
   g({ id_processo_documento: 11, nr_processo: A, tipo: "ACÓRDÃO", dtjulgamento_str: "21/11/2023", ds_orgao_julgador_colegiado: "3ª Câmara Cível",
-    ds_modelo_documento: "Relator: Des. SANSÃO SALDANHA Processo: Apelação. RELATÓRIO Trata-se de apelação. Sessão de 14/11/2023." + fecho("1ª Câmara Cível") });
+    // reataque Fable (24/10/2026): o rótulo da sessão vale no CABEÇALHO do próprio documento (antes do RELATÓRIO/EMENTA/VOTO);
+    // "Sessão de …" solta depois do RELATÓRIO, sem fecho datado, não confirma ✅ (teste em reataque-fable-datas-2410.test.js)
+    ds_modelo_documento: "Relator: Des. SANSÃO SALDANHA Processo: Apelação. Sessão de 14/11/2023. RELATÓRIO Trata-se de apelação." + fecho("1ª Câmara Cível") });
   g({ id_processo_documento: 12, nr_processo: B, tipo: "ACÓRDÃO", dtjulgamento_str: "05/03/2024",
     ds_modelo_documento: "Relator: Juiz ILISIR BUENO RODRIGUES RELATÓRIO Recurso inominado." + fecho("2ª Turma Recursal") });
   return p;
@@ -35,7 +37,7 @@ test("câmara da peça × FECHO: 3ª Câmara Cível de acórdão julgado pela 1�
   const p = pasta();
   const ruim = auditarCitacoes(`Nesse sentido (TJRO, Apelação 7000001-34.2024.8.22.0001, 3ª Câmara Cível, Rel. Des. Sansão Saldanha, j. 21/11/2023).`, p);
   assert.match(linha(ruim, "7000001-34"), /^🔴 .*a peça diz 3ª Câmara Cível, o FECHO diz 1ª Câmara Cível/);
-  const boa = auditarCitacoes(`Nesse sentido (TJRO, Apelação 7000001-34.2024.8.22.0001, Primeira Câmara Cível, Rel. Des. Sansão Saldanha, j. 21/11/2023).`, p);
+  const boa = auditarCitacoes(`Nesse sentido (TJRO, Apelação 7000001-34.2024.8.22.0001, Primeira Câmara Cível, Rel. Des. Sansão Saldanha, j. 14/11/2023).`, p);
   assert.match(linha(boa, "7000001-34"), /^✅ .*Bate com a peça: câmara, relator, data/);
   const abrev = auditarCitacoes(`(TJRO, AC 70000013420248220001, 1ª CC, relatoria de Sansão Saldanha)`, p);
   assert.match(linha(abrev, "7000001-34"), /^✅/);
@@ -56,10 +58,16 @@ test("data e relator do REsp citado na mesma frase NÃO contaminam o acórdão d
   assert.match(out, /STJ\/STF citados.*REsp 1846649\/MA/);
 });
 
-test("data: sessão escrita no acórdão vale; até 45 dias é 🟠 'confira'; 'LIDO em' não é data de julgamento", () => {
+test("data: sessão escrita no acórdão vale; perto da sessão lida é 🟠 'confira'; 'LIDO em' não é data de julgamento", () => {
   const p = pasta();
   assert.match(linha(auditarCitacoes(`Apelação 7000001-34.2024.8.22.0001, j. 14/11/2023.`, p), "7000001-34"), /^✅/);
-  assert.match(linha(auditarCitacoes(`Apelação 7000001-34.2024.8.22.0001, julgado em 10 de dezembro de 2023.`, p), "7000001-34"), /^🟠 .*até 45 dias/);
+  // amostra A (23/10/2026): com a sessão legível (14/11/2023), a folga conta dela e é de 10 dias — 26 dias depois já é 🔴
+  // (antes era 🟠 por caber nos 45 dias da data do índice, 21/11/2023)
+  assert.match(linha(auditarCitacoes(`Apelação 7000001-34.2024.8.22.0001, julgado em 10 de dezembro de 2023.`, p), "7000001-34"), /^🔴 .*fecho\/sessão\/assinatura lidos trazem 14\/11\/2023/);
+  assert.match(linha(auditarCitacoes(`Apelação 7000001-34.2024.8.22.0001, julgado em 18 de novembro de 2023.`, p), "7000001-34"), /^🟠 .*até 10 dias/);
+  // sem data legível no fecho (recibo B): continua a folga de 45 dias da data do índice
+  assert.match(linha(auditarCitacoes(`RI 7000002-50.2023.8.22.0002, j. 20/03/2024.`, p), "7000002-50"), /^🟠 .*até 45 dias da data do índice/);
+  assert.match(linha(auditarCitacoes(`RI 7000002-50.2023.8.22.0002, j. 20/05/2024.`, p), "7000002-50"), /^🔴/);
   assert.match(linha(auditarCitacoes(`Apelação 7000001-34.2024.8.22.0001, j. 10/06/2025.`, p), "7000001-34"), /^🔴 .*a peça diz julgado em 10\/06\/2025/);
   assert.match(linha(auditarCitacoes(`Apelação 7000001-34.2024.8.22.0001 (1ª Câmara Cível): LIDO em 11/10/2026.`, p), "7000001-34"), /^✅/);
 });
@@ -112,7 +120,7 @@ test("câmara/relator sem fecho nem relator legível no recibo: 🟠 'não confe
 
   // a peça só dá a data, e a data bate: continua ✅ (só data)
   const out3 = auditarCitacoes(`Apelação 7000001-68.2023.8.22.0001, j. 05/05/2024.`, p);
-  assert.match(linha(out3, "7000001-68"), /^✅ .*Bate com a peça: data\./);
+  assert.match(linha(out3, "7000001-68"), /^🟠 .*não confirmada no documento/); // 24/10/2026: data só do ÍNDICE não confirma ✅
 });
 
 // Rodada 2 (22/10/2026): relator que bate só com o ÍNDICE do portal (recibo sem "Relator:" no texto) não foi lido no
