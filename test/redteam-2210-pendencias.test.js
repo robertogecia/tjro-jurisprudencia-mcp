@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { semScriptStyle, semComentariosHtml, semTags, extrairRelatorDoTexto, recibo } from "../server/lib.js";
 import { quebrasDeLinhaHtml } from "../server/normas.js";
 import { regiaoDoJulgamento, auditarCitacoes } from "../server/auditoria.js";
@@ -79,7 +80,7 @@ test("pendência (d): 'Relator: A em substituição a B' devolve A; 'A substitu�
 test("ponte DJEN: descrições das ferramentas e manifest trazem o texto; subtítulo intacto", async () => {
   const { PONTE_DATAJUD, PONTE_DJEN, PONTES } = await import("../server/lib.js");
   assert.equal(PONTE_DJEN, "Para intimações e prazos, use o DJEN; prazo nunca sai desta ferramenta nem do Datajud.");
-  const raiz = path.join(path.dirname(new URL(import.meta.url).pathname), "..");
+  const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
   const man = JSON.parse(fs.readFileSync(path.join(raiz, "manifest.json"), "utf8"));
   assert.ok(man.description.startsWith("Criado pelo advogado @robertogrecia"));
   const outros = man.long_description.split("\n\n").find((p) => p.startsWith("**Outros recursos.**"));
