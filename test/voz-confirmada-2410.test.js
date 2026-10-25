@@ -29,7 +29,7 @@ test("concessiva: ponto de abreviatura/número não fecha a frase", () => {
 import { secoesDaEmenta } from "../server/posicao.js";
 test("ementa achatada: item numerado '2. A questão em discussão' e 'PROVIDO. CASO EM EXAME' são seções", () => {
   const t = "EMENTA: DIREITO CIVIL. 1. Caso em exame: apelação de banco. 2. A questão em discussão consiste em saber se o desconto é lícito. 3. As razões de decidir: o contrato é válido. 4. Dispositivo e tese: recurso desprovido.";
-  assert.deepEqual(secoesDaEmenta(t, 0, t.length).map((x) => x.nome), ["caso em exame", "questao em discussao", "dispositivo e tese"]);
+  assert.deepEqual(secoesDaEmenta(t, 0, t.length).map((x) => x.nome), ["caso em exame", "questao em discussao", "razoes de decidir", "dispositivo e tese"]);
   const u = "EMENTA: APELAÇÃO. RECURSO NÃO PROVIDO. CASO EM EXAME. O banco sustenta a licitude. QUESTÃO EM DISCUSSÃO. Saber se houve falha.";
   assert.ok(secoesDaEmenta(u, 0, u.length).length >= 2);
 });

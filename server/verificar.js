@@ -405,7 +405,10 @@ function conferirTrecho0(texto, trecho, tipo, hifen) {
   const longeDoFecho = !fx.ementaDaCasa && fx.fecho < tn.length && ini0 - fx.fecho > 1000;
   const aspasNaCasa = coberturaCitada(trechosCitados(brutoT), ini0, pos) * 2 > pos - ini0;
   const parteNaCasa = alegacaoDaParte(tn, ini0, pos, brutoT);
-  const vozConfirmada = !alertas.length && !naoEVoz && notas.some((n) => n.startsWith("VOZ DA CASA")) && !cabAntes && !longeDoFecho && !aspasNaCasa && !parteNaCasa;
+  // Reataque Fable (25/10/2026): o trecho que atravessa o fecho e entra no cabeçalho do documento concatenado seguinte ("… Relator Poder
+  // Judiciário do Estado de Rondônia 2ª Câmara") não é a palavra do colegiado.
+  const cruzaDocumento = /poder judiciario do estado de rondonia|acordao vistos|tribunal de justica do estado de rondonia/.test(tn.slice(ini0, pos)) && /^fecho/.test(posicao || "");
+  const vozConfirmada = !alertas.length && !naoEVoz && notas.some((n) => n.startsWith("VOZ DA CASA")) && !cabAntes && !longeDoFecho && !aspasNaCasa && !parteNaCasa && !cruzaDocumento;
   return { ok: true, alertas, notas, contexto, spans, vozConfirmada, naoEVoz };
 }
 

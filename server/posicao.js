@@ -33,9 +33,12 @@ export function secoesDaEmenta(texto, ini, fim) {
       // Reataque Fable (25/10/2026): os recibos são texto achatado (sem "\n"), então o rótulo sem romano só valia no início da seção.
       // Agora vale também depois de fim de frase ("PROVIDO. CASO EM EXAME"), de item numerado ("2. A questão em discussão consiste…")
       // e com o número da nota colado ("Caso em exame1."): 48 de 56 trechos de relato da parte saíam ✅ pleno com VOZ DA CASA.
-      const inicioDeLinha = antes === "" || antes.endsWith("\n") || /[.;:!?][ \t]*$/.test(antes) || /(?:^|[ \t\n])\d{1,2}[.)][ \t]*(?:a)?$/i.test(antes);
-      const numerado = /(?:^|[ \t\n])\d{1,2}[.)][ \t]*(?:a)?$/i.test(antes);
-      if (!inicioDeLinha || !(numerado || c === "." || c === ":" || c === "\n" || (c !== "" && "0123456789".includes(c)))) continue;
+      const inicioDeLinha = antes === "" || antes.endsWith("\n") || /[.;:!?][ \t]*$/.test(antes) || /(?:^|[ \t\n])\d{1,2}[.)][ \t]*(?:[A-Za-zÀ-ú]+[ \t]+){0,3}[A-Za-zÀ-ú]*$/i.test(antes);
+      // "2. Há duas questões em discussão:" (até 3 palavras entre o número e o rótulo) e "ORDEM DENEGADA. CASO EM EXAME Habeas…" (rótulo em
+      // CAIXA ALTA depois de fim de frase, sem pontuação depois dele)
+      const numerado = /(?:^|[ \t\n])\d{1,2}[.)][ \t]*(?:[A-Za-zÀ-ú]+[ \t]+){0,3}[A-Za-zÀ-ú]*$/i.test(antes);
+      const rotuloCaixaAlta = /[.;:!?][ \t]*$/.test(antes) && seg.slice(i2, i2 + m[2].length) === seg.slice(i2, i2 + m[2].length).toUpperCase() && /^[ \t]*(?:[A-ZÀ-Ú]|$)/.test(seg.slice(i2 + m[2].length, i2 + m[2].length + 3));
+      if (!inicioDeLinha || !(numerado || rotuloCaixaAlta || c === "." || c === ":" || c === "\n" || (c !== "" && "0123456789".includes(c)))) continue;
     }
     const nome = m[2].replace(/^quest(?:ao|oes) em discussao$/, "questao em discussao").replace(/^dispositivos? e teses?$/, "dispositivo e tese").replace(/^razao de decidir$/, "razoes de decidir");
     if (marcas.length && marcas[marcas.length - 1].nome === nome && ini + m.index - marcas[marcas.length - 1].a < 40) continue;
