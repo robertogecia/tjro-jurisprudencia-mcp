@@ -2,7 +2,7 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
-## 1.42.0 — não publicada
+## 1.42.0 — publicada em 27/10/2026
 
 Red team de 27/10/2026 sobre a 1.41.11 (que não chegou a ser publicada e entra inteira nesta versão), corrigido:
 
