@@ -98,7 +98,8 @@ Itens 8, 11, 12 e 13 do mesmo diagnóstico.
 
 **Limitações**
 
-- O reconhecimento do início do voto e a separação das citações no parágrafo foram testados com textos montados para isso. Ainda não foram medidos na cópia dos recibos reais, com comparação antes e depois e leitura dos casos que mudaram. Essa medição deve ser feita antes de publicar.
+- Início do voto sem cabeçalho: medido em 26/10/2026 na cópia dos recibos. Dos 32 acórdãos que mudaram, 16 foram lidos e 15 estavam certos. Os 16 restantes não foram lidos.
+- Separação de citações no parágrafo (câmara por número): medido em 27/10/2026 só por contagem (1 linha mudou de cor, 1 ganhou pendência, nenhum ✅ novo). A atribuição de câmara, relator e data ainda não foi conferida por leitura de casos reais; o teste é sintético.
 - O documento VOTO avulso que começa pelo relatório continua inteiro tratado como voto. Só o ACÓRDÃO com o título RELATÓRIO ganhou a nova regra.
 - "Presentes os requisitos de admissibilidade" e "Voto." só abrem o voto quando não há "É o relatório" ou fórmula equivalente. Se o relatório narrar uma decisão com essa frase no início de uma oração, o trecho seguinte pode sair como voto ("voz não confirmada", nunca selo pleno).
 - A ementa sem rótulo da seção IV ("…2. Recurso desprovido. Tese de julgamento: …") continua com a tese marcada como "caso em exame" no verificador. O selo fica "voz não confirmada" e não aparece aviso de alegação da parte.
