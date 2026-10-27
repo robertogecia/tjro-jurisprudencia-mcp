@@ -2,7 +2,7 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
-## Não publicada (depois da 1.42.0)
+## 1.42.1 — publicada em 27/10/2026
 
 - **Limiar do "mesmo tema, resultado oposto" (distinguir_tjro), medido de novo: mantido em 0,30.** 150 pares de acórdãos com resultado oposto, sorteados dos recibos locais em 5 faixas de semelhança (30 por faixa), rotulados às cegas por 2 agentes em duas metades (sem ver a semelhança nem o resultado). Concordância entre rotuladores: 132 de 150. Precisão ("ambos SIM", mesma questão jurídica): 0,20–0,25: 67%; 0,25–0,30: 90%; 0,30–0,35: 90%; 0,35–0,45: 77%; ≥0,45: 90%. Não há diferença que justifique mudar o corte: a faixa 0,25–0,30 e a de 0,30–0,35 empatam dentro do erro amostral (n=30). A faixa 0,20–0,25 é ruído e fica fora da lista, como já está. Medida: sem limite superior de precisão no resultado final, porque a discordância entre rotuladores (18 pares) foi reportada como faixa.
 

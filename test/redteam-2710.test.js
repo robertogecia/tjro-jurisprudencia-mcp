@@ -297,10 +297,10 @@ test("(14) identificação pendente sai com o prefixo [CONSULTA NÃO REALIZADA]"
   assert.ok(lib.NAO_REALIZADA);
 });
 
-test("versão 1.42.0", () => {
-  assert.equal(VERSAO, "1.42.0");
+test("versão 1.42.1", () => {
+  assert.equal(VERSAO, "1.42.1");
   const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const man = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
-  assert.equal(pkg.version, "1.42.0");
-  assert.equal(man.version, "1.42.0");
+  assert.equal(pkg.version, "1.42.1");
+  assert.equal(man.version, "1.42.1");
 });
