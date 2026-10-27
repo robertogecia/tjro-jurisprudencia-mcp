@@ -26,7 +26,7 @@ const hashDasSaidas = () => {
 };
 // Cada versão da custódia fixa o hash das saídas acima. Mudou a heurística e o hash não bate? Suba CUSTODIA_VERSAO em
 // custodia.js e acrescente a nova linha: sem isso os recibos já gravados ficam com o resultado antigo para sempre.
-const HASH_POR_VERSAO = { 2: "e1c27bdf992f6949", 3: "3e6fd3b5f3520966", 4: "db1a0b71a5e01a51", 5: "7021fa9ffadac745", 6: "7021fa9ffadac745" };   // v6: as fixtures não mudam; mudam 2 recibos reais (vencido.js)
+const HASH_POR_VERSAO = { 2: "e1c27bdf992f6949", 3: "3e6fd3b5f3520966", 4: "db1a0b71a5e01a51", 5: "7021fa9ffadac745", 6: "7021fa9ffadac745", 7: "7021fa9ffadac745" };   // v7: fixtures iguais; mudam 12 recibos reais (acórdão antigo com RELATÓRIO depois do fecho)   // v6: as fixtures não mudam; mudam 2 recibos reais (vencido.js)
 
 test("a saída da custódia só muda junto com CUSTODIA_VERSAO", () => {
   const atual = hashDasSaidas();

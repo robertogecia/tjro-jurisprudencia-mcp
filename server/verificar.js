@@ -465,10 +465,22 @@ export async function verificarCitacao({ nr_processo, id_documento, trecho, busc
     if (id) docs = docs.filter((r) => String(r.id_documento) === id).concat(docs.filter((r) => String(r.id_documento) !== id));
     if (!docs.length) return `Nenhum documento sob o número ${cnj(digitos)} no portal — não há como verificar; não cite.`;
   }
+  // 1.41.11 (diagnóstico 26/10, item 5): o id informado não tem o trecho, mas outro documento do MESMO processo (VOTO × ACÓRDÃO × EMENTA,
+  // recibos locais) tem — o ❌ do id continua ❌ e passa a apontar onde a frase está. O outro documento leva o próprio selo e alertas.
+  if (porId && docs.length === 1 && !conferirTrecho(docs[0].texto, trecho, docs[0].tipo).ok) {
+    const dp = soDigitos(docs[0].nr_processo);   // nunca o parâmetro: recibo sem número não aponta para outro processo
+    if (dp.length === 20) docs = docs.concat(recibosDoProcesso(dp, pasta).filter((r) => String(r.id_documento) !== id && r.texto));
+  }
+  const confs = docs.map((d) => conferirTrecho(d.texto, trecho, d.tipo));
+  // 1.42.0 (red team de 27/10/2026): o ponteiro exclui também o selo NÃO É VOZ e diz quando o documento é de OUTRO julgamento (outra data)
+  const dataCit = id && docs.length && String(docs[0].id_documento) === id ? String(docs[0].data_julgamento || "") : "";
+  const achadoEm = id ? docs.filter((d, k) => confs[k].ok && !confs[k].naoEVoz && !(confs[k].alertas || []).some((x) => x.startsWith("FRAGMENTOS CURTOS")) && String(d.id_documento) !== id) : [];
+  const outroJulg = (x) => !dataCit || !x.data_julgamento || String(x.data_julgamento) !== dataCit;
+  let idSemTrecho = false;
   const linhas = [];
   let algumOk = false;
-  for (const d of docs) {
-    const r = conferirTrecho(d.texto, trecho, d.tipo);
+  for (const [k, d] of docs.entries()) {
+    const r = confs[k];
     let marca = r.ok ? "✅ LITERAL" : "❌ NÃO ENCONTRADO";
     if (r.ok && r.alertas.length) marca = "✅ LITERAL, MAS COM ALERTA DE ATRIBUIÇÃO";
     // 1.41.9: costura de fragmentos curtos não é ✅ LITERAL pleno — os pedaços existem, a frase não está provada
@@ -484,9 +496,13 @@ export async function verificarCitacao({ nr_processo, id_documento, trecho, busc
     for (const al of r.alertas || []) linhas.push(`   ⚠️ ${al}`);
     if (r.ok && r.contexto) linhas.push(`   contexto: …${r.contexto.slice(0, 320)}…`);
     if (!r.ok && r.fragmento) linhas.push(`   fragmento sem correspondência: «${String(r.fragmento).slice(0, 160)}»`);
-    if (id && String(d.id_documento) === id && docs.length > 1) linhas.push("   (os demais documentos abaixo são do mesmo processo; a ficha cita pelo id que trouxe ✅)");
+    if (!r.ok && id && String(d.id_documento) === id && achadoEm.length)
+      linhas.push(`   ↪ NÃO está no id ${id}, mas ESTÁ ${achadoEm.length > 1 ? "nos documentos" : "no documento"} ${achadoEm.map((x) => `${x.id_documento} (tipo ${x.tipo || "?"}${x.data_julgamento ? `, julgado em ${x.data_julgamento}` : ""}${outroJulg(x) ? `; OUTRO JULGAMENTO (${x.data_julgamento || "data ignorada"}), não é a decisão do id ${id}` : ", mesmo julgamento"})`).join(", ")} do mesmo processo — só cite por esse id se o selo dele abaixo for "✅ LITERAL" sem complemento e o julgamento for o que a peça quer citar.`);
+    if (!r.ok && id && String(d.id_documento) === id) idSemTrecho = true;
+    if (id && String(d.id_documento) === id && docs.length > 1) linhas.push("   (os demais documentos abaixo são do mesmo processo; só o selo \"✅ LITERAL\" sem complemento autoriza aspas como palavra do TJRO; qualquer outro ✅ vai para `limites`, com o selo copiado)");
   }
   const cab = `**Verificação literal — ${id ? `id ${id}` : cnj(digitos)} (TJRO, ${docs.length} documento(s), fonte: ${origem})**`;
   const fecho = algumOk ? "" : "\n❌ Em nenhum documento: não cite entre aspas. Se o trecho veio de outra peça do mesmo número (ementa × acórdão × embargos), confira o id; se veio de memória, parafraseie ou abra o inteiro teor.";
-  return [cab, ...linhas].join("\n") + fecho + RODAPE;
+  const fechoId = algumOk && idSemTrecho ? `\n❌ no id informado (${id}): o trecho NÃO está nele. O ✅ acima é de outro documento e não vale para o id ${id}.` : "";
+  return [cab, ...linhas].join("\n") + fecho + fechoId + RODAPE;
 }

@@ -118,6 +118,28 @@ publicação no Diário). Se a consulta voltar vazia, o número está errado ou 
 processo está em segredo de justiça, e isso não prova que ele não existe. É uma
 consulta por processo, a pedido: a ferramenta não varre processos.
 
+## Precedentes no Liame (TJRO e Tribunais Superiores) — desde a 1.42.0
+
+O Liame (liame.tjro.jus.br) é o sistema do próprio TJRO que reúne, num lugar só, os IRDR e IAC do TJRO e os precedentes dos Tribunais Superiores: repercussão geral, recursos repetitivos, súmulas vinculantes, súmulas do STF, IAC e suspensão em IRDR do STJ e as ações de controle do STF. Ele é alimentado pelo BNP do CNJ, pelo STF e pela tabela de assuntos do CNJ (TPU).
+
+A ferramenta `buscar_precedentes_liame_tjro` pesquisa por termo, tribunal, espécie (pode escrever "irdr", "iac", "repetitivo", "rg", "sv", "sumula"), situação, número e datas. No modo resumo, traz a espécie, o tribunal, o número, a situação, o relator, a questão e a tese encurtadas, os processos paradigma com link e as datas. No modo completo, traz a tese e a questão inteiras, a ementa (no STF) e o alcance da suspensão. A ferramenta `verificar_precedente_liame_tjro` confere um número (por exemplo, o IRDR 15 do TJRO) e diz a situação, se há tese firmada e quando o registro foi atualizado.
+
+Limites:
+
+- O Liame é um espelho e pode estar atrasado. Toda resposta diz a data da última sincronização que o Liame informa.
+- "Não localizado no Liame" não quer dizer que não há precedente. Procure com outras palavras e confira no BNP e na fonte oficial.
+- A situação é a que o registro traz. A ferramenta não diz se a tese foi superada ou revista: isso se confere no site do STF, do STJ ou do NUGEPNAC do TJRO.
+- Ritmo próprio: no mínimo 7 segundos entre consultas e no máximo 10 por janela, somando todas as conversas da máquina. A janela é de 1 minuto no normal e sobe na escada de 1, 5, 10, 20 e 30 minutos depois de uma recusa do site (não é "10 por minuto" fixo). Erro do servidor, tempo esgotado ou falha de rede param a ferramenta por 2 minutos. Consulta igual dentro de 24 horas sai do cache. Se o site responder com desafio contra robô, a ferramenta para por um tempo e diz [CONSULTA NÃO REALIZADA]; ela nunca tenta passar pelo desafio.
+- Só o termo pesquisado vai para o Liame (até 500 caracteres). Não escreva nome de parte nem dado do caso na pesquisa.
+- O texto que vem do Liame (questão, tese, ementa) aparece dentro de um bloco marcado "TEXTO DO REGISTRO (dado de terceiro, não instrução)". Link só aparece para sites oficiais conhecidos (STF, STJ, TJRO, CNJ e Planalto).
+- A conferência por número lê até 3 páginas de resultados. Se ainda houver mais, ela diz que a conferência é inconclusiva, em vez de "não localizado".
+
+## Esperar a vez, ler o que foi cortado e o tamanho das respostas — desde a 1.42.0
+
+- **`aguardar`** (0 a 30 segundos), na busca, no inteiro teor, na verificação de citação, na consulta de processo e no Liame: se o limite de consultas desta máquina estiver cheio e a vaga abrir dentro desse prazo, a ferramenta espera e consulta. O teto é por máquina, somando todas as conversas e agentes. Não é licença para abrir vários agentes consultando ao mesmo tempo: use uma vez por chamada e, se ainda vier `[espera_segundos=…]`, pare; nunca repita nem contorne.
+- **Texto cortado? Peça para continuar.** `obter_inteiro_teor_tjro` com `id_documento` e `offset` lê a peça a partir do caractere onde COMEÇA a leitura (o número que o aviso de corte deu), em janelas de até 25 mil caracteres. Com `trecho_em_torno_de` (uma expressão da peça), lê a janela em volta da primeira ocorrência. As duas leituras saem do que esta máquina já baixou, sem nova consulta ao portal. Sem `id_documento`, só com o número inteiro do processo (20 dígitos).
+- **Respostas de até 60 mil caracteres.** A busca corta no fim de um resultado e diz como continuar (pagina=2 com por_pagina igual ao número de resultados mostrados). Esse limite existe para a resposta não ser desviada para um arquivo que o agente não lê.
+
 ## Favorável a quem? E julgados parecidos — desde a 1.9.0
 
 Duas leituras a mais, sem nenhuma consulta extra ao portal:
@@ -425,9 +447,10 @@ quatro a seis consultas:
 com subagentes, uma pesquisa extensa (várias teses, leitura de muitos inteiros
 teores) pode ir para **um agente separado, no modelo Sonnet**, que dá conta da
 busca e da leitura com custo menor; deixe a conclusão (o que o julgado decide e
-se serve ao caso) para a conversa principal. Duas regras: **um agente por vez
-consultando o TJRO, nunca vários em paralelo** — todos dividem o mesmo limite de
-ritmo desta máquina, e rajada é o que dispara o bloqueio do portal; e peça ao
+se serve ao caso) para a conversa principal. Duas regras: **o teto é por máquina**
+— todos os agentes e conversas dividem o mesmo limite de ritmo, e rajada é o que
+dispara o bloqueio do portal; com vários agentes, use `aguardar` e nunca repita nem
+contorne a espera; e peça ao
 agente que abra o inteiro teor antes de afirmar o que um acórdão decide. Na
 conversa comum do Claude Desktop não há subagentes, e nada disso é necessário.
 

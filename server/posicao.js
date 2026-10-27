@@ -134,6 +134,30 @@ const RE_FIM_VOTO = /\be (?:como|o) (?:voto|meu voto)\b/g;
 /** {relIni, votoIni, fimRelator, dispIni, fimVoto} do voto do relator no texto (ACÓRDÃO/VOTO). No ACÓRDÃO o voto do relator
  * vai do cabeçalho VOTO (depois do RELATÓRIO) até o 1º "é como voto" fora de transcrição, ou até o 1º vogal/divergência;
  * dispIni = -1 se a fórmula de dispositivo não aparece. */
+// 1.41.11 (diagnóstico 26/10, item 6): acórdão com o cabeçalho RELATÓRIO e sem o cabeçalho "VOTO" — a fundamentação do relator saía
+// como RELATÓRIO. O início do voto é inferido pela fórmula que fecha o relatório ou abre o voto, depois do RELATÓRIO e antes da
+// ementa/fecho, fora de bloco transcrito; sem fórmula, continua tudo relatório (nada é marcado como voto por palpite).
+const RE_FIM_RELATORIO = /(?<=(?:^|[.:;!?)\]"”])[ \t\n\r\f\v]*)(?:e o (?:breve |sucinto |necessario )?relatorio|feito o (?:breve )?relatorio|relatados?,? (?:passo|passa-se) a (?:decidir|votar)|passa-se a decisao|passo a decidir|passo ao voto|passo a votar)(?![a-z0-9])[ \t\n\r\f\v]*[.:;,]?/g;
+const RE_ABRE_VOTO = /(?<=(?:^|[.:;!?)\]"”])[ \t\n\r\f\v]*)(?:presentes os (?:requisitos|pressupostos) (?:legais )?de admissibilidade)(?![a-z0-9])/g;
+const RE_ROTULO_VOTO = /(?:^|[.:;!?][ \t\n\r\f\v]*|\n[ \t]*)(Voto)[ \t]*[.:–-]?[ \t\n\r\f\v]+(?![ \t]*(?:Vencid|Divergente|Vista|Vencedor))(?=[A-ZÀ-Ú])/g;
+export function inicioDoVotoSemCabecalho(texto, relIni, fimVoto, fx) {
+  if (relIni < 0) return -1;
+  const tn = norm1(texto.slice(0, fimVoto));
+  const fora = (i) => !fx.transcritas.some(([x, y]) => i >= x && i < y) && !(fx.aspas || []).some(([x, y]) => i >= x && i < y);   // reataque Fable (26/10): nem dentro de aspas
+  // a fórmula que FECHA o relatório ("É o relatório.") vale sozinha; as que abrem o voto só sem ela
+  // Reataque Fable (26/10/2026): "A sentença tem o seguinte teor: É o relatório. Decido…" (sentença copiada no relatório SEM aspas) não abre o voto
+  // 1.42.0 (red team de 27/10/2026): "…a sentença, que assim fundamentou. Relatados, passo a decidir. Entendo que…" — anúncio terminado em
+  // PONTO, com verbo de transcrição junto de "assim"/"nos seguintes termos" nos 80 caracteres anteriores, também é transcrição
+  // reataque de 27/10/2026: mais verbos (transcrev…, concluiu, pronunciou, consta, "o seguinte teor", "cujo teor") e janela de 120
+  const RE_ANUNCIO_PONTO = /(?:(?:assim|nos seguintes termos|nestes termos|in verbis)\s+(?:\S+\s+){0,2}?(?:fundamentou|decidiu|consignou|dispos|julgou|asseverou|registrou|concluiu|pronunciou|transcrev\w*|consta)|(?:fundamentou|decidiu|consignou|dispos|julgou|asseverou|registrou|concluiu|pronunciou|transcrev\w*|consta)\s+(?:\S+\s+){0,2}?(?:assim|nos seguintes termos|nestes termos|in verbis)|(?:seguinte|cujo|cujos) teor|teor (?:e o seguinte|transcrev\w*|abaixo)|transcrev\w*)[^.]{0,120}\.\s*$/;
+  const anunciaTranscricao = (i) => { const j = tn.slice(Math.max(0, i - 80), i), jl = tn.slice(Math.max(0, i - 220), i);
+    return /(?:teor|consignou|consignei|consignado|seguinte|assim|ementa|transcrev\w*|in verbis|in litteris|confira-se|vejamos|colaciono|destaco)[^.]{0,30}:\s*$/.test(j) || RE_ANUNCIO_PONTO.test(jl); };
+  for (const m of tn.matchAll(RE_FIM_RELATORIO)) if (m.index > relIni && fora(m.index) && !anunciaTranscricao(m.index)) return m.index + m[0].length;
+  const cands = [];
+  for (const m of tn.matchAll(RE_ABRE_VOTO)) if (m.index > relIni && fora(m.index) && !anunciaTranscricao(m.index)) { cands.push(m.index); break; }
+  for (const m of texto.slice(0, fimVoto).matchAll(RE_ROTULO_VOTO)) { const i = m.index + m[0].indexOf("Voto"); if (i > relIni && fora(i)) { cands.push(i); break; } }
+  return cands.length ? Math.min(...cands) : -1;
+}
 export function partesDoVoto(texto, tipo, fx) {
   const t = String(tipo || "").toUpperCase();
   const n = texto.length, acordao = /AC[ÓO]RD[ÃA]O/.test(t);
@@ -143,6 +167,7 @@ export function partesDoVoto(texto, tipo, fx) {
     const r = /\bVOTO\b/g; r.lastIndex = Math.max(0, relIni);
     const v = r.exec(texto);
     votoIni = v && v.index < fimVoto ? v.index : (relIni >= 0 ? -1 : 0);
+    if (votoIni < 0) votoIni = inicioDoVotoSemCabecalho(texto, relIni, fimVoto, fx);
   }
   let fimRelator = fimVoto;
   if (acordao && votoIni >= 0) {

@@ -10,7 +10,7 @@
 // conferidos antes de gastar cota, cache conferido, movimentos defensivos.
 import fs from "node:fs";
 import path from "node:path";
-import { HEADERS, reservarRequisicao, dirCache } from "./lib.js";
+import { HEADERS, reservarComEspera, dirCache } from "./lib.js";
 
 export const API_PROCESSOS = "https://datajud-api-transparencia.tjro.jus.br/processos";
 export const CACHE_PROCESSO_MS = 60 * 60 * 1000; // 1 h: processo anda todo dia
@@ -76,7 +76,7 @@ export async function consultarProcesso(nr, fetchImpl = fetch) {
   if (invalido) throw new ErroProcesso(invalido);
   const c = lerCacheProcesso(nr);
   if (c) return { dados: c.dados, doCache: c.quando };
-  const reserva = reservarRequisicao(Date.now(), { ignorarBloqueio: true });
+  const reserva = await reservarComEspera({ ignorarBloqueio: true });
   if (reserva.erro) throw new ErroProcesso(reserva.erro);
   if (reserva.esperarMs > 0) await new Promise((r) => setTimeout(r, reserva.esperarMs));
   let r;

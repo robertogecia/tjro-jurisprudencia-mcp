@@ -8,6 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { checarSemanal } from "./semana.js";
 import { linhaCustodia, CUSTODIA_VERSAO, norm1, expandirLigaduras } from "./custodia.js";
 import { camposCustodia } from "./voz.js";
@@ -308,6 +309,8 @@ export const citacao = (s, orgaoDoFecho = null) => {
 };
 
 export const fold = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+/** Grafia do juiz de 1º grau como o índice grava em SENTENÇA: CAIXA ALTA, sem acento, espaços simples (1.41.11). */
+export const grafiaJuizSentenca = (nome) => String(nome || "").normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, " ").trim().toUpperCase();
 
 const RE_ACORDAM = /acordam\s+os\s+magistrados/gi;
 const RE_PROCL = /(?:\bem,|decis[ãa]o:|taquigr[áa]ficas,)\s*["\u201c]?\s*(.*?)(?=\s*["\u201d]?\s*(?:Dou f[eé]|(?:Porto Velho|Ji-Paran[aá]|Cacoal|Vilhena|Ariquemes|Guajar[aá]-Mirim|Rolim de Moura|Jaru|Ouro Preto do Oeste),?\s*(?:\/\s*RO,?\s*)?\d{1,2}\b|$)|(?<=\d{4})\s+(?:Desembargador|Juiz)a?\b)/is;
@@ -892,7 +895,13 @@ export function buildBuscaBody(o) {
   // ALTA) — forçar maiúscula quebraria exatamente o caso que funcionou. Grafia
   // e acentuação exigidas são as do índice; ver aviso de zero-resultado.
   // 08/10/2026: em SENTENÇA (1º grau) o juiz vive em ds_nome.raw (nome_relator_* vêm vazios); só vale quando TODOS os tipos pedidos são SENTENÇA.
-  if (o.relator) fields[o.tipo.length && o.tipo.every((t) => String(t).toUpperCase() === "SENTENÇA") ? "ds_nome.raw" : "nome_relator_acordao.raw"] = o.relator;
+  // 1.41.11 (diagnóstico de 26/10/2026, item 11): no 1º grau o índice grava o juiz em CAIXA ALTA sem acento (1.318 de 1.320 sentenças da
+  // cópia dos recibos); "Gleucival Zeed Estevão" não casava com "GLEUCIVAL ZEED ESTEVAO". O servidor normaliza; as duas formas funcionam.
+  // No 2º grau NÃO se normaliza (o índice mistura Title Case e CAIXA ALTA no relator do acórdão; ver acima).
+  if (o.relator) {
+    const soSent = o.tipo.length && o.tipo.every((t) => String(t).toUpperCase() === "SENTENÇA");
+    fields[soSent ? "ds_nome.raw" : "nome_relator_acordao.raw"] = soSent ? grafiaJuizSentenca(o.relator) : o.relator;
+  }
   // Assunto CNJ (Tabela Processual Unificada): filtro SERVER-SIDE confirmado em
   // 10/09/2026 — com "Inclusão Indevida em Cadastro de Inadimplentes", todos os
   // resultados vieram desse assunto. Mas é RUIDOSO por construção (Manual das
@@ -938,22 +947,45 @@ const ehRespostaCorrompida = (e) =>
   /HTTP\/1\.1 protocol|Invalid header|^HPE_/i.test(`${e?.cause?.code || ""} ${e?.cause?.message || ""}`.trim());
 
 // v1.33.0: o portal responde HTTP 500 a consultas grandes (6 de 6 com 3 grupos e 11 a 17 termos em 14/10/2026; com 2 grupos e menos termos passou).
+export const LIMITE_500_TERMOS = 9; // abaixo de 3 grupos e 10 termos não houve 500 nas medições de 14/10/2026
 export const contaTermosDaConsulta = (grupos) => (Array.isArray(grupos) ? grupos.reduce((n, g) => n + (Array.isArray(g) ? g.length : 1), 0) : 0);
 export function dicaConsultaGrande(mensagem, grupos) {
   const nG = Array.isArray(grupos) ? grupos.length : 0, nT = contaTermosDaConsulta(grupos);
   if (!/HTTP 500/.test(String(mensagem || "")) || (nG < 3 && nT < 10)) return "";
-  return ` O portal respondeu 500 a uma consulta grande (${nG} grupos, ${nT} termos): consultas grandes falharam com mais frequência, mas o gatilho exato não está provado (não é pontuação nem só o número de termos). Reduza para 2 grupos de poucos termos, ou divida em duas buscas e junte os resultados.`;
+  return ` O portal respondeu 500 a uma consulta grande (${nG} grupos, ${nT} termos): consultas grandes falharam com mais frequência, mas o gatilho exato não está provado (não é pontuação nem só o número de termos). Reduza a no máximo 2 grupos e ${LIMITE_500_TERMOS} termos no total (2 grupos de poucos termos passaram), ou divida em duas buscas e junte os resultados.`;
 }
 // Resultado muito grande é desviado pelo cliente para um arquivo que o subagente não lê; corta no limite de um resultado e avisa.
-export const SAIDA_MAX_CHARS = 80000;
-export function limitarSaida(texto, max = SAIDA_MAX_CHARS) {
+export const SAIDA_MAX_CHARS = 60000; // 1.41.11: 80 mil ainda passava do limite em que o cliente desvia para arquivo, com os avisos somados
+// 1.41.11 (diagnóstico, item 2): o servidor responder 500 não devolve a vaga. Ela é reservada antes do envio, e devolvê-la
+// deixaria uma sequência de consultas que derrubam o servidor do portal escapar do teto da janela.
+export function notaErroContado(mensagem) {
+  return /HTTP 5\d\d/.test(String(mensagem || "")) ? " Esta consulta CONTOU no limite de ritmo (a vaga é reservada antes do envio e não é devolvida quando o portal falha, para que consultas com erro não escapem do teto)." : "";
+}
+export function limitarSaida(texto, max = SAIDA_MAX_CHARS, ctx = {}) {
   const t = String(texto || "");
   if (t.length <= max) return t;
-  const corte = t.lastIndexOf("\n## ", max);
-  const ate = corte > max / 4 ? corte : max;
-  const mostrados = (t.slice(0, ate).match(/\n## /g) || []).length;
-  const total = (t.match(/\n## /g) || []).length;
-  return `${t.slice(0, ate)}\n\n[SAÍDA CORTADA: ${mostrados} de ${total} resultados cabem aqui (limite de ${Math.round(max / 1000)} mil caracteres, para o resultado não ser desviado para arquivo). Repita com modo="compacto" ou por_pagina menor, ou peça a página seguinte.]\n`;
+  // 1.42.0 (red team de 27/10/2026): a BUSCA separa resultados por "\n---\n**N." e o inteiro teor por "\n## ". Contar só "\n## "
+  // dava "0 de 0" na busca, cortava no meio de um resultado e a dica de próxima página nunca aparecia. Usa o separador que existe.
+  // 4º red team: o modo COMPACTO separa por "\nN. " (uma linha por documento); só é usado quando os separadores da busca completa
+  // e do inteiro teor não aparecem, para uma lista numerada dentro de um trecho não virar separador
+  const SEPS = [/\n---\n\*\*\d+\./g, /\n## /g];
+  const posicoes = (re) => { const out = []; for (const m of t.matchAll(re)) out.push(m.index); return out; };
+  const cand = SEPS.map(posicoes);
+  let ps = ctx.separador ? posicoes(new RegExp(ctx.separador.source, "g")) : cand.sort((a, b) => b.length - a.length)[0];
+  if (!ctx.separador && !ps.length) ps = posicoes(/\n\d+\. /g);
+  const antes = ps.filter((p) => p <= max);
+  const corte = antes.length ? antes[antes.length - 1] : -1;
+  const seco = !(corte > max / 4);
+  let ate = seco ? max : corte;
+  // 1.42.0 (reataque de 27/10/2026): corte seco dentro de um resultado — ele NÃO conta como mostrado, o aviso diz que saiu incompleto
+  // e a próxima página recomeça nele; nunca parte um par substituto (emoji)
+  const incompleto = seco && ps.some((p) => p < max);
+  if (seco && /[\ud800-\udbff]/.test(t[ate - 1] || "")) ate -= 1;
+  const mostrados = Math.max(0, ps.filter((p) => p < ate).length - (incompleto ? 1 : 0));
+  const total = ps.length;
+  // 4º red team: o cabeçalho sozinho passa do teto (primeiro resultado começa depois do corte): avisa INCOMPLETO, nunca "0 de N" mudo
+  const cabecalhoGrande = seco && total > 0 && !ps.some((p) => p < max);
+  return `${t.slice(0, ate)}\n\n[SAÍDA CORTADA: ${mostrados} de ${total} resultados cabem aqui${incompleto ? " por inteiro; o último resultado acima saiu INCOMPLETO (cortado no meio)" : ""}${cabecalhoGrande ? "; INCOMPLETO: o cabeçalho sozinho passou do limite e nenhum resultado coube" : ""} (limite de ${Math.round(max / 1000)} mil caracteres, para o resultado não ser desviado para arquivo). Repita com modo="compacto" ou por_pagina menor.${ctx.pagina === 1 && mostrados > 0 ? ` Para continuar exatamente de onde parou: proxima_pagina = pagina=2 com por_pagina=${mostrados} (a página 1 com por_pagina=${mostrados} é o que está acima).` : ""}]\n`;
 }
 export const msgErro = (e) =>
   e.name === "TimeoutError"
@@ -1367,10 +1399,47 @@ export function linhaDeRitmo(agora = Date.now()) {
     const reqs = e.requisicoes || [];
     const naJanela = reqs.filter((t) => agora - t <= janela).length;
     return `\n_Ritmo do portal: ${naJanela} de ${JANELA_MAX_REQS} consultas na janela atual de ${janela / 60_000} min (nível ${e.indiceJanela + 1} de ${ESCADA_JANELA_MS.length}), ` +
-      `somando as consultas deste servidor (a extensão do Claude Desktop e o servidor Python contam em separado). Se o seu roteiro tem teto de consultas por frente, conte as suas chamadas; este número só diz o fôlego do limitador._`;
+      `somando as consultas de TODOS os agentes e conversas que usam esta extensão nesta máquina (o teto é por máquina, não por agente). Se o seu roteiro tem teto de consultas por frente, conte as suas chamadas; este número só diz o fôlego do limitador._`;
   } catch {
     return "";
   }
+}
+
+// 1.41.11 (diagnóstico de 26/10/2026, item 1): agentes em paralelo esbarravam no limite de ritmo e desistiam. O parâmetro
+// opcional `aguardar` (segundos, teto AGUARDAR_MAX_S) faz a ferramenta ESPERAR a vaga e então consultar, em vez de devolver o
+// erro. Não afrouxa nada: cada tentativa passa pela mesma reservarRequisicao (7 s entre consultas, teto da janela, escada,
+// disjuntor). Só espera erro de limite_de_ritmo cuja espera cabe no prazo; bloqueio do tribunal nunca é esperado aqui.
+export const AGUARDAR_MAX_S = 30;
+const ctxEspera = new AsyncLocalStorage();
+let dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+export function _setDormirParaTeste(fn) { dormir = fn || ((ms) => new Promise((r) => setTimeout(r, ms))); }
+export function normAguardar(seg) {
+  const n = Number(seg);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, AGUARDAR_MAX_S) : 0;
+}
+/** Roda fn com o prazo de espera pedido; devolve { valor, esperouMs }. */
+export async function comEspera(segundos, fn, agora = Date.now) {
+  const s = normAguardar(segundos);
+  const st = { ate: agora() + s * 1000, esperouMs: 0, agora, pedido: s };
+  const valor = await ctxEspera.run(st, fn);
+  return { valor, esperouMs: st.esperouMs };
+}
+export async function reservarComEspera(opts = {}) {
+  const st = ctxEspera.getStore();
+  for (let tentativa = 0; ; tentativa++) {
+    const agora = st ? st.agora() : Date.now();
+    const r = reservarRequisicao(agora, opts);
+    if (!r.erro || !st || tentativa >= 3) return r;
+    const m = /\[espera_segundos=(\d+) tipo=limite_de_ritmo\]/.exec(r.erro);
+    if (!m) return r;
+    const ms = Number(m[1]) * 1000 + 50;
+    if (agora + ms > st.ate) return { erro: !(st.pedido > 0) ? r.erro : r.erro + ` (aguardar=${Math.round((st.ate - agora) / 1000)} s não basta: a vaga abre em ${m[1]} s; o teto de aguardar é ${AGUARDAR_MAX_S} s)` };
+    await dormir(ms);
+    st.esperouMs += ms;
+  }
+}
+export function notaDeEspera(esperouMs) {
+  return esperouMs > 0 ? `\n_Esperou ${Math.round(esperouMs / 1000)} s pela vaga do limite de ritmo (parâmetro aguardar) antes de consultar._` : "";
 }
 
 export function registrarBloqueioDetectado(agora = Date.now(), operacao = "?", opts = {}) {
@@ -1431,6 +1500,8 @@ export function diagnosticoRitmo(agora = Date.now(), opts = {}) {
       `(limite: ${JANELA_MAX_REQS} consultas a cada ${fmtDuracao(janelaMs)})`,
     `- Orçamento usado agora: ${naJanela}/${JANELA_MAX_REQS} nesta janela`,
     `- Consultas desde o início (nesta máquina): ${e.totalRequisicoes || 0}`,
+    `- O teto é POR MÁQUINA: todos os agentes e conversas desta extensão dividem as mesmas ${JANELA_MAX_REQS} consultas e o intervalo mínimo de ${ESPACAMENTO_MIN_MS / 1000} s. ` +
+      `Para agentes em paralelo, passe aguardar (até ${AGUARDAR_MAX_S} s) nas ferramentas que consultam o portal: elas esperam a vaga em vez de falhar.`,
     agora < e.bloqueadoAte
       ? `- ⚠️ BLOQUEADO por suspeita de automação — liberando em ${fmtDuracao(e.bloqueadoAte - agora)}`
       : "- Situação: liberado",
@@ -1614,7 +1685,7 @@ export async function post(body, fetchImpl = fetch) {
   const emCache = cacheLer(chave, Date.now());
   if (emCache) return emCache; // não consome vaga: nenhuma requisição é feita
 
-  const reserva = reservarRequisicao();
+  const reserva = await reservarComEspera();
   if (reserva.erro) throw new Error(reserva.erro);
   if (reserva.esperarMs > 0) {
     await new Promise((r) => setTimeout(r, reserva.esperarMs));
@@ -1856,9 +1927,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
   // data da sessão pelo fecho, só no ACÓRDÃO e só quando difere do índice
   const fechoData = (i) => {
     const s = hits[i]._source || {};
-    if (s.tipo !== "ACÓRDÃO") return "";
-    const f = dataDoFecho(textos[i]), idx = s.dtjulgamento_str || dataBr(s.dtjulgamento) || "";
-    return f && idx && f !== idx ? ` (índice; sessão pelo fecho: ${f})` : "";
+    return ` (${rotuloDatas(textos[i], s)})`;
   };
 
   // Votação do fecho: o ACÓRDÃO tem a sua; a EMENTA (sem fecho) empresta a do acórdão do MESMO julgamento na página (nº + data;
@@ -1889,7 +1958,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       const doFecho = orgaoDoFechoDe(i);
       const org = doFecho && orgaoDiverge(doFecho, orgao(s)) ? `${doFecho} (fecho; índice: ${orgao(s)})` : orgao(s);
       out.push(
-        `${inicio + i}. ${s.tipo || "?"} · ${s.ds_classe_judicial || "—"} · ${org} · ${quandoDe(s)} · ${relator(s)} · ` +
+        `${inicio + i}. ${s.tipo || "?"} · ${s.ds_classe_judicial || "—"} · ${org} · ${quandoDe(s)}${(s.tipo === "ACÓRDÃO" && dataDoFecho(textos[i])) ? ` [sessão (fecho): ${dataDoFecho(textos[i])}]` : " [só índice]"} · ${relator(s)} · ` +
           `${r ? ROTULOS_RESULTADO[r] + sufixoOrigem(i) : desfechos[i] ? ROTULOS_SENTENCA[desfechos[i]] + " (1º grau)" : "sem resultado identificável"}${votSufixoI(i)} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}${recente(s) !== null ? ` · 🆕 recente (${recente(s)} dia(s))` : ""}`
       );
     });
@@ -2060,8 +2129,49 @@ export const linhaTese = (te) =>
 export const TRIAGEM_DISPOSITIVO_MAX = 700;
 const RE_FECHO_BRUTO = /acordam\s+(?:os|as)\s+(?:magistrados|desembargadores|juizes|juizas)/gi;
 const RE_FIM_DO_FECHO = /\s(?:Porto Velho|Ji-Paran[aá]|Cacoal|Vilhena|Ariquemes|Guajar[aá]-Mirim|Rolim de Moura|Jaru|Ouro Preto)[^.,]{0,30},\s*\d{1,2} de /i;
-export function formatTriagem(data, nrProcesso) {
+// 1.41.11 (diagnóstico de uso de 26/10/2026, itens 12 e 13): documento sem fecho não dizia onde procurar a câmara, e o agente citava o id
+// da ementa no lugar do acórdão. `locais` = recibos desta máquina do mesmo número (index.js os passa; lib.js não importa recibos.js).
+// Fecho de OUTRO documento só vale se for fecho de verdade ("acordam os Magistrados…") e do mesmo número E da mesma data; nunca se deduz
+// câmara pelo relator nem pela data.
+const brDe = (x) => (/^\d{2}\/\d{2}\/\d{4}$/.test(String(x || "")) ? String(x) : dataBr(x) || "");
+// 1.42.0 (red team de 27/10/2026, achado 1): número com menos de 20 dígitos casava por PREFIXO e trazia o fecho de OUTRO processo.
+// Só entra recibo cujo nr_processo tem 20 dígitos e é IGUAL ao do processo pedido (ou, se o pedido veio incompleto, ao do hit).
+const so20 = (x) => String(x || "").replace(/\D/g, "");
+export function locaisDoMesmoProcesso(locais, nrProcesso, hits = []) {
+  let ref = so20(nrProcesso);
+  if (ref.length !== 20) {
+    const ns = new Set(hits.map((h) => so20((h && h._source || {}).nr_processo)).filter((x) => x.length === 20));
+    ref = ns.size === 1 ? [...ns][0] : "";
+  }
+  if (ref.length !== 20) return [];
+  return (locais || []).filter((r) => r && so20(r.nr_processo) === ref);
+}
+export function fechoDeOutroDocumento(dataBrJulg, idsPresentes, locais = []) {
+  if (!dataBrJulg) return null;
+  for (const r of locais || []) {
+    if (!r || !r.texto || idsPresentes.has(String(r.id_documento)) || brDe(r.data_julgamento) !== dataBrJulg) continue;
+    const o = extrairOrgaoComOrigem(limpar(r.texto, 0));
+    if (o && o.origem === "fecho") return { orgao: o.orgao, id: String(r.id_documento), tipo: r.tipo || "?" };
+  }
+  return null;
+}
+export function linhasIdsPorJulgamento(unicos, dataDe, locais = []) {
+  const por = new Map();
+  const add = (d, tipo, id, local) => {
+    if (!d || !id) return;
+    const k = /^AC[ÓO]RD/.test(tipo) ? "acórdão" : tipo === "EMENTA" ? "ementa" : /^VOTO/.test(tipo) ? "voto" : null;
+    if (!k || (local && !por.has(d))) return;
+    if (!por.has(d)) por.set(d, {});
+    if (!por.get(d)[k]) por.get(d)[k] = `${id}${local ? " (recibo local)" : ""}`;
+  };
+  for (const [s] of unicos) add(dataDe(s), String(s.tipo || "").toUpperCase(), idDocumento(s), false);
+  for (const r of locais || []) add(brDe(r.data_julgamento), String(r.tipo || "").toUpperCase(), String(r.id_documento || ""), true);
+  return [...por.entries()].map(([d, m]) => `- ${d}: id do acórdão ${m["acórdão"] || "—"} · id da ementa ${m.ementa || "—"} · id do voto ${m.voto || "—"}`);
+}
+
+export function formatTriagem(data, nrProcesso, opcoes = {}) {
   const hits = (data.hits || {}).hits || [];
+  opcoes = { ...opcoes, locais: locaisDoMesmoProcesso(opcoes.locais, nrProcesso, hits) };
   if (!hits.length) return `Nenhum documento encontrado para o processo ${cnj(nrProcesso)}.`;
   const unicos = [];
   const vistos = new Set();
@@ -2091,7 +2201,8 @@ export function formatTriagem(data, nrProcesso) {
     const [s0] = preferir(docs, ["ACÓRDÃO", "EMENTA", "SENTENÇA", "VOTO", "RELATÓRIO"]);
     const fechos = new Map();
     for (const [, corpo] of docs) { const r = extrairOrgaoComOrigem(corpo); if (r && r.origem === "fecho") fechos.set(fold(r.orgao), r.orgao); }
-    const orgaoTxt = fechos.size === 1 ? `${[...fechos.values()][0]} (fecho)` : `${orgao(s0)} (índice; confira o fecho)`;
+    const fLocal = fechos.size ? null : fechoDeOutroDocumento(d, new Set(docs.map(([x]) => String(idDocumento(x)))), opcoes.locais);
+    const orgaoTxt = fechos.size === 1 ? `${[...fechos.values()][0]} (fecho)` : fLocal ? `${fLocal.orgao} (fecho tirado do documento ${fLocal.id}, ${fLocal.tipo} do mesmo número e data, recibo local)` : `${orgao(s0)} (índice; confira o fecho)`;
     const j = novoJulgamento(s0.ds_classe_judicial || "");
     let origemFecho = false;
     for (const [s, corpo] of docs) { const r = resultadoComOrigem(corpo, s.tipo); somarResultado(j, r); if (r.origem === "fecho") origemFecho = true; }
@@ -2099,6 +2210,7 @@ export function formatTriagem(data, nrProcesso) {
     const desf = docs.map(([s, corpo]) => desfechoDeSentenca(corpo, s.tipo, s.ds_classe_judicial)).find(Boolean);
     const resTxt = desf ? `sentença ${ROTULOS_SENTENCA[desf]} (lido do dispositivo)` : rot ? `${ROTULOS_RESULTADO[rot]}${origemFecho ? " (fecho)" : ""}` : "sem resultado identificável: leia o dispositivo";
     const linhas = [`### ${d} · Rel. ${relator(s0)} · ${orgaoTxt} · ${s0.ds_classe_judicial || ""}`, `- Resultado declarado: ${resTxt}`];
+    { const [sA, corpoA] = preferir(docs, ["ACÓRDÃO"]); linhas.push(`- 📅 ${rotuloDatas(corpoA, sA)}`); }
     linhas.push(`- Peças: ${docs.map(([s]) => `${s.tipo} id ${idDocumento(s) || "?"} (${link(s)})`).join(" · ")}`);
     const [sE, corpoE] = preferir(docs, ["EMENTA", "ACÓRDÃO"]);
     const te = teseDaEmenta(corpoE);
@@ -2130,10 +2242,11 @@ export function formatTriagem(data, nrProcesso) {
   return out.join("\n\n");
 }
 
-export function formatInteiro(data, nrProcesso) {
+export function formatInteiro(data, nrProcesso, opcoes = {}) {
   const hitsObj = data.hits || {};
   const total = (hitsObj.total || {}).value || 0;
   const hits = hitsObj.hits || [];
+  opcoes = { ...opcoes, locais: locaisDoMesmoProcesso(opcoes.locais, nrProcesso, hits) };
   if (!hits.length) return `Nenhum documento encontrado para o processo ${cnj(nrProcesso)}.`;
 
   // O índice às vezes devolve a mesma peça duplicada (ids distintos, texto idêntico).
@@ -2159,17 +2272,32 @@ export function formatInteiro(data, nrProcesso) {
     const r = extrairOrgaoComOrigem(corpo);
     if (r && r.origem === "fecho") fechos0.set(fold(r.orgao), r.orgao);
   }
-  const fecho0 = fechos0.size === 1 ? [...fechos0.values()][0] : null;
+  const idsResp = new Set(unicos.map(([x]) => String(idDocumento(x))));
+  const fLocal0 = fechos0.size ? null : fechoDeOutroDocumento(dataDe(s0), idsResp, opcoes.locais);
+  const fecho0 = fechos0.size === 1 ? [...fechos0.values()][0] : fLocal0 ? fLocal0.orgao : null;
   const corrige0 = fecho0 && orgaoDiverge(fecho0, orgao(s0)) ? fecho0 : null;
+  const marcaLocal0 = fLocal0 ? ` (fecho tirado do documento ${fLocal0.id}, ${fLocal0.tipo} do mesmo número e data, recibo local)` : "";
   const out = [
     `**Processo ${cnj(nrProcesso)} — ${s0.ds_classe_judicial || ""}**`,
-    `Relator(a): ${relator(s0)} · ${corrige0 ? `${corrige0} (⚠️ declarado no fecho do acórdão; o índice diz ${orgao(s0)})` : orgao(s0)} · Julgado em ${s0.dtjulgamento_str || s0.dtjulgamento || "—"}`,
+    `Relator(a): ${relator(s0)} · ${corrige0 ? `${corrige0} (⚠️ declarado no fecho do acórdão; o índice diz ${orgao(s0)})${marcaLocal0}` : `${orgao(s0)}${marcaLocal0}`} · Julgado em ${s0.dtjulgamento_str || s0.dtjulgamento || "—"} (${rotuloDatas(unicos[0][1], s0)})`,
     `Citação: ${citacao(s0, corrige0)}` + (idDocumento(s0) ? ` · id ${idDocumento(s0)}` : "") + pecaEAcordao(s0, unicos, dataDe),
     // O link do topo é o da peça mais recente; cada peça abaixo traz o seu. A ficha
     // copia o link da peça CITADA: uma ficha real guardou o id do acórdão com o link
     // do relatório de outro julgamento, e a peça gerada levaria o juiz ao documento errado.
     `Inteiro teor no portal (${s0.tipo}${idDocumento(s0) ? `, id ${idDocumento(s0)}` : ""}): ${link(s0)}`,
   ];
+  {
+    const ids = linhasIdsPorJulgamento(unicos, dataDe, opcoes.locais);
+    if (ids.length) out.push("🧾 Ids por julgamento (cite o id do ACÓRDÃO; a ementa e o voto têm ids próprios):\n" + ids.join("\n"));
+    const temFecho = (d) => unicos.some(([x, c]) => dataDe(x) === d && extrairOrgaoComOrigem(c)?.origem === "fecho");
+    for (const d of [...new Set(unicos.map(([x]) => dataDe(x)).filter(Boolean))]) {
+      if (temFecho(d) || !unicos.some(([x]) => dataDe(x) === d && /^(AC[ÓO]RD|EMENTA|VOTO|RELAT)/.test(String(x.tipo || "").toUpperCase()))) continue;
+      const fl = fechoDeOutroDocumento(d, idsResp, opcoes.locais);
+      out.push(fl
+        ? `🏛️ ${d}: nenhum documento desta resposta tem fecho; câmara pelo fecho tirado do documento ${fl.id} (${fl.tipo}, mesmo número e data, recibo local): ${fl.orgao}. Confira nesse documento antes de citar.`
+        : `🏛️ ${d}: sem fecho ("acordam os Magistrados…") em nenhum documento deste julgamento, nem nos recibos locais do mesmo número e data. Cite sem câmara ou abra o ACÓRDÃO no portal; não deduza a câmara pelo relator nem pela data (o cadastro mostra a câmara atual, não a que julgou).`);
+    }
+  }
   // Sob o mesmo número, julgamentos distintos: a Citação acima é só da peça
   // mais recente. Quem cita "pelo número" pode estar citando outra decisão.
   const julgamentos = new Map();
@@ -2252,7 +2380,8 @@ export function formatInteiro(data, nrProcesso) {
       (quando ? ` — julgado em ${quando}` : "") +
       (relator(s) !== "—" ? ` · Relator(a): ${relator(s)}` : "") +
       (idDocumento(s) ? ` · id ${idDocumento(s)}` : "") +
-      ` · link ${link(s)}`;
+      ` · link ${link(s)}` +
+      `\n📅 ${rotuloDatas(corpo, s)}`;
     // Orçamento desta peça: o teto por peça, menos a reserva dos ponteiros que ainda virão.
     const teto = Math.min(tetoPeca, ORCAMENTO_INTEIRO - usado - RESERVA_PONTEIRO * restantes);
     if (teto <= 0 && c === undefined) {
@@ -2409,6 +2538,13 @@ export function dataDoFechoBruta(corpo) {
 export function dataDoFecho(corpo) {
   const b = dataDoFechoBruta(corpo);
   return b && b.valida ? b.br : "";
+}
+// 1.41.11 (diagnóstico 26/10, item 10): as duas datas no cabeçalho de cada julgamento — a da sessão pelo fecho (só ACÓRDÃO, data
+// válida) e a do índice; sem fecho datado, "só índice". Só exibição: as regras de data da auditoria (auditoria.js) não mudam.
+export function rotuloDatas(corpo, s) {
+  const idx = s.dtjulgamento_str || dataBr(s.dtjulgamento) || "—";
+  const f = String(s.tipo || "").toUpperCase() === "ACÓRDÃO" ? dataDoFecho(corpo) : "";
+  return f ? `sessão (fecho): ${f} · índice: ${idx}` : `só índice: ${idx} (sem data legível no fecho${String(s.tipo || "").toUpperCase() === "ACÓRDÃO" ? "" : " desta peça; a sessão está no fecho do ACÓRDÃO do mesmo julgamento"})`;
 }
 export function linhaDatas(corpo, s) {
   const b = dataDoFechoBruta(corpo), idx = s.dtjulgamento_str || dataBr(s.dtjulgamento) || "";
@@ -2802,7 +2938,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.41.10";
+export const VERSAO = "1.42.0";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

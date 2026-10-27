@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "tjro-jurisprudencia",
   "display_name": "Jurisprudência TJRO",
-  "version": "1.41.10",
+  "version": "1.42.0",
   "description": "Criado pelo advogado @robertogrecia, esta ferramenta ajuda você a encontrar decisões do Tribunal de Justiça de Rondônia sobre o seu tema, conferir se uma citação é de verdade e ver como cada julgador decide.",
   "long_description": "**Pesquisa.** Busque decisões do TJRO pelo tema, com sinônimos, e filtre por câmara, relator, classe, assunto e período. Cada resultado já vem com a citação pronta para a peça e o link direto para a decisão.\n\n**Leitura.** Abra o texto completo do acórdão e veja, em uma linha, quem são as partes e para que lado ficou o resultado. A extensão também mostra quanto do texto é palavra de outro julgado e onde começa o voto que pode ser o vencido. Quando o mesmo processo tem vários julgados (original, embargos, voto vencido), ela avisa.\n\n**Conferência.** Cole a sua minuta e a extensão confere cada número de processo, a câmara, o relator e a data. Antes de pôr uma frase entre aspas, ela confere se a frase está mesmo no acórdão e diz de quem ela é: do tribunal, de uma ementa transcrita ou da parte.\n\n**Outros recursos.** Veja o andamento de um processo, consulte resoluções e provimentos do próprio tribunal, descubra quais julgados citam um precedente e quais acórdãos vale a pena ler primeiro. Tudo o que você já leu fica guardado no seu computador e pode ser pesquisado de novo sem consultar o portal. Para saber o que andou em um processo (movimentos e capa), use a extensão Datajud; esta ferramenta trata do texto das decisões. Para intimações e prazos, use o DJEN; prazo nunca sai desta ferramenta nem do Datajud.\n\n**Cuidados.** A extensão consulta o portal oficial do TJRO em ritmo limitado, para não sobrecarregá-lo. Os resumos e as marcas que ela faz servem para escolher o que ler, nunca para concluir sobre uma tese. É uma ferramenta não oficial, mantida por um advogado. Confira número, relator, câmara, data e ementa no acórdão antes de citar em peça.",
   "author": {
@@ -40,7 +40,7 @@
     },
     {
       "name": "obter_inteiro_teor_tjro",
-      "description": "Retorna o texto integral das peças de um processo do TJRO (acórdão, ementa, voto, relatório), listando julgamentos distintos e avisando quando câmara/relator do índice divergem do texto. Para saber o que andou em um processo (movimentos e capa), use a extensão Datajud; esta ferramenta trata do texto das decisões. Para intimações e prazos, use o DJEN; prazo nunca sai desta ferramenta nem do Datajud."
+      "description": "Retorna o texto integral das peças de um processo do TJRO (acórdão, ementa, voto, relatório), listando julgamentos distintos e avisando quando câmara/relator do índice divergem do texto. Para saber o que andou em um processo (movimentos e capa), use a extensão Datajud; esta ferramenta trata do texto das decisões. Para intimações e prazos, use o DJEN; prazo nunca sai desta ferramenta nem do Datajud. A parte cortada de uma peça longa se lê com id_documento e offset ou trecho_em_torno_de, a partir do recibo local, sem nova consulta ao portal. Com agentes em paralelo, aguardar (até 30 s) espera a vaga do limite de ritmo, que é por máquina. Traz uma linha por julgamento com o id do acórdão, da ementa e do voto; documento sem fecho busca o fecho em outro documento do mesmo número e data já lido nesta máquina, e diz de qual."
     },
     {
       "name": "diagnostico_ritmo_tjro",
@@ -53,6 +53,14 @@
     {
       "name": "consultar_processo_tjro",
       "description": "Capa e movimentos de um processo do TJRO pela API pública de processos do tribunal (sem teor de decisão; não serve para prazo)."
+    },
+    {
+      "name": "buscar_precedentes_liame_tjro",
+      "description": "Pesquisa precedentes no Liame (liame.tjro.jus.br), o sistema do TJRO com IRDR e IAC do TJRO e precedentes dos Tribunais Superiores (repercussão geral, repetitivos, súmulas, súmulas vinculantes, IAC e suspensão em IRDR do STJ, ações de controle do STF), alimentado por BNP, STF e TPU. Rotulado Liame/TJRO (espelha BNP, STF e TPU; pode ter defasagem — confira a data de sincronização). Resumo ou completo. Zero resultado é \"não localizado no Liame\", nunca \"não há precedente\"; falha é [CONSULTA NÃO REALIZADA]; não afirma superação. Ritmo próprio (7 s entre consultas, 10 por minuto) e cache de 24 h."
+    },
+    {
+      "name": "verificar_precedente_liame_tjro",
+      "description": "Confere no Liame um precedente pelo número, com espécie e tribunal opcionais: situação como o registro traz, se há tese firmada e a data de atualização. Não localizado é \"não localizado no Liame\", nunca \"não existe\"; situação e superação se conferem na fonte oficial e no BNP."
     },
     {
       "name": "buscar_norma_tjro",
@@ -96,7 +104,7 @@
     },
     {
       "name": "distinguir_tjro",
-      "description": "Ficha de um julgado já lido (sem consultar o portal) para distinguishing e superação: natureza no art. 927 (precedente qualificado × jurisprudência persuasiva), tese e fatos literais, comparação com os fatos do seu caso, sinais de overruling em julgados posteriores e leading case do tema. Desde a 1.40.0, mostra se o próprio processo modificou o acórdão depois (retratação, embargos com efeito modificativo, anulação) e um semáforo sem verde. Desde a 1.41.0, o formato ficha leva situacao_local."
+      "description": "Ficha de um julgado já lido (sem consultar o portal) para distinguishing e superação: natureza no art. 927 (precedente qualificado × jurisprudência persuasiva), tese e fatos literais, comparação com os fatos do seu caso, sinais de overruling em julgados posteriores e leading case do tema. Desde a 1.40.0, mostra se o próprio processo modificou o acórdão depois (retratação, embargos com efeito modificativo, anulação) e um semáforo sem verde. Desde a 1.41.0, o formato ficha leva situacao_local. Na 1.42.0, o resultado oposto só conta como \"mesmo tema\" com semelhança de pelo menos 0,30 (de 0 a 1); entre 0,25 e 0,30 sai à parte como \"mesma palavra\", fora do semáforo, e o formato resumo lista os ids com a semelhança."
     }
   ],
   "compatibility": {

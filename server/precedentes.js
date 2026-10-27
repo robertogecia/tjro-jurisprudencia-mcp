@@ -279,6 +279,12 @@ const rotulo = (r) => { const ro = resultadoComOrigem(r.texto, r.tipo); const k 
 // medido às cegas (15/10/2026, 40 pares, Sonnet e Opus, concordância 37/40): núcleo ≥ 0,25 → mesma questão jurídica 9/9;
 // 0,20–0,24 → 19/28 (o resto, assunto vizinho). Resultado oposto, que pesa na superação, só a partir de 0,25.
 export const LIMIAR_TEMA = 0.2, LIMIAR_MESMA_QUESTAO = 0.25;
+// 1.41.11 (diagnóstico de uso de 26/10/2026, item 8): o 🟠 "do mesmo tema com resultado oposto" apontava julgado de outra matéria.
+// Leitura de 15 pares na cópia dos recibos: entre 0,25 e 0,30, 3 de 10 eram de outra matéria (honorários × embargos de declaração;
+// descontos × tarifa/seguro; RMC × seguro não contratado); a partir de 0,30, 5 de 5 da mesma matéria. Só ≥ 0,30 conta no semáforo
+// ("mesmo tema"); entre 0,25 e 0,30 sai listado à parte como "mesma palavra" (vocabulário parecido; o assunto pode ser outro).
+export const LIMIAR_RESULTADO_OPOSTO = 0.3;
+export const TETO_IDS_OPOSTOS = 10;
 const OPOSTOS = [["provido", "desprovido"], ["parcialmente provido", "desprovido"], ["acolhido", "rejeitado"]];
 
 function escolherRecibo(id, nr, pasta) {
@@ -390,14 +396,22 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
     P("- **Posteriores do mesmo tema com frase de MUDANÇA DE ENTENDIMENTO** (acerto medido 1 de 9 em amostra nova: quase sempre falso, leia):");
     for (const o of mudam.slice(0, 5)) P(`  - ${linha(o.x)} · «${frasesX(o.x).mudanca[0]}»`);
   }
-  let opostosN = 0;
+  let opostosN = 0, opostos = [], mesmaPalavra = [];
   if (meuRes) {
-    const opostos = similares.filter((o) => o.s >= LIMIAR_MESMA_QUESTAO).filter((o) => { const rx = rotulo(o.x); return rx && OPOSTOS.some(([a, b]) => (a === meuRes && b === rx) || (b === meuRes && a === rx)); });
+    const contra = similares.filter((o) => o.s >= LIMIAR_MESMA_QUESTAO).filter((o) => { const rx = rotulo(o.x); return rx && OPOSTOS.some(([a, b]) => (a === meuRes && b === rx) || (b === meuRes && a === rx)); });
+    opostos = contra.filter((o) => o.s >= LIMIAR_RESULTADO_OPOSTO);
+    mesmaPalavra = contra.filter((o) => o.s < LIMIAR_RESULTADO_OPOSTO);
     opostosN = opostos.length;
     if (opostos.length) {
       algum = true;
-      P(`- **Posteriores do mesmo tema com RESULTADO OPOSTO** (${opostos.length}; núcleo da ementa com semelhança ≥ 0,25: mesma questão jurídica em 34 de 36 pares medidos às cegas; a diferença veio de FATOS diferentes em 32 de 36 e de mudança de entendimento em só 2 de 36. Leia como material de distinguishing; overruling é a exceção):`);
-      for (const o of opostos.slice(0, 5)) P(`  - ${linha(o.x, ` · semelhança ${o.s.toFixed(2)}`)}`);
+      P(`- **Posteriores do MESMO TEMA com RESULTADO OPOSTO** (${opostos.length}; núcleo da ementa com semelhança ≥ ${LIMIAR_RESULTADO_OPOSTO.toFixed(2).replace(".", ",")}, de 0 a 1. Em regra a diferença vem de FATOS diferentes, não de mudança de entendimento: leia como material de distinguishing; overruling é a exceção):`);
+      for (const o of opostos.slice(0, TETO_IDS_OPOSTOS)) P(`  - ${linha(o.x, ` · semelhança ${o.s.toFixed(2)}`)}`);
+      if (opostos.length > TETO_IDS_OPOSTOS) P(`  - mais ${opostos.length - TETO_IDS_OPOSTOS} fora desta lista (os de maior semelhança vêm primeiro).`);
+    }
+    if (mesmaPalavra.length) {
+      algum = true;
+      P(`- **Resultado oposto com a MESMA PALAVRA, não necessariamente o mesmo tema** (${mesmaPalavra.length}; semelhança entre ${LIMIAR_MESMA_QUESTAO.toFixed(2).replace(".", ",")} e ${LIMIAR_RESULTADO_OPOSTO.toFixed(2).replace(".", ",")}: vocabulário parecido, o assunto pode ser outro — em 3 de 10 pares lidos era outra matéria. Não entra no semáforo):`);
+      for (const o of mesmaPalavra.slice(0, 5)) P(`  - ${linha(o.x, ` · semelhança ${o.s.toFixed(2)}`)}`);
     }
   }
   if (!algum) P("- Nenhum sinal nos recibos locais. Isso NÃO prova que não foi superado: os recibos são só o que esta máquina já leu.");
@@ -421,7 +435,7 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   RES.push(`- Tese: ${tese ? `«${cur(tese.texto, 220)}»` : razoes ? `«${cur(fonteSec.slice(razoes.a, razoes.b), 220)}» (razões de decidir; a ementa não traz tese)` : "sem tese nem razões no modelo do CNJ (seção 1)"}`);
   RES.push(`- Fatos do julgado: ${fatos ? `«${cur(fatos.texto, 200)}»` : "sem seção reconhecível (seção 2)"}`);
   if (cmp) RES.push(`- Seus fatos: ${cmp.expressoes.length} expressão(ões) deles aparece(m) no precedente; ele NÃO menciona: ${cmp.ausentes.slice(0, 6).join(", ") || "nenhum termo seu"} (seção 3)`);
-  RES.push(`- Superação: ${citam.length} julgado(s) posterior(es) citam este processo (${citam.filter((x) => frasesX(x).distincao.length).length} com frase de distinção); ${mudam.length} do mesmo tema com frase de mudança (quase sempre falsa); ${opostosN} do mesmo tema com resultado oposto (em regra, fato diferente) (seção 5)`);
+  RES.push(`- Superação: ${citam.length} julgado(s) posterior(es) citam este processo (${citam.filter((x) => frasesX(x).distincao.length).length} com frase de distinção); ${mudam.length} do mesmo tema com frase de mudança (quase sempre falsa); ${opostosN} do mesmo tema com resultado oposto (em regra, fato diferente)${mesmaPalavra.length ? `; ${mesmaPalavra.length} só com a mesma palavra (fora do semáforo)` : ""} (seção 5)`);
   const situacao = semaforo({ modificado: cad.modificado, conferir: cad.conferir, citamComSinal: citam.filter((x) => frasesX(x).distincao.length || frasesX(x).mudanca.length).length, opostos: opostosN, mudam: mudam.length });
   if (formato === "ficha") return fichaDePrecedente({ r, t, ementa, tese, fonteSec, sessao, pasta, situacao });
   RES.push(`- Situação (indício, sem verde): ${situacao} (seções 5 e 5-A)`);
@@ -431,7 +445,11 @@ export function distinguir({ id_documento = "", nr_processo = "", fatos_do_caso 
   if (formato === "resumo") {
     const ids = [...citam.slice(0, 8), ...mudam.slice(0, 5).map((o) => o.x)].map((x) => `${x.id_documento} (${x.data_julgamento || "?"})`);
     const corte = Math.max(0, citam.length - 8) + Math.max(0, mudam.length - 5);
-    return [...L.slice(0, 3 + 1 + RES.length), `- Ids para abrir: ${ids.length ? ids.join(", ") : "nenhum julgado posterior nos recibos"}.${corte ? ` Mais ${corte} fora desta lista: peça o formato "completo".` : ""} Detalhe completo: mesma chamada com formato "completo"; rascunho de ficha: formato "ficha".`].join("\n");
+    const comS = (o) => `${o.x.id_documento} (${o.x.data_julgamento || "?"} · ${rotulo(o.x)} · semelhança ${o.s.toFixed(2)})`;
+    const extra = [];
+    if (opostos.length) extra.push(`- Mesmo tema, resultado oposto (${opostos.length}; semelhança de 0 a 1): ${opostos.slice(0, TETO_IDS_OPOSTOS).map(comS).join(", ")}${opostos.length > TETO_IDS_OPOSTOS ? ` e mais ${opostos.length - TETO_IDS_OPOSTOS} (formato "completo")` : ""}.`);
+    if (mesmaPalavra.length) extra.push(`- Mesma palavra, resultado oposto, assunto pode ser outro (${mesmaPalavra.length}; fora do semáforo): ${mesmaPalavra.slice(0, 5).map(comS).join(", ")}${mesmaPalavra.length > 5 ? ` e mais ${mesmaPalavra.length - 5}` : ""}.`);
+    return [...L.slice(0, 3 + 1 + RES.length), ...extra, `- Ids para abrir: ${ids.length ? ids.join(", ") : "nenhum julgado posterior nos recibos"}.${corte ? ` Mais ${corte} fora desta lista: peça o formato "completo".` : ""} Detalhe completo: mesma chamada com formato "completo"; rascunho de ficha: formato "ficha".`].join("\n");
   }
   P(`\n_Tema = este julgado + até 80 recibos com vocabulário parecido (semelhança do núcleo da ementa ≥ 0,2). Recibo é só o que esta máquina já leu, não o acervo do TJRO._`);
   gravarDeriv();

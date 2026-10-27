@@ -85,7 +85,8 @@ function pendentesDaCitacao(cit, lidos) {
 /** O que a peça diz ao lado de cada ocorrência, dentro da própria citação (entre a fronteira anterior e a seguinte, até 300 caracteres). */
 function ocorrencias(t) {
   const ms = [...t.matchAll(RE_NUM)];
-  return ms.map((m, i) => {
+  let ant = null;   // o que o número anterior tomou da cauda depois do seu ")" (item B, 26/10/2026)
+  const res = ms.map((m, i) => {
     const ini = Math.max(i ? ms[i - 1].index + ms[i - 1][0].length : 0, m.index - 300);
     const fim = Math.min(i + 1 < ms.length ? ms[i + 1].index : t.length, m.index + m[0].length + 300);
     let antes = t.slice(ini, m.index), depois = t.slice(m.index + m[0].length, fim);
@@ -93,17 +94,83 @@ function ocorrencias(t) {
     const partes = antes.split(/\n|;\s/); antes = partes[partes.length - 1].slice(-160);
     const FG = new RegExp(FRONTEIRA.source, "g"); let ult = -1; for (const x of antes.matchAll(FG)) ult = x.index;
     if (ult >= 0) { const resto = antes.slice(ult); const fimCit = resto.search(/\)|,\s+(?:e\s+)?(?:quanto|como|pelo|pela|que|n[oa]\s|desta|deste|esta|este)\b/); antes = fimCit >= 0 ? resto.slice(fimCit + 1) : ""; }
-    const jan = antes + " " + depois;
+    // 1.41.11 (diagnóstico 26/10, item 9): "na 1ª Câmara (A, 1ª Câmara…) e na 3ª Câmara (B, 3ª Câmara…)" — a janela de B começava
+    // dentro do parêntese de A, e a de A seguia até B: cada número levava a câmara/relator/data do outro (🔴 falso nos dois).
+    // (a) O ")" que fecha, no vão entre os dois números, um parêntese aberto antes do número anterior é do anterior: B começa depois dele.
+    let depoisDoParen = false;
+    if (i > 0 && ini === ms[i - 1].index + ms[i - 1][0].length) {
+      const vao = t.slice(ini, m.index); let prof = 0, corte = -1;
+      for (let k = 0; k < vao.length; k++) { if (vao[k] === "(") prof++; else if (vao[k] === ")") { if (prof) prof--; else corte = k; } }
+      if (corte >= 0) { const k0 = vao.length - antes.length; if (corte >= k0) { antes = vao.slice(corte + 1); depoisDoParen = true; } }
+    }
+    // (b) Número dentro de parêntese, com outro número depois do ")" que o fecha: vale o que está dentro do parêntese. O que vem entre o
+    // ")" e o número seguinte só entra se o parêntese não disser aquilo (câmara, relator, data) — senão é a introdução do seguinte.
+    let cauda = "", kPar = -1;
+    { let prof = 0; for (let k = antes.length - 1; k >= 0; k--) { if (antes[k] === ")") prof++; else if (antes[k] === "(") { if (prof) prof--; else { prof = -1; kPar = k; break; } } }
+      if (prof === -1 && i + 1 < ms.length && ms[i + 1].index <= m.index + m[0].length + 300) {
+        let p2 = 0;
+        for (let k = 0; k < depois.length; k++) { if (depois[k] === "(") p2++; else if (depois[k] === ")") { if (p2) p2--; else { cauda = depois.slice(k + 1); depois = depois.slice(0, k); break; } } }
+      } }
+    const jan0 = (kPar >= 0 ? antes.slice(kPar) : antes) + " " + depois;   // reataque Fable (26/10): a câmara da PROSA antes do parêntese não é a do parêntese
+    const temCam = new RegExp(RE_CAMARA_PECA.source, "giu").test(jan0) || new RegExp(RE_COLEGIADO_PECA.source, "gi").test(jan0);
+    if (cauda && !temCam) depois += " " + cauda;   // o parêntese não diz câmara: a cauda volta inteira (comportamento anterior)
+    const caudaRel = cauda && !temCam ? "" : cauda;
+    // (B) reataque 26/10/2026: "(A), Rel. Des. X, j. 01/01/1999, e (B, 2ª Câmara)" — a cauda depois do ")" de A é de A, nunca de B.
+    // Relator e data da cauda nunca valem para B; a câmara da cauda só fica com B se A não a tomou (o parêntese de A já dizia câmara:
+    // então ela é a introdução de B). O que A não tomou e B não diz no próprio parêntese fica pendente (🟠), nunca some.
+    let antesRel = antes, antesCam = antes; const pendB = [];
+    if (depoisDoParen && ant && ant.cauda) {
+      const kB = antes.lastIndexOf("("); const proprio = kB >= 0 ? antes.slice(kB) : "";
+      antesRel = proprio; if (ant.tomouCam) antesCam = proprio;
+      const fora = kB >= 0 ? antes.slice(0, kB) : antes;
+      if (!ant.tomouRel && RE_REL_PECA.test(fora)) pendB.push(`relator dito entre os dois parênteses («${emLinha(fora).slice(0, 60)}»), não atribuído a este número`);
+      if (!ant.tomouDt && dataDoJulgamento(fora)) pendB.push(`data dita entre os dois parênteses («${emLinha(fora).slice(0, 60)}»), não atribuída a este número`);
+    }
+    const jan = antesCam + " " + depois;
     const cams = [...jan.matchAll(RE_CAMARA_PECA)].map((c) => camaraNorm(c[1], c[2]));
     const semNum = jan.replace(new RegExp(RE_CAMARA_PECA.source, "gi"), (x) => " ".repeat(x.length));
     for (const c of semNum.matchAll(RE_COLEGIADO_PECA)) cams.push(capitular(c[0]));
-    const rel = RE_REL_PECA.exec(depois) || RE_REL_PECA.exec(antes);
-    const dt = dataDoJulgamento(depois) || dataDoJulgamento(antes);
+    const depP = cauda && !temCam ? depois.slice(0, depois.length - cauda.length - 1) : depois;   // o próprio parêntese, sem a cauda
+    const relP = RE_REL_PECA.exec(depP) || RE_REL_PECA.exec(antesRel), dtP = dataDoJulgamento(depP) || dataDoJulgamento(antesRel);
+    const rel = RE_REL_PECA.exec(depois) || RE_REL_PECA.exec(antesRel) || (caudaRel ? RE_REL_PECA.exec(caudaRel) : null);
+    const dt = dataDoJulgamento(depois) || dataDoJulgamento(antesRel) || (caudaRel ? dataDoJulgamento(caudaRel) : null);
+    ant = { cauda, tomouCam: !!cauda && !temCam, tomouRel: !!cauda && !relP && !!rel, tomouDt: !!cauda && !dtP && !!dt };
     // a citação propriamente dita: do último "(", ":" ou "TJRO" antes do número em diante (a prosa anterior não é afirmação sobre o julgado)
     const kCit = Math.max(antes.lastIndexOf("("), antes.lastIndexOf(":"), antes.lastIndexOf("TJRO"));
-    const pendentes = pendentesDaCitacao((kCit >= 0 ? antes.slice(kCit) : antes) + " " + depois, [rel && rel[0], dt && dt[0]]);
+    const pendentes = [...pendentesDaCitacao((kCit >= 0 ? antes.slice(kCit) : antes) + " " + depois, [rel && rel[0], dt && dt[0]]), ...pendB];
     return { d: m.slice(1, 7).join(""), camaras: [...new Set(cams)], pendentes, relator: rel ? rel[1].replace(/[.,;]+$/, "") : null, data: dt ? (dt[2] ? dataBr(dt[1], dt[2], dt[3]) : (MESES.indexOf(fold(dt[4])) >= 0 ? dataBr(dt[1], String(MESES.indexOf(fold(dt[4])) + 1), dt[5]) : null)) : null };
   });
+  // (A) reataque 26/10/2026: "(Apelações A e B, 3ª Câmara Cível, Rel. Des. X)" — números separados só por "e"/vírgula formam um grupo,
+  // e o que vem depois do último vale para todos (antes o primeiro saía ✅ "nada a comparar"). Câmaras: soma (🔴 se alguma divergir);
+  // relator e data: os do próprio número, senão os do grupo; o que o último deixou pendente também fica pendente nos anteriores.
+  const RE_GRUDA = /^\s*(?:,\s*(?:e\s+)?|e\s+)[A-Za-zÀ-ÿ.ºª°\s]{0,40}$/i;
+  const diz = (g) => new RegExp(RE_CAMARA_PECA.source, "giu").test(g) || new RegExp(RE_COLEGIADO_PECA.source, "gi").test(g) || RE_REL_PECA.test(g) || /\b(?:julgad|relat|lavra|sess[ãa]o|j\.)/i.test(g) || FRONTEIRA.test(g);
+  // Só a cauda IMEDIATA do último número vale para o grupo: até o ")" que fecha, o fim da frase ou a fronteira (medido na cópia dos
+  // recibos, 27/10/2026: sem o corte, "desta 1ª Câmara" da prosa seguinte e o fecho do próprio documento viravam câmara do grupo).
+  const caudaDoGrupo = (j) => {
+    let c = t.slice(ms[j].index + ms[j][0].length, ms[j].index + ms[j][0].length + 200);
+    const f = FRONTEIRA.exec(c); if (f) c = c.slice(0, f.index);
+    const k = c.search(/\)|(?<![\s(](?:[Cc][âa]m|[Cc][íi]v|[Cc]rim|[Ee]sp|[Rr]el|[Rr]ela|[Dd]es|[Dd]esa|[Mm]in|[Aa]rt|[Aa]rts|[Ff]ls?|[Nn]|[Jj]|AC|AI|Ap|Ag|[Pp]roc|[Rr]ec|[Ii]nc|[Vv]ol|[Pp]|[Pp]p|Sr|Sra|Dr|Dra))(?<=[a-zà-ÿº]{1,})\.\s+[A-ZÀ-Ý]|\bACÓRDÃO\b|\bacordam\b/); if (k >= 0) c = c.slice(0, k);
+    const cams = [...c.matchAll(RE_CAMARA_PECA)].map((x) => camaraNorm(x[1], x[2]));
+    const semNum = c.replace(new RegExp(RE_CAMARA_PECA.source, "gi"), (x) => " ".repeat(x.length));
+    for (const x of semNum.matchAll(RE_COLEGIADO_PECA)) cams.push(capitular(x[0]));
+    const rel = RE_REL_PECA.exec(c), dt = dataDoJulgamento(c);
+    return { cams, rel: rel ? rel[1].replace(/[.,;]+$/, "") : null, data: dt ? (dt[2] ? dataBr(dt[1], dt[2], dt[3]) : (MESES.indexOf(fold(dt[4])) >= 0 ? dataBr(dt[1], String(MESES.indexOf(fold(dt[4])) + 1), dt[5]) : null)) : null, pend: pendentesDaCitacao(c, [rel && rel[0], dt && dt[0]]) };
+  };
+  let fimGrupo = -1, g = null;
+  for (let i = ms.length - 2; i >= 0; i--) {
+    const gap = t.slice(ms[i].index + ms[i][0].length, ms[i + 1].index);
+    if (!RE_GRUDA.test(gap) || diz(gap)) { fimGrupo = -1; continue; }
+    if (fimGrupo !== i + 1 || !g) { g = caudaDoGrupo(i + 1); }
+    fimGrupo = i;
+    const o = res[i];
+    o.camaras = [...new Set([...o.camaras, ...g.cams])];
+    if (!o.relator) o.relator = g.rel;
+    if (!o.data) o.data = g.data;
+    o.pendentes = [...new Set([...o.pendentes, ...g.pend])];
+    if (!g.cams.length && g.pend.some((x) => /^órgão/.test(x))) o.pendentes.push("câmara dita para o grupo de números, não conferida");
+  }
+  return res;
 }
 
 const diaDe = (br) => { const [d, m, a] = String(br || "").split("/").map(Number); return d && m && a ? Date.UTC(a, m - 1, d) : NaN; };

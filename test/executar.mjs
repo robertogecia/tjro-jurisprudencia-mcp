@@ -18,6 +18,7 @@ const env = {
   TJRO_MCP_DIR_RECIBOS: path.join(casa, ".tjro-jurisprudencia-recibos"),
   TJRO_MCP_DIR_CACHE: path.join(casa, ".tjro-jurisprudencia-cache"),
   TJRO_MCP_ARQUIVO_AVISO_VERSAO: path.join(casa, ".tjro-jurisprudencia-aviso-versao.json"),
+  TJRO_MCP_ARQUIVO_ESTADO_LIAME: path.join(casa, ".tjro-jurisprudencia-liame-estado.json"),
   // o lint de citações é só LIDO da instalação real da skill (o teste o executa sobre recibos em os.tmpdir())
   TJRO_LINT_CITACOES:
     process.env.TJRO_LINT_CITACOES || path.join(os.homedir(), ".claude/skills/peticao-rg/scripts/lint_citacoes.py"),

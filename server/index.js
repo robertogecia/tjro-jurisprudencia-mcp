@@ -11,7 +11,19 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { verificarCitacao } from "./verificar.js";
-import { buscarRecibos, recalcularRecibos, RECIBOS_LIMITE_MAX, listarRecibos, indiceLeve, recibosDoProcesso } from "./recibos.js";
+import { buscarRecibos, recalcularRecibos, RECIBOS_LIMITE_MAX, listarRecibos, indiceLeve, recibosDoProcesso, recibosDoProcessoExato, lerTrechoDoRecibo, JANELA_LEITURA } from "./recibos.js";
+// 1.41.11: recibos do mesmo número para o fecho de outro documento e os ids por julgamento (só leitura local; nunca o portal)
+// 1.42.0: só número de 20 dígitos, igualdade exata, e lendo do disco só os ids do índice leve com esse número
+const locaisDoProcesso = (nr, data) => {
+  try {
+    let d = String(nr || "").replace(/\D/g, "");
+    if (d.length !== 20) { // número incompleto: só se TODOS os hits da resposta forem de um único processo de 20 dígitos
+      const ns = new Set((((data || {}).hits || {}).hits || []).map((h) => String((h._source || {}).nr_processo || "").replace(/\D/g, "")).filter((x) => x.length === 20));
+      d = ns.size === 1 ? [...ns][0] : "";
+    }
+    return recibosDoProcessoExato(d);
+  } catch { return []; }
+};
 import { auditarCitacoes } from "./auditoria.js";
 import { citadosPor, listaDeLeitura } from "./cadeia.js";
 import { citacoesDoTexto } from "./precedentes.js";
@@ -62,9 +74,14 @@ import {
   lerCacheInteiro,
   gravarCacheInteiro,
   notaCache,
+  comEspera,
+  notaDeEspera,
+  notaErroContado,
+  AGUARDAR_MAX_S,
 } from "./lib.js";
 import { distinguir } from "./precedentes.js";
 import { consultarProcesso, formatProcesso, ErroProcesso } from "./processo.js";
+import { buscarLiame, verificarLiame, formatarBuscaLiame, formatarVerificacaoLiame, linhaDeRitmoLiame, ErroLiame, POR_PAGINA_LIAME_MAX, ESPECIES_LIAME, SIGLAS_LIAME, ROTULO_LIAME, NAO_REALIZADA, SITUACOES_LIAME, TEXTO_LIAME_MAX } from "./liame.js";
 import { ordenarPorSimilaridade, notaSimilares } from "./similares.js";
 import { sugerirVocabulario, blocoVocabulario, termosQueDistinguem } from "./vocabulario.js";
 import { linhaDoTempo, citacoesDe } from "./linhadotempo.js";
@@ -85,6 +102,12 @@ import {
 } from "./normas.js";
 
 // --------------------------------------------------------------- MCP server -
+// 1.41.11: espera opcional pela vaga do limite de ritmo (ver comEspera em lib.js). Não muda o intervalo de 7 s nem os tetos.
+const AGUARDAR = z.number().min(0).max(AGUARDAR_MAX_S).optional().describe(
+  `Segundos (0 a ${AGUARDAR_MAX_S}) que a ferramenta pode ESPERAR pela vaga do limite de ritmo antes de consultar o portal, em vez de devolver o erro. ` +
+    "Serve para quando outra conversa ou agente desta máquina ocupou a vaga: o teto é POR MÁQUINA, somado entre todos. Não é licença para abrir mais agentes consultando ao mesmo tempo; use uma vez por chamada e, se ainda vier [espera_segundos=…], pare: nunca repita nem contorne. Não encurta o intervalo mínimo nem os tetos; bloqueio do tribunal nunca é esperado."
+);
+
 const server = new McpServer({ name: "Jurisprudência TJRO", version: VERSAO });
 comDiario(server); // diário local de erros: anota falhas de TODAS as ferramentas (só dado técnico)
 iniciarChecagemVersao();
@@ -156,7 +179,8 @@ server.registerTool(
             'sem este filtro, copie o texto exato do campo "Relator(a)" de um resultado e repita — não adivinhe a ' +
             "caixa. Só filtra o campo do ACÓRDÃO: inclua ACÓRDÃO em tipo (esse campo costuma vir vazio em EMENTA). " +
             "O MESMO relator costuma existir em 2 grafias no índice (Title Case nos anos antigos, CAIXA ALTA nos recentes): " +
-            "quando a grafia pedida tiver outra conhecida, a resposta avisa qual e em que anos, e o remédio é repetir com a outra grafia."
+            "quando a grafia pedida tiver outra conhecida, a resposta avisa qual e em que anos, e o remédio é repetir com a outra grafia. " +
+            'Juiz de 1º grau (tipo=["SENTENÇA"]): a grafia é normalizada no servidor (CAIXA ALTA, sem acento), então "Gleucival Zeed Estevão" e "GLEUCIVAL ZEED ESTEVAO" dão o mesmo resultado.'
         ),
       excluir: z
         .array(z.string())
@@ -193,6 +217,7 @@ server.registerTool(
       ordenacao: z.enum(["relevantes", "recentes", "antigos"]).optional().describe('Padrão "relevantes".'),
       pagina: z.number().int().optional().describe("Página dos resultados (1+). O portal expõe no máximo os 10.000 primeiros."),
       por_pagina: z.number().int().optional().describe("Resultados por página (1–250; padrão 10). Acima de ~30, use modo=\"compacto\" para a resposta caber: 250 numa consulta custam o mesmo que 10 no ritmo do portal."),
+      aguardar: AGUARDAR,
       modo: z.enum(["completo", "compacto"]).optional().describe('"compacto" = uma linha por documento (órgão, data, relator, resultado declarado, assunto, processo, id), sem trecho — para varrer 100–250 resultados e escolher o que abrir. Padrão "completo" (com trecho).'),
       sugerir_termos: z.boolean().optional().describe("true = acrescenta, no fim, o VOCABULÁRIO das ementas desta página (zero consulta extra): termos e pares de palavras característicos dos resultados (frequentes aqui, raros no corpus local), variantes dos seus termos com o radical para `termo*`, e, se houver `relator`, as expressões que ele repete. Serve para montar a 2ª rodada em `grupos`/`excluir` com as palavras que os julgadores de fato usaram. Use com por_pagina de 50 a 250. Indício, não conclusão."),
       similares_a: z.string().optional().describe("Id de um documento DESTA página (id_processo_documento, vem em cada resultado): reordena a página, no cliente e sem consulta extra, pela semelhança de texto com ele (cosseno TF-IDF), com a semelhança em % no cabeçalho. Use com por_pagina alto e a mesma consulta que trouxe o documento. Semelhança de palavras, não de tese."),
@@ -268,7 +293,8 @@ server.registerTool(
           pagina,
           porPagina,
         });
-      const data = await post(corpo);
+      const { valor: data, esperouMs } = await comEspera(a.aguardar, () => post(corpo));
+      nota += notaDeEspera(esperouMs).trim() ? notaDeEspera(esperouMs).trim() + "\n" : "";
       gravarRecibos(data, undefined, { origem: "busca" }); // v1.31.0 (H01): a busca já trouxe o texto; guardar evita reabrir o acórdão para citar
       if (a.resultado) {
         const antes = ((data.hits || {}).hits || []).length;
@@ -290,9 +316,9 @@ server.registerTool(
       let texto = formatBusca(data, a.consulta, tipo, ordenacao, pagina, porPagina, filtros, nota, !!a.termo_exato, temGrupos || (Array.isArray(a.excluir) && a.excluir.length) ? corpo.fields.query : "", { modo: a.modo });
       if (a.sugerir_termos)
         texto += blocoVocabulario(sugerirVocabulario((data.hits || {}).hits || [], { consulta: a.consulta, grupos: a.grupos, relator: a.relator }), { relator: a.relator });
-      return { content: [{ type: "text", text: await comAvisos(limitarSaida(texto) + linhaDeRitmo()) }] };
+      return { content: [{ type: "text", text: await comAvisos(limitarSaida(texto, undefined, { pagina }) + linhaDeRitmo()) }] };
     } catch (e) {
-      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e) + dicaConsultaGrande(msgErro(e), a.grupos)) }], isError: true };
+      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e) + dicaConsultaGrande(msgErro(e), a.grupos) + notaErroContado(msgErro(e)) + linhaDeRitmo()) }], isError: true };
     }
   }
 );
@@ -314,30 +340,38 @@ server.registerTool(
       "Quando o fecho diverge do índice, a Citação do cabeçalho já sai com a câmara do fecho. " +
       "Cada peça traz o PRÓPRIO link do portal (\"· link ...\" no título da peça); o link do topo é o da peça mais recente. " +
       "Para citar, use o link e o id da peça citada, nunca os de outra peça do mesmo número. " +
-      "A saída é deduplicada e limitada a ~50 mil caracteres — se algo for truncado, um aviso indica como buscar o restante (filtrando por tipo).",
+      "A saída é deduplicada e limitada a ~50 mil caracteres — se algo for truncado, um aviso indica como buscar o restante (filtrando por tipo). " +
+      "Para ler a parte CORTADA de uma peça sem nova consulta ao portal, chame de novo com id_documento e offset (caractere onde COMEÇA a leitura: o número que o aviso de corte deu) ou trecho_em_torno_de (uma expressão da peça): " +
+      `a leitura sai do recibo local, em janelas de até ${JANELA_LEITURA / 1000} mil caracteres, com o offset para continuar.`,
     inputSchema: {
       nr_processo: z.string().describe("Número do processo (CNJ), com ou sem máscara."),
       tipo: z
         .array(z.string())
         .optional()
         .describe('Quais peças trazer. Padrão ["ACÓRDÃO","EMENTA","VOTO","RELATÓRIO"].'),
+      id_documento: z.string().optional().describe("Só com offset/trecho_em_torno_de: id da peça a ler do recibo local (sem ele, o ACÓRDÃO mais longo do processo já lido)."),
+      offset: z.number().int().min(0).optional().describe(`Lê a peça do recibo local a partir deste caractere, em janela de até ${JANELA_LEITURA / 1000} mil caracteres. Nenhuma consulta ao portal; sem recibo, avisa e não consulta.`),
+      trecho_em_torno_de: z.string().optional().describe("Lê do recibo local a janela centrada na 1ª ocorrência desta expressão (sem acento e caixa). Nenhuma consulta ao portal."),
+      aguardar: AGUARDAR,
       modo: z.enum(["completo", "triagem"]).optional().describe('"triagem" = leitura barata para decidir se vale ler o acórdão inteiro: por julgamento, resultado declarado, peças com id e link, tese da ementa, fatos do julgado, fecho e precedentes qualificados citados, SEM o texto das peças (cerca de 10 a 15% do tamanho). Padrão "completo". Para aspas, nunca use a triagem: use o modo completo ou verificar_citacao_tjro.'),
     },
   },
   async (a) => {
     if (!String(a.nr_processo || "").replace(/\D/g, ""))
       return { content: [{ type: "text", text: "Informe o número do processo (CNJ)." }] };
+    if (a.offset !== undefined || String(a.trecho_em_torno_de || "").trim())
+      return { content: [{ type: "text", text: lerTrechoDoRecibo({ id_documento: a.id_documento || "", nr_processo: a.nr_processo, offset: a.offset, trecho_em_torno_de: a.trecho_em_torno_de || "" }) }] };
     try {
       const tipo = normTipos(a.tipo, ["ACÓRDÃO", "EMENTA", "VOTO", "RELATÓRIO"]);
       const cache = lerCacheInteiro(a.nr_processo, tipo);
       if (cache)
-        return { content: [{ type: "text", text: await comAvisos(notaCache(cache.obtido_em) + (a.modo === "triagem" ? formatTriagem : formatInteiro)(cache.data, a.nr_processo)) }] };
-      const data = await post(buildInteiroBody(a.nr_processo, tipo));
+        return { content: [{ type: "text", text: await comAvisos(notaCache(cache.obtido_em) + (a.modo === "triagem" ? formatTriagem : formatInteiro)(cache.data, a.nr_processo, { locais: locaisDoProcesso(a.nr_processo, cache.data) })) }] };
+      const { valor: data, esperouMs } = await comEspera(a.aguardar, () => post(buildInteiroBody(a.nr_processo, tipo)));
       gravarRecibos(data);
       gravarCacheInteiro(a.nr_processo, tipo, data);
-      return { content: [{ type: "text", text: await comAvisos((a.modo === "triagem" ? formatTriagem : formatInteiro)(data, a.nr_processo)) }] };
+      return { content: [{ type: "text", text: await comAvisos((a.modo === "triagem" ? formatTriagem : formatInteiro)(data, a.nr_processo, { locais: locaisDoProcesso(a.nr_processo, data) }) + notaDeEspera(esperouMs) + linhaDeRitmo()) }] };
     } catch (e) {
-      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
+      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e) + notaErroContado(msgErro(e))) + linhaDeRitmo() }], isError: true };
     }
   }
 );
@@ -362,6 +396,7 @@ server.registerTool(
       trecho: z.string().describe("O trecho exatamente como vai entre aspas; cortes com [...]."),
       id_documento: z.string().optional().describe("Id do documento (id_processo_documento), o mesmo da busca e do inteiro teor. Preferido."),
       nr_processo: z.string().optional().describe("Número do processo (CNJ), com ou sem máscara. Obrigatório se não houver id, e é o que permite ir ao portal quando não há recibo."),
+      aguardar: AGUARDAR,
     },
     annotations: { title: "Verificar citação literal no TJRO", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
@@ -376,8 +411,8 @@ server.registerTool(
         gravarCacheInteiro(digitos, tipo, data);
         return data;
       };
-      const texto = await verificarCitacao({ nr_processo: a.nr_processo, id_documento: a.id_documento, trecho: a.trecho, buscar });
-      return { content: [{ type: "text", text: await comAvisos(texto) }] };
+      const { valor: texto, esperouMs } = await comEspera(a.aguardar, () => verificarCitacao({ nr_processo: a.nr_processo, id_documento: a.id_documento, trecho: a.trecho, buscar }));
+      return { content: [{ type: "text", text: await comAvisos(texto + notaDeEspera(esperouMs)) }] };
     } catch (e) {
       return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e)) }], isError: true };
     }
@@ -569,16 +604,92 @@ server.registerTool(
     inputSchema: {
       nr_processo: z.string().describe("Número do processo (CNJ, 20 dígitos), com ou sem máscara."),
       max_movimentos: z.number().int().min(1).max(100).optional().describe("Quantos movimentos mais recentes mostrar por grau. Padrão 15."),
+      aguardar: AGUARDAR,
     },
   },
   async (a) => {
     try {
-      const res = await consultarProcesso(a.nr_processo);
-      return { content: [{ type: "text", text: await comAvisos(formatProcesso(res, a.nr_processo, a.max_movimentos ?? 15)) }] };
+      const { valor: res, esperouMs } = await comEspera(a.aguardar, () => consultarProcesso(a.nr_processo));
+      return { content: [{ type: "text", text: await comAvisos(formatProcesso(res, a.nr_processo, a.max_movimentos ?? 15) + notaDeEspera(esperouMs)) }] };
     } catch (e) {
       // Erro da API de processos tem mensagem própria: nunca o aviso de bloqueio do JURIS.
       const texto = e instanceof ErroProcesso ? e.message : `Erro inesperado na consulta de processo: ${e?.message || e}`;
       return { content: [{ type: "text", text: texto }], isError: true };
+    }
+  }
+);
+
+// 1.41.11: precedentes do Liame (TJRO e Tribunais Superiores). Host próprio, ritmo próprio (server/liame.js).
+const ESPECIES_DESC =
+  "Espécies: apelidos irdr, iac (TJRO e STJ), repetitivo, rg (repercussão geral), sv (súmula vinculante), sumula (súmulas do STF), adi, adc, ado, adpf, sirdr " +
+  `(suspensão em IRDR, STJ), ou o nome técnico (${ESPECIES_LIAME.join(", ")}). Vazio = todas.`;
+const erroLiame = (e) => ({
+  content: [{ type: "text", text: e instanceof ErroLiame ? e.message : `${NAO_REALIZADA} Erro inesperado na consulta ao Liame: ${e?.message || e}` }],
+  isError: true,
+});
+server.registerTool(
+  "buscar_precedentes_liame_tjro",
+  {
+    title: "Precedentes no Liame (TJRO e Tribunais Superiores)",
+    description:
+      "Pesquisa precedentes no Liame (liame.tjro.jus.br), o sistema do TJRO que reúne IRDR e IAC do TJRO e precedentes dos Tribunais Superiores " +
+      "(repercussão geral, recursos repetitivos, súmulas vinculantes, súmulas do STF, IAC e suspensão em IRDR do STJ, ADI/ADC/ADO/ADPF), alimentado por BNP, STF e TPU. " +
+      `Cada resposta é rotulada ${ROTULO_LIAME} e traz a última sincronização. ` +
+      "modo=\"resumo\" (padrão): espécie, tribunal, número, situação, órgão/relator, questão e tese truncadas, paradigmas com link e datas; " +
+      "modo=\"completo\": tese e questão inteiras, ementa (STF), alcance da suspensão, assuntos e links dos textos. " +
+      "Zero resultado é \"não localizado no Liame\", NUNCA \"não há precedente\"; consulta que falhou é [CONSULTA NÃO REALIZADA]. " +
+      "A situação é a do registro; a ferramenta não afirma superação (confira na fonte oficial e no BNP). " +
+      "Não é pesquisa de jurisprudência de câmara (isso é buscar_jurisprudencia_tjro). Ritmo próprio: no mínimo 7 s entre consultas e no máximo 10 por janela (1 min no normal; a janela sobe na escada 1/5/10/20/30 min depois de recusa), por máquina; cache de 24 h por consulta idêntica. " +
+      "Envie só o termo jurídico: nunca nome de parte nem dado do caso.",
+    inputSchema: {
+      texto: z.string().optional().describe(`Termo livre (ex.: "cartão consignado"), até ${TEXTO_LIAME_MAX} caracteres. Só o tema jurídico, sem dado do caso.`),
+      siglas: z.array(z.string()).optional().describe(`Tribunais: ${SIGLAS_LIAME.join(", ")}. Vazio = todos.`),
+      especies: z.array(z.string()).optional().describe(ESPECIES_DESC),
+      situacao: z.string().optional().describe(`Situação do registro (sem acento e caixa; espaço vira _): ${SITUACOES_LIAME.join(", ")}. Fora da lista = erro, não "não localizado".`),
+      numero: z.string().optional().describe("Número do tema, IRDR, IAC ou súmula."),
+      numero_processo_paradigma: z.string().optional().describe("Número do processo paradigma."),
+      assuntos: z.array(z.string()).optional().describe("Códigos de assunto da TPU (ex.: \"9585\"). Formato exato aceito pelo Liame não confirmado."),
+      data_inicio: z.string().optional().describe("Data inicial (dd/mm/aaaa ou aaaa-mm-dd)."),
+      data_final: z.string().optional().describe("Data final (dd/mm/aaaa ou aaaa-mm-dd)."),
+      pagina: z.number().int().min(1).max(1000).optional().describe("Página (1 a 1000)."),
+      por_pagina: z.number().int().min(1).max(POR_PAGINA_LIAME_MAX).optional().describe(`Resultados por página, até ${POR_PAGINA_LIAME_MAX}. Padrão 10.`),
+      modo: z.enum(["resumo", "completo"]).optional().describe("resumo (padrão) ou completo."),
+      aguardar: AGUARDAR,
+    },
+  },
+  async (a) => {
+    try {
+      const r = await buscarLiame(a);
+      const t = formatarBuscaLiame(r.resp, { modo: a.modo || "resumo", sync: r.sync, doCache: r.doCache });
+      return { content: [{ type: "text", text: await comAvisos(`${t}\n\n${linhaDeRitmoLiame()}`) }] };
+    } catch (e) {
+      return erroLiame(e);
+    }
+  }
+);
+
+server.registerTool(
+  "verificar_precedente_liame_tjro",
+  {
+    title: "Conferir precedente no Liame (situação e tese firmada)",
+    description:
+      "Confere no Liame um precedente pelo número (tema, IRDR, IAC, súmula), com espécie e tribunal opcionais, e devolve só os registros cujo número bate: " +
+      "situação como o registro traz, se há tese firmada e a data de atualização do registro. " +
+      `Rotulado ${ROTULO_LIAME}. Não localizado = \"não localizado no Liame\", nunca \"não existe\"; falha = [CONSULTA NÃO REALIZADA]. ` +
+      "Situação e superação se conferem na fonte oficial e no BNP: esta ferramenta não afirma superação. Mesmo ritmo e cache da busca no Liame.",
+    inputSchema: {
+      numero: z.string().describe("Número do tema, IRDR, IAC ou súmula (ex.: \"15\", \"Tema 1484\")."),
+      especie: z.string().optional().describe(ESPECIES_DESC),
+      sigla: z.string().optional().describe(`Tribunal: ${SIGLAS_LIAME.join(", ")}.`),
+      aguardar: AGUARDAR,
+    },
+  },
+  async (a) => {
+    try {
+      const v = await verificarLiame(a);
+      return { content: [{ type: "text", text: await comAvisos(`${formatarVerificacaoLiame(v)}\n\n${linhaDeRitmoLiame()}`) }] };
+    } catch (e) {
+      return erroLiame(e);
     }
   }
 );

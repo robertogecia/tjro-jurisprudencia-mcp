@@ -122,8 +122,8 @@ test("reataque Fable 3 (d)(e): proclamação não é sessão do fecho; 'sessão 
 
 // ---------- ids reais (opcional) ----------
 const COPIA = process.env.TJRO_COPIA_RECIBOS_B;
-test("reataque Fable 3: ids reais na cópia dos recibos", { skip: !COPIA && "defina TJRO_COPIA_RECIBOS_B (cópia em os.tmpdir())" }, () => {
-  assert.ok(fs.realpathSync(COPIA).startsWith(fs.realpathSync(os.tmpdir())), "a cópia precisa estar em os.tmpdir()");
+const copiaNoTmp = (() => { try { return !!COPIA && fs.realpathSync(COPIA).startsWith(fs.realpathSync(os.tmpdir())); } catch { return false; } })();
+test("reataque Fable 3: ids reais na cópia dos recibos", { skip: (!COPIA && "defina TJRO_COPIA_RECIBOS_B (cópia em os.tmpdir())") || (!copiaNoTmp && "TJRO_COPIA_RECIBOS_B fora de os.tmpdir(): pulado") }, () => {
   _limparMemoParaTeste();
   const mask = (n) => `${n.slice(0, 7)}-${n.slice(7, 9)}.${n.slice(9, 13)}.${n[13]}.${n.slice(14, 16)}.${n.slice(16)}`;
   const linha = (id, dt) => { const r = JSON.parse(fs.readFileSync(path.join(COPIA, `${id}.json`), "utf8")); const n = mask(r.nr_processo); return linhaDe(auditarCitacoes(`TJRO, Apelação n. ${n}, j. ${dt}.`, COPIA), n); };

@@ -32,7 +32,8 @@
  * 1 = v1.7.16 (sem carimbo) · 2 = v1.10.1 ("Ementa ID" e lista de precedentes do relator) · 3 = v1.13.0 (transcrição
  * declarada, cabeçalho fora, unanimidade e 1ª pessoa na divergência; medida às cegas). */
 import { sinalDeRelatorVencido, RE_TERMOS_VOTO_DIVERGENTE } from "./vencido.js";
-export const CUSTODIA_VERSAO = 6;   // v6 (1.41.9): fórmulas de relator vencido em vencido.js ("VENCIDO O VOTO DO RELATOR" marca o voto do relator; medido: 2 recibos mudam)
+export const CUSTODIA_VERSAO = 7;   // v7 (1.42.0): voz própria cortada no RELATÓRIO/VOTO que vem DEPOIS do fecho no acórdão antigo (medido na cópia: 12 de 7.640 recibos mudam; fixtures iguais)
+// v6 (1.41.9): fórmulas de relator vencido em vencido.js ("VENCIDO O VOTO DO RELATOR" marca o voto do relator; medido: 2 recibos mudam)
 // v4 (1.16.0): trechos_obiter · v5 (1.41.9): trechos_alegacao_parte, trechos_doutrina e
 // trechos_sentenca_transcrita (voz.js, camposCustodia = camposAlheios + camposDeVoz; é o que vai para o recibo)
 
@@ -609,7 +610,14 @@ export function camposAlheios(texto, tipo) {
     const ate = f.fecho - f.casaIni, re = /(?<![A-Za-zÀ-ú])(?:RELAT[ÓO]RIO|VOTO)(?![A-Za-zÀ-ú])/g;
     re.lastIndex = 300;
     const h = re.exec(vozProp);
+    // 1.42.0 (red team de 27/10/2026): no acórdão antigo a ementa E o "acordam" vêm no alto e o RELATÓRIO/VOTO vem DEPOIS do fecho —
+    // aí a voz própria fica só com a ementa e o fecho do alto (antes ia até o fim e absolvia relatório e voto no lint)
+    // (cabeçalho depois do fecho só vale se não for a proclamação "NOS TERMOS DO VOTO DO RELATOR")
+    const reDepois = /(?<![A-Za-zÀ-ú])(?<!\b(?:DO|DE|AO|NO|O|UM|COM|PELO|SEU|MEU|CUJO|APRESENTOU|PROFERIU|PROFERIDO|JUNTOU|ACOMPANHOU|DECLAROU|DECLARA|RETIFICOU|RETIFICA)\s+)(?:RELAT[ÓO]RIO|VOTO)(?![A-Za-zÀ-ú])(?!\s+(?:DO|DA|DE|DIVERGENTE|VENCID|VISTA|VOGAL|CONDUTOR|DESEMPATE))/g;
+    reDepois.lastIndex = Math.max(300, ate);
+    const h2 = h && h.index < ate ? null : reDepois.exec(vozProp);
     if (h && h.index < ate) vozProp = vozProp.slice(0, h.index) + " " + vozProp.slice(ate);
+    else if (h2) vozProp = vozProp.slice(0, h2.index);
   }
   const voz = vozProp ? { texto_voz_propria: vozProp } : {};
   return {

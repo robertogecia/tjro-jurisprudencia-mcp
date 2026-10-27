@@ -136,6 +136,14 @@ export function recibosDoProcesso(numero, pasta = dirRecibos()) {
   });
 }
 
+/** 1.42.0 (red team de 27/10/2026, achados 1 e 8): recibos do processo só com número de 20 dígitos e igualdade EXATA, lendo o texto
+ *  só dos ids que o índice leve aponta para esse número (a 1ª listagem completa custava ~3 s e ~574 MB a cada obter_inteiro_teor). */
+export function recibosDoProcessoExato(numero, pasta = dirRecibos()) {
+  const d = soDigitos(numero);
+  if (d.length !== 20) return [];
+  return indiceLeve(pasta).filter((e) => soDigitos(e.nr_processo) === d).map((e) => reciboPorId(e.id_documento, pasta)).filter((r) => r && soDigitos(r.nr_processo) === d);
+}
+
 // ------------------------------------------------------------------ busca local ---
 const STOP = new Set("a o as os e de da do das dos em no na nos nas um uma por para com que se ao aos à às ou não nao sob sobre".split(" "));
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -290,4 +298,56 @@ export async function recalcularRecibos({ pasta = dirRecibos(), gravar = true, f
     } catch { r.ignorados++; }
   }
   return r;
+}
+
+// ------------------------------------------------------------- leitura por trecho ---
+// 1.41.11 (diagnóstico de 26/10/2026, item 4): o inteiro teor corta peças grandes (~25 mil caracteres por peça quando o
+// processo tem várias). Ler a parte cortada não pode custar outra consulta ao portal: lê o RECIBO local, que guarda o
+// texto inteiro. Sem recibo, não vai à rede: manda abrir o inteiro teor uma vez (é isso que grava o recibo).
+export const JANELA_LEITURA = 25000;
+export function lerTrechoDoRecibo({ id_documento = "", nr_processo = "", offset, trecho_em_torno_de = "", tamanho = JANELA_LEITURA, pasta = dirRecibos() } = {}) {
+  let r = id_documento ? reciboPorId(id_documento, pasta) : null;
+  if (!r && !id_documento && nr_processo) {
+    // 1.42.0 (red team, achado 2): sem id, só número completo. Número curto casava por prefixo e lia o acórdão de OUTRO processo.
+    const d = soDigitos(nr_processo);
+    if (d.length !== 20) {
+      const cand = d.length >= 7 ? indiceLeve(pasta).filter((e) => soDigitos(e.nr_processo).startsWith(d)) : [];
+      const lista = cand.slice(0, 30).map((e) => `- id ${e.id_documento} · ${e.tipo || "?"} · processo ${e.nr_processo || "?"}${e.data_julgamento ? ` · ${e.data_julgamento}` : ""}`);
+      return `Número de processo incompleto (${d.length} dígitos; são 20): sem id_documento, a leitura do recibo local exige o número inteiro, para não ler peça de outro processo. Nenhuma consulta ao portal foi feita.` +
+        (lista.length ? ` Recibos locais com esse início (escolha o id e repita com id_documento):\n${lista.join("\n")}${cand.length > 30 ? `\n- … e mais ${cand.length - 30}` : ""}` : " Nenhum recibo local começa com esse número.");
+    }
+    const docs = recibosDoProcessoExato(d, pasta).filter((x) => x.tipo === "ACÓRDÃO");
+    r = docs.sort((a, b) => (b.texto || "").length - (a.texto || "").length)[0] || null;
+  }
+  if (!r)
+    return `Sem recibo local ${id_documento ? `do id ${id_documento}` : `de ACÓRDÃO do processo ${nr_processo}`}: nenhuma consulta ao portal foi feita. ` +
+      "Chame obter_inteiro_teor_tjro uma vez SEM offset/trecho_em_torno_de (isso grava o recibo) e repita com o id da peça.";
+  const texto = String(r.texto || "");
+  const total = texto.length;
+  const tam = Math.max(1000, Math.min(Number(tamanho) || JANELA_LEITURA, JANELA_LEITURA));
+  let ini;
+  let nota = "";
+  if (String(trecho_em_torno_de || "").trim()) {
+    const alvo = norm1(String(trecho_em_torno_de).replace(/\s+/g, " ").trim());
+    // 1.42.0 (red team, achado 9): colapsa os espaços também no TEXTO e mapeia a posição de volta ao texto bruto
+    const tn = norm1(texto);
+    let col = "", mapa = [];
+    for (let i = 0; i < tn.length; i++) {
+      if (/\s/.test(tn[i])) { if (col.endsWith(" ")) continue; col += " "; } else col += tn[i];
+      mapa.push(i);
+    }
+    const pc = col.indexOf(alvo);
+    const pos = pc < 0 ? -1 : mapa[pc]; // norm1 preserva o comprimento: a posição vale no texto bruto
+    if (pos < 0) return `O trecho "${String(trecho_em_torno_de).slice(0, 120)}" não está no recibo do id ${r.id_documento} (${total} caracteres). Nenhuma consulta ao portal foi feita. Tente uma expressão mais curta, ou leia por offset.`;
+    ini = Math.max(0, pos - Math.floor(tam / 2));
+    nota = `trecho encontrado no caractere ${pos}`;
+  } else {
+    ini = Math.max(0, Math.min(Number.isFinite(Number(offset)) ? Math.floor(Number(offset)) : 0, total));
+  }
+  const fim = Math.min(total, ini + tam);
+  const prox = fim < total ? ` · continua: offset=${fim}` : " · fim do documento";
+  return `## ${r.tipo || "?"} · id ${r.id_documento} · processo ${r.nr_processo || "?"}${r.data_julgamento ? ` · julgado em ${r.data_julgamento}` : ""}\n` +
+    `_Lido do recibo local (sem consulta ao portal), caracteres ${ini} a ${fim} de ${total}${nota ? ` (${nota})` : ""}${prox}. ` +
+    "Para aspas, confirme com verificar_citacao_tjro, que diz de quem é a frase._\n\n" +
+    texto.slice(ini, fim);
 }
