@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 // 1.42.0 (não publicada) — 4º red team de 27/10/2026. Sem rede, sem portal, sem Liame de verdade: fetch INJETADO, estado do
 // Liame e cache em os.tmpdir(). Nenhum teste lê ~/.tjro-*. Importa por namespace para rodar também contra o código anterior.
 import { test, beforeEach } from "node:test";
@@ -68,7 +69,7 @@ test("(4) link só de host exato conhecido", () => {
   for (const h of ["stf.jus.br", "www.stf.jus.br", "portal.stf.jus.br", "stj.jus.br", "www.stj.jus.br", "processo.stj.jus.br", "scon.stj.jus.br", "tjro.jus.br", "www.tjro.jus.br", "pangeabnp.pdpj.jus.br", "pangeabnp.cnj.jus.br", "www.planalto.gov.br", "planalto.gov.br"])
     assert.ok(L.linkConfiavel(`https://${h}/x`), h);
   // hosts que aparecem nas respostas gravadas do Liame continuam com link
-  const dir = path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "liame");
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "liame");
   const hosts = new Set();
   for (const a of fs.readdirSync(dir)) for (const m of fs.readFileSync(path.join(dir, a), "utf8").replace(/\\\//g, "/").matchAll(/https?:\/\/([a-z0-9.-]+)/gi)) hosts.add(m[1].toLowerCase());
   for (const h of hosts) if (/(stf|stj|tjro)\.jus\.br$/.test(h) && !/^liame-back\./.test(h)) assert.ok(L.linkConfiavel(`https://${h}/x`), `fixture: ${h}`);

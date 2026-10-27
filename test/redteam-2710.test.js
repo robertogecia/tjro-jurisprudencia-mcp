@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 // 1.42.0 (não publicada) — achados da red team de 27/10/2026 sobre a 1.41.11. Sem rede, sem portal, sem Liame de verdade:
 // recibos sintéticos em os.tmpdir(), fetch INJETADO e fixtures de test/fixtures/liame. Nenhum teste lê ~/.tjro-*.
 import { test, beforeEach } from "node:test";
@@ -127,7 +128,7 @@ test("(7) acórdão antigo (ementa + acordam no alto, RELATÓRIO depois): voz pr
 });
 
 // ------------------------------------------------------------------------------------------------ Liame ---
-const FIX = path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "liame");
+const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "liame");
 const SUP = JSON.parse(fs.readFileSync(path.join(FIX, "resposta_stj_stf.json"), "utf8"));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tjro-rt2710-liame-"));
 const ARQ = path.join(tmp, "estado-liame.json");

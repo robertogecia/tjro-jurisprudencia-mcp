@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 // 1.41.11: Liame. Só fetch INJETADO e fixtures reais (test/fixtures/liame/); nenhuma chamada de rede de verdade.
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +12,7 @@ import {
   _setArquivoEstadoLiameParaTeste, _resetLiameParaTeste, _setRelogioLiameParaTeste,
 } from "../server/liame.js";
 
-const FIX = path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "liame");
+const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "liame");
 const TJRO = JSON.parse(fs.readFileSync(path.join(FIX, "resposta_tjro_irdr.json"), "utf8"));
 const SUP = JSON.parse(fs.readFileSync(path.join(FIX, "resposta_stj_stf.json"), "utf8"));
 const LANDING = fs.readFileSync(path.join(FIX, "landing.html"), "utf8");
