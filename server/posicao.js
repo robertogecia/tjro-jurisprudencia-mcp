@@ -376,9 +376,20 @@ const PENAL = /acao penal|penal\b|criminal|inquerito|termo circunstanciado|medid
 // Medido nos recibos (1.208 sentenças): "condeno o réu", "Código de Processo Penal", "CPP" e "Juizado Especial Criminal" também
 // aparecem em dispositivo CÍVEL (condenação em dinheiro, ofício ao MP, lei de custas transcrita) e calavam 39 rótulos certos: ficaram fora.
 const PENAL_NO_DISPOSITIVO = /pretensao punitiva|\breclusao\b|\bdetencao\b|\babsolvo\b|art\.? 386|\bdenuncia\b|dosimetria|pena-base|pena base|regime (?:inicial )?(?:fechado|semiaberto|semi-aberto|aberto)|\bdias-multa\b|\bdias multa\b|lei (?:n\S{0,2} ?)?11\.343/;
+// 1.42.1 (diagnóstico de 27/10/2026: 312 sentenças sem rótulo): quando o dispositivo não traz nenhum dos termos acima,
+// "rejeito os pedidos" é improcedência, "acolho em parte" é parcial, e o recibo às vezes traz "procedent e" (palavra partida).
+// Só entra quando nada mais rotula: os rótulos já dados não mudam. Conferido lendo os dispositivos.
+const RE_S_REJEITA = /\brejeit\w* (?:os |as |o |a )?(?:pedidos?|pretens\w*|demandas?)\b/;
+const RE_S_ACOLHE_EM_PARTE = /\bacolh\w* (?:em parte|parcialmente)\b/;
+const RE_S_PROC_PARTIDA = /(?<![a-z0-9])procedent e\b/;
 function rotuloDoTrecho(d) {
   if (!d || RE_S_INTEGRATIVA.test(d)) return null;
-  const im = RE_S_IMPROC.test(d), pr = RE_S_PROC.test(d.replace(RE_S_IMPROC_G, " ")), pa = RE_S_PARCIAL.test(d);
+  let im = RE_S_IMPROC.test(d), pr = RE_S_PROC.test(d.replace(RE_S_IMPROC_G, " ")), pa = RE_S_PARCIAL.test(d);
+  if (!im && !pr && !pa) {
+    im = RE_S_REJEITA.test(d);
+    pa = !im && RE_S_ACOLHE_EM_PARTE.test(d);
+    pr = !im && !pa && RE_S_PROC_PARTIDA.test(d);
+  }
   // homologação + outro desfecho no mesmo dispositivo (vários réus: "julgo improcedente… homologo a desistência quanto ao réu X"): sem rótulo
   if (RE_S_HOMOLOGA.test(d)) return im || pr || pa ? null : "HOMOLOGADO";
   if (pa) return "PARCIAL";

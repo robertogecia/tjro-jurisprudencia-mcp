@@ -2,6 +2,10 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## Não publicada (depois da 1.42.0)
+
+- **Sentença sem rótulo (desfecho de 1º grau).** Medido nos recibos locais (1.320 sentenças): 593 rotuladas, 312 com dispositivo sem rótulo. Causas lidas nos dispositivos: "rejeito os pedidos" (improcedência), "acolho em parte" (parcial) e "procedent e" (palavra partida no recibo). A regra nova só entra quando nenhum termo antigo rotulava o trecho: nenhum rótulo existente mudou (76 novos rótulos, 16 lidos um a um, todos conferidos). Teste novo em test/desfecho-sentenca-1421.test.js.
+
 ## 1.42.0 — publicada em 27/10/2026
 
 Red team de 27/10/2026 sobre a 1.41.11 (que não chegou a ser publicada e entra inteira nesta versão), corrigido:
