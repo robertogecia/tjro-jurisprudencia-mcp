@@ -195,7 +195,7 @@ test("(2) HTTP 500 com consulta grande: diz o limite em grupos/termos e que a co
 });
 
 test("(3) saída grande: corta abaixo do limite do cliente e diz a próxima página exata", () => {
-  assert.ok(L.SAIDA_MAX_CHARS <= 60000);
+  assert.ok(L.SAIDA_MAX_CHARS <= 40000);
   const t = "cab\n" + Array.from({ length: 40 }, (_, i) => `\n## R${i}\n` + "x".repeat(3000)).join("");
   const c = L.limitarSaida(t, undefined, { pagina: 1 });
   assert.ok(c.length < 62000);

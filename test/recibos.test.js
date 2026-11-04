@@ -53,8 +53,8 @@ test("buscarRecibos: todas as palavras (E), grupos (OU dentro, E entre), ordem p
   assert.match(out, /NUNCA é "não localizado"/);
   // a ementa (mais densa) vem antes do acórdão; a classe do índice aparece no acórdão gravado na 1.10.0
   assert.ok(out.indexOf("id 2 ") < out.indexOf("id 1 "), out);
-  assert.match(out, /1\. EMENTA · órgão não identificado · julgado em 10\/01\/2026/);
-  assert.match(out, /2\. ACÓRDÃO · APELAÇÃO CÍVEL · 2ª Câmara Especial \(fecho\) · julgado em 10\/01\/2026 · Rel\. FULANO · 7000000-00\.2025\.8\.22\.0001 · id 1 · link https:\/\/juris\.tjro\.jus\.br/);
+  assert.match(out, /1\. EMENTA · 2ª Câmara Especial \(fecho do ACÓRDÃO do mesmo processo e data\) · julgado em 10\/01\/2026/);
+  assert.match(out, /2\. ACÓRDÃO · APELAÇÃO CÍVEL · 2ª Câmara Especial \(fecho\); índice: 3ª Câmara Cível · julgado em 10\/01\/2026 · Rel\. FULANO · 7000000-00\.2025\.8\.22\.0001 · id 1 · link https:\/\/juris\.tjro\.jus\.br/);
   assert.match(out, /custódia: 0 transcrição\(ões\)/);
   out = buscarRecibos("", [["negativação", "inscrição indevida"], ["banco"]], 10, pasta);
   assert.match(out, /1 de 3 documento/);

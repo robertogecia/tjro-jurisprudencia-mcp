@@ -949,17 +949,64 @@ const ehRespostaCorrompida = (e) =>
 // v1.33.0: o portal responde HTTP 500 a consultas grandes (6 de 6 com 3 grupos e 11 a 17 termos em 14/10/2026; com 2 grupos e menos termos passou).
 export const LIMITE_500_TERMOS = 9; // abaixo de 3 grupos e 10 termos não houve 500 nas medições de 14/10/2026
 export const contaTermosDaConsulta = (grupos) => (Array.isArray(grupos) ? grupos.reduce((n, g) => n + (Array.isArray(g) ? g.length : 1), 0) : 0);
-export function dicaConsultaGrande(mensagem, grupos) {
+// 1.42.2: `args` (opcional) deixa a dica falar da consulta PEQUENA que também levou 500 (4 de 39 falhas do diário local de 11 a 30/10/2026
+// tinham 1 a 2 grupos e até 9 termos; 17 de 39 usavam classe_judicial). O texto nunca repete termo da consulta: a resposta de erro vai
+// para o diário, e o diário não guarda o que foi pesquisado. Revisão adversarial de 03/11/2026: a forma vem do termo JÁ montado
+// (`termoParaQuery`: corte em 80 caracteres, proximidade só de 1 a 20, "*" dentro de frase é literal) e a dica manda tirar UM item, uma vez.
+export function formaDoTermo(bruto) {
+  const q = termoParaQuery(bruto);
+  if (!q) return "";
+  if (/^".*"~\d{1,2}$/.test(q)) return "proximidade";
+  if (/^".*"$/.test(q)) return "frase";
+  return /(^|[^\\])\*$/.test(q) ? "curinga" : "";
+}
+export function dicaConsultaGrande(mensagem, grupos, args = null) {
   const nG = Array.isArray(grupos) ? grupos.length : 0, nT = contaTermosDaConsulta(grupos);
-  if (!/HTTP 500/.test(String(mensagem || "")) || (nG < 3 && nT < 10)) return "";
-  return ` O portal respondeu 500 a uma consulta grande (${nG} grupos, ${nT} termos): consultas grandes falharam com mais frequência, mas o gatilho exato não está provado (não é pontuação nem só o número de termos). Reduza a no máximo 2 grupos e ${LIMITE_500_TERMOS} termos no total (2 grupos de poucos termos passaram), ou divida em duas buscas e junte os resultados.`;
+  if (!/HTTP 500/.test(String(mensagem || ""))) return "";
+  if (nG < 3 && nT < 10) {
+    if (!args) return "";
+    const a = args;
+    const palavrasConsulta = String(a.consulta || "").trim().split(/\s+/).filter(Boolean).length;
+    if (palavrasConsulta > 8) return ""; // consulta livre longa: o tamanho pode explicar; a dica "pequena" seria falsa
+    const todos = (Array.isArray(grupos) ? grupos : []).flat();
+    const curinga = todos.some((t) => formaDoTermo(t) === "curinga") || /[\p{L}\d]\*(\s|$)/u.test(String(a.consulta || ""));
+    const presentes = [
+      ...["classe_judicial", "orgao_colegiado", "relator", "assunto"].filter((k) => a[k]),
+      ...(Array.isArray(a.excluir) && a.excluir.length ? ["excluir"] : []),
+      ...(a.data_inicio || a.data_fim ? ["data"] : []),
+      ...(curinga ? ["curinga (*)"] : []),
+    ];
+    if (!presentes.length) return "";
+    return ` O portal respondeu 500 a uma consulta pequena (${nG} grupos, ${nT} termos): o tamanho não explica este erro, e o gatilho não está provado. Se for repetir, faça UMA tentativa sem ${presentes[0]} (os demais itens ficam: ${presentes.join(", ")}) e, se o 500 vier de novo, PARE: o portal pode estar instável, e cada tentativa conta no limite de ritmo.`;
+  }
+  return ` O portal respondeu 500 a uma consulta grande (${nG} grupos, ${nT} termos): consultas grandes falharam com mais frequência, mas o gatilho exato não está provado (não é pontuação nem só o número de termos). Reduza a no máximo 2 grupos e ${LIMITE_500_TERMOS} termos no total (2 grupos de poucos termos passaram), ou divida em duas buscas e junte os resultados. Ao reduzir, mantenha os 2 grupos que descrevem o assunto e o fato, com até 4 termos cada, e deixe os demais para uma segunda busca.`;
 }
 // Resultado muito grande é desviado pelo cliente para um arquivo que o subagente não lê; corta no limite de um resultado e avisa.
-export const SAIDA_MAX_CHARS = 60000; // 1.41.11: 80 mil ainda passava do limite em que o cliente desvia para arquivo, com os avisos somados
+export const SAIDA_MAX_CHARS = 40000; // 1.42.2: 60 mil (1.41.11; antes 80 mil) ainda era desviado para arquivo pelo Claude Code (teto de 25 mil tokens): busca de 25 resultados completos com 57.307 caracteres, medida em 03/11/2026
 // 1.41.11 (diagnóstico, item 2): o servidor responder 500 não devolve a vaga. Ela é reservada antes do envio, e devolvê-la
 // deixaria uma sequência de consultas que derrubam o servidor do portal escapar do teto da janela.
 export function notaErroContado(mensagem) {
   return /HTTP 5\d\d/.test(String(mensagem || "")) ? " Esta consulta CONTOU no limite de ritmo (a vaga é reservada antes do envio e não é devolvida quando o portal falha, para que consultas com erro não escapem do teto)." : "";
+}
+// 1.42.3: a dica de continuação vale em QUALQUER página. Os `mostrados` primeiros resultados desta página já foram vistos; o próximo
+// começa no deslocamento o = (pagina-1)*por_pagina + mostrados. Só se alcança o deslocamento o com pagina=o/Q+1 e por_pagina=Q quando Q divide o;
+// usa-se o maior Q <= mostrados que divide (Q = mostrados quando cabe). Sem por_pagina no contexto, só a página 1 (compatível com 1.42.2).
+export function dicaContinuacao(ctx = {}, mostrados = 0) {
+  if (!(mostrados > 0) || ctx.pagina == null) return "";
+  const pagina = Number(ctx.pagina) || 1;
+  if (pagina === 1) return ` Para continuar exatamente de onde parou: proxima_pagina = pagina=2 com por_pagina=${mostrados} (a página 1 com por_pagina=${mostrados} é o que está acima).`;
+  const P = Number(ctx.porPagina);
+  if (!(P > 0)) return "";
+  const o = (pagina - 1) * P + mostrados;
+  let q = mostrados;
+  while (q > 1 && o % q) q--;
+  // divisor pequeno (deslocamento quase primo) ou pedido além da janela de 10.000 do portal: não vale a sugestão exata
+  if (q * 2 < mostrados || (o / q + 1) * q > 10000) {
+    const pg = Math.floor(o / mostrados) + 1, pular = o % mostrados;
+    return ` Para continuar (viu ${(pagina - 1) * P + 1} a ${o}; falta do ${o + 1} em diante): pagina=${pg} com por_pagina=${mostrados}${pular ? `, ignorando o(s) ${pular} primeiro(s) resultado(s) dessa página, que você já viu` : ""}.`;
+  }
+  const aviso = q < mostrados ? ` (por_pagina=${q}, menor que ${mostrados}, para o deslocamento ${o} cair no começo de uma página; depois dela, repita com pagina+1)` : "";
+  return ` Para continuar de onde parou (viu ${(pagina - 1) * P + 1} a ${o}; falta do ${o + 1} em diante): proxima_pagina = pagina=${o / q + 1} com por_pagina=${q}${aviso}.`;
 }
 export function limitarSaida(texto, max = SAIDA_MAX_CHARS, ctx = {}) {
   const t = String(texto || "");
@@ -985,7 +1032,7 @@ export function limitarSaida(texto, max = SAIDA_MAX_CHARS, ctx = {}) {
   const total = ps.length;
   // 4º red team: o cabeçalho sozinho passa do teto (primeiro resultado começa depois do corte): avisa INCOMPLETO, nunca "0 de N" mudo
   const cabecalhoGrande = seco && total > 0 && !ps.some((p) => p < max);
-  return `${t.slice(0, ate)}\n\n[SAÍDA CORTADA: ${mostrados} de ${total} resultados cabem aqui${incompleto ? " por inteiro; o último resultado acima saiu INCOMPLETO (cortado no meio)" : ""}${cabecalhoGrande ? "; INCOMPLETO: o cabeçalho sozinho passou do limite e nenhum resultado coube" : ""} (limite de ${Math.round(max / 1000)} mil caracteres, para o resultado não ser desviado para arquivo). Repita com modo="compacto" ou por_pagina menor.${ctx.pagina === 1 && mostrados > 0 ? ` Para continuar exatamente de onde parou: proxima_pagina = pagina=2 com por_pagina=${mostrados} (a página 1 com por_pagina=${mostrados} é o que está acima).` : ""}]\n`;
+  return `${t.slice(0, ate)}\n\n[SAÍDA CORTADA: ${mostrados} de ${total} resultados cabem aqui${incompleto ? " por inteiro; o último resultado acima saiu INCOMPLETO (cortado no meio)" : ""}${cabecalhoGrande ? "; INCOMPLETO: o cabeçalho sozinho passou do limite e nenhum resultado coube" : ""} (limite de ${Math.round(max / 1000)} mil caracteres, para o resultado não ser desviado para arquivo). Repita com modo="compacto" ou por_pagina menor.${dicaContinuacao(ctx, mostrados)}]\n`;
 }
 export const msgErro = (e) =>
   e.name === "TimeoutError"
@@ -2938,7 +2985,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.42.1";
+export const VERSAO = "1.42.2";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =

@@ -316,9 +316,9 @@ server.registerTool(
       let texto = formatBusca(data, a.consulta, tipo, ordenacao, pagina, porPagina, filtros, nota, !!a.termo_exato, temGrupos || (Array.isArray(a.excluir) && a.excluir.length) ? corpo.fields.query : "", { modo: a.modo });
       if (a.sugerir_termos)
         texto += blocoVocabulario(sugerirVocabulario((data.hits || {}).hits || [], { consulta: a.consulta, grupos: a.grupos, relator: a.relator }), { relator: a.relator });
-      return { content: [{ type: "text", text: await comAvisos(limitarSaida(texto, undefined, { pagina }) + linhaDeRitmo()) }] };
+      return { content: [{ type: "text", text: await comAvisos(limitarSaida(texto, undefined, a.resultado || a.similares_a ? { pagina: null } : { pagina, porPagina }) + linhaDeRitmo()) }] };
     } catch (e) {
-      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e) + dicaConsultaGrande(msgErro(e), a.grupos) + notaErroContado(msgErro(e)) + linhaDeRitmo()) }], isError: true };
+      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e) + dicaConsultaGrande(msgErro(e), a.grupos, a) + notaErroContado(msgErro(e)) + linhaDeRitmo()) }], isError: true };
     }
   }
 );
@@ -437,10 +437,14 @@ server.registerTool(
       nr_processo: z.string().optional().describe("Só recibos deste processo (número CNJ, com ou sem máscara; os 7+ primeiros dígitos bastam). Reencontra um acórdão já lido sem precisar de termos."),
       id_documento: z.string().optional().describe("Só o recibo com este id (id_processo_documento). Diz se o documento já foi lido nesta máquina."),
       relator: z.string().optional().describe("Só recibos deste relator (parte do nome basta, sem acento/caixa): o que esta máquina já leu de um desembargador ou juiz. Para a linha dele no acervo, buscar_jurisprudencia_tjro com relator=."),
+      excluir_transcricao: z.boolean().optional().describe("true = os termos só valem FORA do que o próprio recibo marca como transcrição, aspas, alegação da parte, doutrina, sentença transcrita e voto divergente. Tira o ruído de ementa alheia e de sentença copiada no voto. Classificação automática, sem rotulagem cega."),
+      so_voz_do_relator: z.boolean().optional().describe("true = os termos só valem no recorte de VOZ PRÓPRIA do relator (texto_voz_propria do recibo); recibo sem esse recorte é pulado e contado. Mais estrito que excluir_transcricao."),
+      proximidade: z.number().int().min(1).max(50).optional().describe("Os termos (e um de cada grupo) devem aparecer a até N palavras uns dos outros. Ex.: arbitramento + liquidação com proximidade=6 corta o 'arbitramento' de dano moral."),
+      agrupar_por: z.enum(["orgao", "relator", "relator_titular", "ano"]).optional().describe("Acrescenta a contagem de TODOS os recibos que atendem, agrupada por órgão (fecho quando legível), relator, relator_titular (o juiz convocado entra no desembargador que o texto diz que ele substituiu) ou ano."),
     },
     annotations: { title: "Buscar recibos locais do TJRO", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
-  async (a) => ({ content: [{ type: "text", text: buscarRecibos(a.consulta || "", a.grupos ?? null, a.limite ?? 10, undefined, { nrProcesso: a.nr_processo || "", idDocumento: a.id_documento || "", relator: a.relator || "" }) }] })
+  async (a) => ({ content: [{ type: "text", text: buscarRecibos(a.consulta || "", a.grupos ?? null, a.limite ?? 10, undefined, { nrProcesso: a.nr_processo || "", idDocumento: a.id_documento || "", relator: a.relator || "", excluirTranscricao: !!a.excluir_transcricao, soVozDoRelator: !!a.so_voz_do_relator, proximidade: a.proximidade || 0, agruparPor: a.agrupar_por || "" }) }] })
 );
 
 server.registerTool(

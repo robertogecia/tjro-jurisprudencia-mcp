@@ -211,9 +211,9 @@ export const PRAZO_TRAVA_REGISTRO_MS = 8_000;
 let prazoTravaRegistroMs = PRAZO_TRAVA_REGISTRO_MS;
 export function _setPrazoTravaRegistroLiameParaTeste(ms) { prazoTravaRegistroMs = ms == null ? PRAZO_TRAVA_REGISTRO_MS : ms; }
 export function _pendenteLiameParaTeste() { return pendente; }
-function aplicarPendente(e, agora) {
-  if (!pendente) return;
-  const p = pendente; pendente = null;
+/** Simula o fim do processo: esquece a memória, mas deixa o arquivo-lateral (é o que a próxima sessão encontra). */
+export function _esquecerMemoriaLiameParaTeste() { pendente = null; memoria = null; }
+function aplicar(e, agora, p) {
   if (p.motivo) {
     e.incidentes = [...(Array.isArray(e.incidentes) ? e.incidentes : []), { quando: agora, motivo: p.motivo, pendente: true }].slice(-20);
     e.bloqueadoAte = Math.max(num(e.bloqueadoAte, 0), agora + Math.max(0, num(p.recuoMs, 0)));
@@ -223,6 +223,53 @@ function aplicarPendente(e, agora) {
     e.sucessos = (e.sucessos || 0) + p.sucessos;
     e.backoffMs = BACKOFF_INICIAL_MS;
     if (e.sucessos >= SUCESSOS_PARA_RELAXAR && e.indiceJanela > 0) { e.indiceJanela -= 1; e.sucessos = 0; }
+  }
+}
+function aplicarPendente(e, agora) {
+  if (!pendente) return;
+  const p = pendente; pendente = null;
+  if (p.noDisco) return;   // 1.42.2: já está no arquivo-lateral, e absorverPendentesDeDisco() o aplicou (uma vez só)
+  aplicar(e, agora, p);
+}
+// 1.42.2 (pendência de 03/11/2026): o recuo/sucesso que não achou a trava deixa de viver só na memória. Vai para um arquivo-lateral
+// por processo (`<estado>.pendentes/<pid>.json`, escrita atômica); a próxima transação de QUALQUER processo que obtiver a trava lê,
+// APAGA (a remoção é o que garante aplicar uma vez só) e aplica. Vale no máximo 1 h (o recuo máximo); arquivo ilegível ou vencido é descartado.
+const PENDENTE_VALIDADE_MS = BACKOFF_MAXIMO_MS;
+const dirPendentes = () => `${arq()}.pendentes`;
+const sidecarProprio = () => path.join(dirPendentes(), `${process.pid}.json`);
+const limita = (v, lo, hi) => Math.max(lo, Math.min(num(v, lo), hi));
+function persistirPendente() {
+  if (!pendente) return;
+  try {
+    fs.mkdirSync(dirPendentes(), { recursive: true, mode: 0o700 });
+    const tmp = `${sidecarProprio()}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ motivo: pendente.motivo || null, recuoMs: pendente.recuoMs || 0, curto: !!pendente.curto, sucessos: pendente.sucessos || 0, quando: relogio() }), { mode: 0o600 });
+    fs.renameSync(tmp, sidecarProprio());
+    pendente.noDisco = true;
+  } catch {
+    // disco sem escrita: o pendente (já somado ao anterior) continua só na memória. Apaga o arquivo-lateral velho, senão o mesmo
+    // recuo seria aplicado duas vezes (a versão antiga pelo disco, a nova, que a contém, pela memória), e o .tmp que sobrou.
+    for (const f of [sidecarProprio(), `${sidecarProprio()}.tmp`]) { try { fs.unlinkSync(f); } catch {} }
+    pendente.noDisco = false;
+  }
+}
+// O arquivo-lateral já absorvido por outro processo foi aplicado: o que está na memória com `noDisco` não pode ser regravado nem somado.
+function reconciliarPendente() {
+  if (pendente?.noDisco && !fs.existsSync(sidecarProprio())) pendente = null;
+}
+function absorverPendentesDeDisco(e, agora) {
+  const dir = dirPendentes();
+  let nomes; try { nomes = fs.readdirSync(dir); } catch { return; }   // sem a subpasta (o normal): nada pendente, e a leitura é uma só
+  for (const n of nomes) {
+    if (!n.endsWith(".json")) continue;
+    const f = path.join(dir, n);
+    let p = null;
+    try { p = JSON.parse(fs.readFileSync(f, "utf8")); } catch { /* ilegível: só apaga */ }
+    try { fs.unlinkSync(f); } catch { continue; }   // não conseguiu apagar: não aplica (outro processo pode estar aplicando)
+    if (!p || typeof p !== "object" || Array.isArray(p)) continue;
+    const idade = relogio() - num(p.quando, NaN);
+    if (!Number.isFinite(idade) || idade > PENDENTE_VALIDADE_MS || idade < -24 * 3600_000) continue;
+    aplicar(e, agora, { motivo: typeof p.motivo === "string" && p.motivo ? p.motivo.slice(0, 80) : null, recuoMs: limita(p.recuoMs, 0, BACKOFF_MAXIMO_MS), curto: !!p.curto, sucessos: limita(p.sucessos, 0, SUCESSOS_PARA_RELAXAR) });
   }
 }
 function transacao(fn, prazoMs = 2000) {
@@ -243,6 +290,7 @@ function transacao(fn, prazoMs = 2000) {
     const e = memoria || ler(relogio());
     const agora = Math.max(relogio(), num(e._agora, 0));
     delete e._agora;
+    absorverPendentesDeDisco(e, agora);
     aplicarPendente(e, agora);
     e.ultimoAgora = Math.max(num(e.ultimoAgora, 0) <= agora + 24 * 3600_000 ? num(e.ultimoAgora, 0) : 0, agora);
     const r = fn(e, agora);
@@ -260,6 +308,7 @@ function transacao(fn, prazoMs = 2000) {
 export function _resetLiameParaTeste() {
   memoria = null; pendente = null;
   for (const f of [arq(), arq() + ".lock"]) { try { fs.unlinkSync(f); } catch {} }
+  try { fs.rmSync(dirPendentes(), { recursive: true, force: true }); } catch {}
 }
 const dur = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`; };
 
@@ -321,10 +370,12 @@ export function registrarRecusaLiame(motivo, opts = {}) {
     e.sucessos = 0;
   };
   if (transacao(fn) !== SEM_TRAVA || transacao(fn, prazoTravaRegistroMs) !== SEM_TRAVA) return;
-  if (opts.soAnotar) { pendente = pendente || { motivo, recuoMs: 0, curto: true }; return; }
+  reconciliarPendente();
+  if (opts.soAnotar) { pendente = pendente || { motivo, recuoMs: 0, curto: true }; persistirPendente(); return; }
   // sem trava nem com prazo maior: o recuo fica pendente na memória deste processo como DURAÇÃO (a mais longa vence)
   const recuoMs = opts.curto ? RECUO_CURTO_LIAME_MS : Math.max(BACKOFF_INICIAL_MS, opts.esperaMinimaMs || 0);
   pendente = { motivo, recuoMs: Math.max(num(pendente?.recuoMs, 0), recuoMs), curto: !!opts.curto && !(pendente && !pendente.curto) };
+  persistirPendente();
 }
 function registrarSucessoLiame() {
   const fn = (e) => {
@@ -333,8 +384,10 @@ function registrarSucessoLiame() {
     if (e.sucessos >= SUCESSOS_PARA_RELAXAR && e.indiceJanela > 0) { e.indiceJanela -= 1; e.sucessos = 0; }
   };
   if (transacao(fn) !== SEM_TRAVA || transacao(fn, prazoTravaRegistroMs) !== SEM_TRAVA) return;
+  reconciliarPendente();
   if (pendente?.motivo) return; // recuo pendente vale mais que um sucesso
   pendente = { sucessos: (pendente?.sucessos || 0) + 1 };
+  persistirPendente();
 }
 export function estadoLiame() {
   return transacao((e, agora) => ({

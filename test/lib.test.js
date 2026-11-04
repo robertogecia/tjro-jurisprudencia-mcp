@@ -1016,7 +1016,7 @@ test("citação pronta usa a câmara do fecho quando o índice diverge (inteiro 
     "Tribunal de Justiça do Estado de Rondônia, na conformidade da ata de julgamentos e das notas taquigráficas, " +
     "em, RECURSO PARCIALMENTE PROVIDO NOS TERMOS DO VOTO DO RELATOR, À UNANIMIDADE. Porto Velho, 04 de julho de 2025";
   const ementa = "EMENTA DIREITO PROCESSUAL CIVIL. AGRAVO DE INSTRUMENTO. ASTREINTES. RECURSO PARCIALMENTE PROVIDO.";
-  // Inteiro teor com a EMENTA primeiro: a Citação do topo (da ementa) herda o fecho do acórdão do mesmo julgamento.
+  // Inteiro teor com a EMENTA primeiro: a Citação do topo (da ementa) herda o fecho do ACÓRDÃO do mesmo processo e data.
   const inteiro = formatInteiro({ hits: { total: { value: 2 }, hits: [
     { _source: { ...base, tipo: "EMENTA", id_processo_documento: 28750280, ds_modelo_documento: ementa } },
     { _source: { ...base, tipo: "ACÓRDÃO", id_processo_documento: 28750279, ds_modelo_documento: acordao } },

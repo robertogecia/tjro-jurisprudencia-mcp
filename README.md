@@ -138,7 +138,7 @@ Limites:
 
 - **`aguardar`** (0 a 30 segundos), na busca, no inteiro teor, na verificação de citação, na consulta de processo e no Liame: se o limite de consultas desta máquina estiver cheio e a vaga abrir dentro desse prazo, a ferramenta espera e consulta. O teto é por máquina, somando todas as conversas e agentes. Não é licença para abrir vários agentes consultando ao mesmo tempo: use uma vez por chamada e, se ainda vier `[espera_segundos=…]`, pare; nunca repita nem contorne.
 - **Texto cortado? Peça para continuar.** `obter_inteiro_teor_tjro` com `id_documento` e `offset` lê a peça a partir do caractere onde COMEÇA a leitura (o número que o aviso de corte deu), em janelas de até 25 mil caracteres. Com `trecho_em_torno_de` (uma expressão da peça), lê a janela em volta da primeira ocorrência. As duas leituras saem do que esta máquina já baixou, sem nova consulta ao portal. Sem `id_documento`, só com o número inteiro do processo (20 dígitos).
-- **Respostas de até 60 mil caracteres.** A busca corta no fim de um resultado e diz como continuar (pagina=2 com por_pagina igual ao número de resultados mostrados). Esse limite existe para a resposta não ser desviada para um arquivo que o agente não lê.
+- **Respostas de até 40 mil caracteres.** A busca corta no fim de um resultado e diz como continuar (pagina=2 com por_pagina igual ao número de resultados mostrados). Esse limite existe para a resposta não ser desviada para um arquivo que o agente não lê.
 
 ## Favorável a quem? E julgados parecidos — desde a 1.9.0
 

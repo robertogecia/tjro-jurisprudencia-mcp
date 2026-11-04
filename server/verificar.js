@@ -334,8 +334,13 @@ function conferirTrecho0(texto, trecho, tipo, hifen) {
   })() : null;
   if (emTranscricao && blocoSent)
     alertas.push(`SENTENÇA TRANSCRITA: o trecho está no bloco em que o voto transcreve a sentença/decisão de 1º grau deste processo («${emUmaLinha(blocoSent).slice(-160)}») — é o juízo de origem falando, não o TJRO. Se o acórdão adota a sentença (por seus próprios fundamentos, art. 46 da Lei 9.099/95), diga isso ao citar; senão, cite o que o voto decidiu sobre ela.`);
-  else if (emTranscricao)
-    alertas.push("TRANSCRIÇÃO: o trecho está dentro de bloco que o voto transcreve de OUTRO julgado/tribunal — não é palavra do TJRO neste processo. Se for citar, cite como o TJRO citando; melhor: pesquise o original.");
+  else if (emTranscricao) {
+    // 1.42.3: bloco transcrito muito longo pode ter engolido texto do relator (amostra cega de 04/11/2026, 2 rotuladores, 38 blocos > 6.000
+    // caracteres concordantes: 7 excediam, 18%). O alerta continua; só diz o tamanho do bloco e manda ler o contexto.
+    const bl = fx.transcritas.find(([x, y]) => sobrepoe(ini0, pos, x, y));
+    const longo = bl && bl[1] - bl[0] > 6000 ? ` ATENÇÃO: este bloco marcado como transcrição tem ${bl[1] - bl[0]} caracteres; blocos tão longos às vezes engolem texto do próprio relator (em amostra cega, 7 de 38 excediam). Leia o contexto no inteiro teor antes de tratar a frase como alheia.` : "";
+    alertas.push("TRANSCRIÇÃO: o trecho está dentro de bloco que o voto transcreve de OUTRO julgado/tribunal — não é palavra do TJRO neste processo. Se for citar, cite como o TJRO citando; melhor: pesquise o original." + longo);
+  }
   else if (tocaTranscricao) {
     const [x, y] = fx.transcritas.find(([a, b]) => sobrepoe(ini0, pos, a, b));
     const ponta = emUmaLinha(String(texto || "").slice(Math.max(ini0, x), Math.min(pos, y))).slice(0, 120);

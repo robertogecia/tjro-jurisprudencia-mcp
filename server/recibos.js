@@ -165,9 +165,74 @@ export function regexTermo(termo) {
 }
 const conta = (re, tn) => { if (!re) return 0; let n = 0; re.lastIndex = 0; while (re.exec(tn)) n++; return n; };
 
+
+// 1.42.3 (relato de uso de 04/11/2026): a varredura offline só ficava aceitável depois de tirar, por script, o que o próprio recibo marca
+// como transcrição, aspas, alegação da parte, doutrina e voto divergente. Agora é opção. Os trechos são recortes em bruto de `texto`;
+// norm1 preserva o comprimento, então a posição no `_tn` é a do bruto.
+const CAMPOS_ALHEIOS = ["trechos_transcritos", "trechos_entre_aspas", "trechos_alegacao_parte", "trechos_doutrina", "trechos_sentenca_transcrita"];
+export function textoSemAlheios(r) {
+  const tn = r._tn;
+  const faixas = [];
+  const marca = (trecho) => {
+    const t = norm1(String(trecho || ""));
+    if (t.length < 20) return;
+    let i = tn.indexOf(t);
+    while (i >= 0) { faixas.push([i, i + t.length]); i = tn.indexOf(t, i + t.length); }
+  };
+  for (const c of CAMPOS_ALHEIOS) for (const x of Array.isArray(r[c]) ? r[c] : []) marca(typeof x === "string" ? x : x && x.texto);
+  if (typeof r.trecho_divergente === "string") marca(r.trecho_divergente);
+  if (!faixas.length) return tn;
+  faixas.sort((a, b) => a[0] - b[0]);
+  let out = "", pos = 0;
+  for (const [a, b] of faixas) { if (b <= pos) continue; const ini = Math.max(a, pos); out += tn.slice(pos, ini) + " ".repeat(b - ini); pos = b; }
+  return out + tn.slice(pos);
+}
+/** Os termos aparecem todos numa janela de até `n` palavras? `conjuntos` = lista de listas de regex (OU dentro, E entre). */
+export function dentroDaProximidade(tn, conjuntos, n, tnPalavras = tn) {
+  if (!conjuntos.length) return true;
+  const inicios = [];
+  const re = /[a-z0-9]+/g;
+  for (let m = re.exec(tnPalavras); m; m = re.exec(tnPalavras)) inicios.push(m.index);
+  const palavraDe = (pos) => { let a = 0, b = inicios.length - 1, r = 0; while (a <= b) { const mid = (a + b) >> 1; if (inicios[mid] <= pos) { r = mid; a = mid + 1; } else b = mid - 1; } return r; };
+  const ev = [];
+  conjuntos.forEach((g, k) => g.forEach((rx) => { rx.lastIndex = 0; for (let m = rx.exec(tn); m; m = rx.exec(tn)) { ev.push([palavraDe(m.index), k]); if (m[0].length === 0) rx.lastIndex++; } }));
+  if (new Set(ev.map((e) => e[1])).size < conjuntos.length) return false;
+  ev.sort((a, b) => a[0] - b[0]);
+  const cont = new Array(conjuntos.length).fill(0);
+  let tem = 0, i = 0;
+  for (let j = 0; j < ev.length; j++) {
+    if (cont[ev[j][1]]++ === 0) tem++;
+    while (ev[j][0] - ev[i][0] > n) { if (--cont[ev[i][1]] === 0) tem--; i++; }
+    if (tem === conjuntos.length) return true;
+  }
+  return false;
+}
+
+
+// 1.42.3 (relato de uso de 04/11/2026): o índice do portal dá só quem assinou; quando o juiz convocado substitui um desembargador, o titular
+// só aparece no texto ("Juiz Convocado X, em substituição ao Des. Y"). Marca onde o texto diz isso; não adivinha onde não diz.
+const RE_SUBST = /ju[ií]z[a]?\s+convocad[oa][^.]{0,160}?em\s+substitui[çc][ãa]o\s+(?:ao|à|a)\s+(?:des\.?|desembargador(?:a)?)\s+/gi;
+export function substituicaoNoTexto(texto) {
+  const t = String(texto || "");
+  RE_SUBST.lastIndex = 0;
+  const m = RE_SUBST.exec(t);
+  if (!m) return null;
+  const resto = t.slice(m.index + m[0].length, m.index + m[0].length + 70);
+  const palavras = [];
+  for (const w of resto.split(/\s+/)) {
+    if (/^(relator[a]?|para|tratam-se|acordam|voto|processo|apela[çc][ãa]o|agravo|embargos|ac[óo]rd[ãa]o)$/i.test(w)) break;
+    if (/^(d[aeo]s?|e)$/i.test(w) && palavras.length) { palavras.push(w); continue; }
+    if (/^[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\p{L}'-]*[,.;:)]?$/u.test(w)) { palavras.push(w.replace(/[,.;:)]+$/, "")); if (/[,.;:)]$/.test(w)) break; } else break;
+    if (palavras.length >= 4) break;
+  }
+  while (palavras.length && /^(d[aeo]s?|e)$/i.test(palavras[palavras.length - 1])) palavras.pop();
+  const nome = palavras.join(" ").trim();
+  return nome.length >= 5 ? nome : null;
+}
+
 export const RECIBOS_LIMITE_MAX = 20, GRUPOS_MAX = 6, TERMOS_POR_GRUPO_MAX = 12;
 
-export function buscarRecibos(consulta, grupos, limite = 10, pasta = dirRecibos(), { nrProcesso = "", idDocumento = "", relator: relatorFiltro = "" } = {}) {
+export function buscarRecibos(consulta, grupos, limite = 10, pasta = dirRecibos(), { nrProcesso = "", idDocumento = "", relator: relatorFiltro = "", excluirTranscricao = false, soVozDoRelator = false, proximidade = 0, agruparPor = "" } = {}) {
   const palavras = norm1(String(consulta || "")).split(/[^a-z0-9*]+/).filter((p) => p && !STOP.has(p.replace(/\*+$/, "")));
   const gs = Array.isArray(grupos) ? grupos.filter((g) => Array.isArray(g) && g.length).slice(0, GRUPOS_MAX)
     .map((g) => g.map((t) => String(t || "").trim()).filter(Boolean).slice(0, TERMOS_POR_GRUPO_MAX)).filter((g) => g.length) : [];
@@ -186,23 +251,48 @@ export function buscarRecibos(consulta, grupos, limite = 10, pasta = dirRecibos(
   const resP = palavras.map(regexTermo).filter(Boolean);
   const resG = gs.map((g) => g.map(regexTermo).filter(Boolean)).filter((g) => g.length);
   const achados = [];
+  const prox = Math.max(0, Math.min(Math.trunc(Number(proximidade) || 0), 50));
+  const filtrandoTexto = !!(excluirTranscricao || soVozDoRelator || prox);
+  const universo = todos;
+  let semVoz = 0, naoProximos = 0, soAlheio = 0;
   for (const r of todos) {
-    const tn = r._tn;
-    if (!resP.every((re) => conta(re, tn) > 0)) continue;
-    if (!resG.every((g) => g.some((re) => conta(re, tn) > 0))) continue;
+    let tn = r._tn, bruto = r.texto;
+    if ((excluirTranscricao || soVozDoRelator) && (!resP.every((re) => conta(re, tn) > 0) || !resG.every((g) => g.some((re) => conta(re, tn) > 0)))) continue;   // sem o termo no texto inteiro, não há no recorte
+    if (soVozDoRelator) {
+      bruto = String(r.texto_voz_propria || "");
+      if (!bruto) { semVoz++; continue; }
+      tn = norm1(bruto);
+    } else if (excluirTranscricao) tn = textoSemAlheios(r);
+    if (!resP.every((re) => conta(re, tn) > 0) || !resG.every((g) => g.some((re) => conta(re, tn) > 0))) { if (excluirTranscricao || soVozDoRelator) soAlheio++; continue; }
+    if (prox && !dentroDaProximidade(tn, [...resP.map((re) => [re]), ...resG], prox, r._tn)) { naoProximos++; continue; }
     let soma = 0;
     for (const re of resP) soma += conta(re, tn);
     for (const g of resG) for (const re of g) soma += conta(re, tn);
     const peso = soma / Math.log(tn.length + 10);
-    achados.push([peso, dataIso(r.data_julgamento), r]);
+    achados.push([peso, dataIso(r.data_julgamento), r, tn, bruto]);
   }
   achados.sort((a, b) => (b[0] - a[0]) || (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0));
   // E de todas as palavras deu zero com consulta em linguagem natural: devolve os que têm MAIS delas (ranking BM25), dizendo isso
   let ranqueado = false;
-  if (!achados.length && !gs.length && !dig && !idDoc && palavras.length >= 3 && todos.length) {
+  if (!achados.length && !gs.length && !dig && !idDoc && !filtrandoTexto && palavras.length >= 3 && todos.length) {
     const rk = rankearPorConsulta(consulta, todos, lim);
     if (rk.length) { ranqueado = true; for (const [r, sc] of rk) achados.push([sc, dataIso(r.data_julgamento), r]); }
   }
+  // 1.42.3: EMENTA, VOTO e RELATÓRIO não têm fecho; o do ACÓRDÃO do MESMO julgamento (mesmo processo e data, fechos concordantes) vale por eles.
+  const irmaos = new Map();
+  const completa = universo.length === totalGeral ? universo : listarRecibos(pasta);
+  for (const x of completa) if (x.tipo === "ACÓRDÃO") { const k = `${soDigitos(x.nr_processo)}|${x.data_julgamento || ""}`; (irmaos.get(k) || irmaos.set(k, []).get(k)).push(x); }
+  const EMPRESTAM = new Set(["EMENTA", "VOTO", "VOTO VENCEDOR", "RELATÓRIO"]);
+  const orgaoDe = (r) => {
+    const o = extrairOrgaoComOrigem(r.texto);
+    if (o) return { orgao: o.orgao, origem: o.origem };
+    if (EMPRESTAM.has(String(r.tipo || "").toUpperCase()) && r.data_julgamento) {
+      const fechos = (irmaos.get(`${soDigitos(r.nr_processo)}|${r.data_julgamento}`) || []).map((x) => extrairOrgaoComOrigem(x.texto));
+      const nomes = new Set(fechos.map((f) => f && f.origem === "fecho" ? f.orgao : null));
+      if (fechos.length && nomes.size === 1 && !nomes.has(null)) return { orgao: [...nomes][0], origem: "fecho do ACÓRDÃO do mesmo processo e data" };
+    }
+    return r.orgao_indice ? { orgao: r.orgao_indice, origem: "índice" } : null;
+  };
   const filtroTxt = [dig ? `processo ${dig.length === 20 ? cnj(dig) : dig + "…"}` : "", idDoc ? `id ${idDoc}` : "", relN ? `relator «${relatorFiltro.trim()}»` : ""].filter(Boolean).join(", ");
   const termosMostrados = [...palavras, ...gs.flat()].join(", ") || "(sem termos)";
   const linhas = [
@@ -213,15 +303,31 @@ export function buscarRecibos(consulta, grupos, limite = 10, pasta = dirRecibos(
     "",
   ];
   if (!todos.length) linhas.push(`_(nenhum recibo em ${pasta})_`);
-  achados.slice(0, lim).forEach(([, , r], i) => {
+  if (filtrandoTexto) {
+    const f = [excluirTranscricao && !soVozDoRelator ? `sem transcrição, aspas, alegação da parte, doutrina, sentença transcrita e voto divergente (${soAlheio} recibo(s) só tinham os termos nesses trechos)` : "", soVozDoRelator ? `só a voz própria do relator (${semVoz} recibo(s) sem esse recorte foram pulados; ${soAlheio} só tinham os termos fora dele)` : "", prox ? `termos a até ${prox} palavras uns dos outros (${naoProximos} recibo(s) têm os termos, mas mais longe)` : ""].filter(Boolean);
+    linhas.push(`🔎 Filtro de texto: ${f.join("; ")}. Classificação automática dos recibos, sem rotulagem cega: confira no inteiro teor antes de citar.`, "");
+  }
+  if (agruparPor && ranqueado) linhas.push("_(contagem agrupada omitida: nenhum recibo atende a todos os termos; o ranking acima é aproximado)_", "");
+  else if (agruparPor) {
+    const chave = { orgao: (r) => { const o = orgaoDe(r); return o ? (o.origem === "índice" ? `${o.orgao} (só índice, câmara não verificada)` : o.orgao) : "órgão não identificado"; }, relator_titular: (r) => String(substituicaoNoTexto(r.texto) || r.relator_indice || extrairRelatorDoTexto(r.texto) || "—").trim().toUpperCase(), relator: (r) => String(r.relator_indice || extrairRelatorDoTexto(r.texto) || "—").trim().toUpperCase(), ano: (r) => (String(r.data_julgamento || "").slice(-4) || "?") }[agruparPor];
+    if (chave) {
+      const c = new Map();
+      for (const [, , r] of achados) { const k = chave(r); c.set(k, (c.get(k) || 0) + 1); }
+      const ord = [...c.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+      linhas.push(`**Contagem por ${agruparPor === "orgao" ? "órgão (do fecho quando legível)" : agruparPor === "relator_titular" ? "relator titular (juiz convocado entra no titular que o texto indica)" : agruparPor}** — sobre os ${achados.length} recibo(s) que atendem, não só os ${Math.min(lim, achados.length)} mostrados:`, ...ord.slice(0, 40).map(([k, n]) => `- ${k}: ${n}`), ord.length > 40 ? `- … e mais ${ord.length - 40} grupo(s)` : "", "");
+    }
+  }
+  achados.slice(0, lim).forEach(([, , r, tnU, brutoU], i) => {
     const s = { nr_processo: r.nr_processo, id_processo_documento: r.id_documento, tipo: r.tipo, ds_classe_judicial: r.classe,
       nome_relator_acordao: r.relator_indice, ds_orgao_julgador_colegiado: r.orgao_indice };
-    const org = extrairOrgaoComOrigem(r.texto);
-    const orgaoTxt = org ? `${org.orgao} (${org.origem})` : (r.orgao_indice ? `${r.orgao_indice} (índice)` : "órgão não identificado");
+    const org = orgaoDe(r);
+    const orgaoTxt = org ? `${org.orgao} (${org.origem})${org.origem !== "índice" && r.orgao_indice && org.orgao !== r.orgao_indice ? `; índice: ${r.orgao_indice}` : ""}` : "órgão não identificado";
     const rel = relator(s) !== "—" ? relator(s) : extrairRelatorDoTexto(r.texto) || "—";
-    linhas.push(`${i + 1}. ${r.tipo || "?"}${r.classe ? ` · ${r.classe}` : ""} · ${orgaoTxt} · julgado em ${r.data_julgamento || "?"} · Rel. ${rel} · ${cnj(r.nr_processo)} · id ${r.id_documento} · link ${link(s)}`);
+    const titular = substituicaoNoTexto(r.texto);
+    const relTxt = titular ? `${rel} (Juiz Convocado, em substituição ao Des. ${titular}, segundo o texto)` : rel;
+    linhas.push(`${i + 1}. ${r.tipo || "?"}${r.classe ? ` · ${r.classe}` : ""} · ${orgaoTxt} · julgado em ${r.data_julgamento || "?"} · Rel. ${relTxt} · ${cnj(r.nr_processo)} · id ${r.id_documento} · link ${link(s)}`);
     const re = resP[0] || (resG[0] && resG[0][0]);
-    const tre = trechoEmVolta(r.texto, r._tn, re);
+    const tre = trechoEmVolta(brutoU ?? r.texto, tnU ?? r._tn, re);
     if (tre) linhas.push(`   «…${tre}…»`);
     linhas.push(`   recibo lido do portal em ${String(r.obtido_em || "?").slice(0, 16).replace("T", " ")}${r.trechos_transcritos ? ` · custódia: ${r.trechos_transcritos.length} transcrição(ões)${r.trecho_divergente ? ", voto divergente" : ""}` : " · sem campos de custódia (recibo antigo)"}`);
   });

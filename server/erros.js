@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { tipoDoErro, VERSAO, estadoLimitadorResumo, ISSUES_NOVA } from "./lib.js";
+import { tipoDoErro, VERSAO, estadoLimitadorResumo, ISSUES_NOVA, formaDoTermo, contaTermosDaConsulta } from "./lib.js";
 
 export const MAX_LINHAS = 500;
 const MAX_BYTES = 400_000;
@@ -30,13 +30,24 @@ export function sanitizar(texto, max = 300) {
     .slice(0, max);
 }
 
+/** 1.42.2: só CONTAGENS da forma dos termos (curinga, frase, proximidade), nunca o termo. O gatilho do HTTP 500 do portal não é só o
+ * tamanho (4 de 39 falhas locais foram de consultas pequenas); sem a forma, o diário não deixa descobrir qual é. */
+export function formaDosTermos(grupos) {
+  let c = 0, f = 0, p = 0;
+  for (const g of Array.isArray(grupos) ? grupos : []) for (const t of Array.isArray(g) ? g : [g]) {
+    const forma = formaDoTermo(t);
+    if (forma === "curinga") c++; else if (forma === "frase") f++; else if (forma === "proximidade") p++;
+  }
+  return `${c ? `, ${c} curinga(s)` : ""}${f ? `, ${f} frase(s)` : ""}${p ? `, ${p} proximidade(s)` : ""}`;
+}
+
 /** Descreve os parâmetros SEM o conteúdo: presença/tamanho, e valor só para enumerações seguras. */
 export function descreverArgs(args) {
   const out = {};
   for (const [k, v] of Object.entries(args || {})) {
     if (v === undefined || v === null || v === "") continue;
     if (VALORES_SEGUROS.has(k) && (typeof v === "number" || typeof v === "string" || Array.isArray(v))) out[k] = Array.isArray(v) ? v.map((x) => sanitizar(x, 40)) : typeof v === "string" ? sanitizar(v, 60) : v;
-    else if (Array.isArray(v)) out[k] = Array.isArray(v[0]) ? `${v.length} grupo(s), ${v.reduce((a, g) => a + g.length, 0)} termo(s)` : `${v.length} item(ns)`;
+    else if (Array.isArray(v)) out[k] = Array.isArray(v[0]) ? `${v.length} grupo(s), ${contaTermosDaConsulta(v)} termo(s)${formaDosTermos(v)}` : `${v.length} item(ns)`;
     else if (typeof v === "string") out[k] = `<texto: ${v.length} car.>`;
     else out[k] = typeof v;
   }
