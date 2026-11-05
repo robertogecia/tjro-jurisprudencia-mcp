@@ -65,10 +65,13 @@ test("leva B (6): improcedência (substantivo) e pedido contraposto não inverte
 });
 
 // ---------- (7) penal ----------
-test("leva B (7): sentença penal sem 'penal' na classe fica sem rótulo cível; cível com 'condeno o réu' continua", () => {
+test("leva B (7): sentença penal sem 'penal' na classe fica sem rótulo cível (1.42.3: o extrator penal só entra com 'ação penal', 'termo circunstanciado' ou 'júri' na classe); cível com 'condeno o réu' continua", () => {
   const cond = "O Ministério Público ofereceu denúncia pelo art. 33 da Lei 11.343/06. Ante o exposto, JULGO PROCEDENTE a pretensão punitiva estatal para CONDENAR o réu à pena de 5 anos de reclusão, em regime inicial semiaberto.";
   const abs = "Ante o exposto, JULGO IMPROCEDENTE a pretensão punitiva e ABSOLVO o réu, com fundamento no art. 386, VII, do CPP.";
-  for (const classe of ["PROCEDIMENTO ESPECIAL DA LEI ANTITÓXICOS", "PROCEDIMENTO SUMÁRIO", "PROCEDIMENTO SUMARÍSSIMO", ""]) {
+  // 1.42.3: a classe da Lei Antitóxicos é penal e passa a ter o desfecho penal.
+  assert.equal(sentenca(cond, "PROCEDIMENTO ESPECIAL DA LEI ANTITÓXICOS"), "CONDENADO");
+  assert.equal(sentenca(abs, "PROCEDIMENTO ESPECIAL DA LEI ANTITÓXICOS"), "ABSOLVIDO");
+  for (const classe of ["PROCEDIMENTO SUMÁRIO", "PROCEDIMENTO SUMARÍSSIMO", ""]) {
     assert.equal(sentenca(cond, classe), null, `condenação, classe «${classe}»`);
     assert.equal(sentenca(abs, classe), null, `absolvição, classe «${classe}»`);
   }

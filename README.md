@@ -601,7 +601,10 @@ Pensado para ser fácil de verificar antes de instalar, não só "confie em mim"
   seu pedido): ela baixa o arquivo novo do repositório oficial para a pasta
   Downloads e confere o SHA-256 publicado pelo GitHub, o tamanho e o formato,
   sem sobrescrever nada seu. **Quem instala é você**: dois cliques no arquivo e
-  "Instalar". A extensão nunca se instala nem abre o instalador sozinha. A
+  "Instalar". Se você pedir para **baixar e já abrir o instalador**, a
+  ferramenta, depois de conferir o arquivo, abre a tela de instalação do Claude
+  Desktop (o mesmo que os dois cliques); confirmar "Instalar" continua sendo
+  seu. A extensão nunca se instala sozinha nem abre o instalador sem você pedir. A
   conferência protege contra arquivo corrompido ou desviado no caminho; não
   protege contra uma conta do GitHub comprometida, porque o SHA vem do próprio
   GitHub. O GitHub vê o IP de quem consulta, como em qualquer acesso a

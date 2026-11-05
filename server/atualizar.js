@@ -2,6 +2,8 @@
 // confere e o deixa na pasta Downloads. Quem instala é o usuário (dois cliques e
 // "Instalar"): a extensão NUNCA se instala sozinha, nunca executa o arquivo e
 // nunca abre o instalador. Só roda quando o usuário pede.
+// 1.42.3: a pedido do usuário (05/11/2026), `abrir_instalador=true` abre o .mcpb JÁ CONFERIDO no instalador do Claude Desktop
+// (equivale aos dois cliques). Não instala: a tela "Instalar" do Claude Desktop continua sendo a confirmação final.
 //
 // Salvaguardas: só o endereço FIXO do repositório oficial; só o asset com o nome
 // exato; tamanho máximo; SHA-256 conferido contra o digest que o GitHub publica
@@ -9,6 +11,7 @@
 // GitHub, então isto protege contra download corrompido ou desviado no caminho, NÃO
 // contra uma conta do GitHub comprometida (aí o release inteiro estaria trocado).
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -149,4 +152,16 @@ export function textoAtualizacao(res) {
     "",
     "_A conferência protege contra download corrompido ou desviado. Ela não substitui a sua confiança no repositório oficial (github.com/robertogecia/tjro-jurisprudencia-mcp)._",
   ].join("\n");
+}
+
+/** Abre o .mcpb no programa padrão do sistema (o instalador do Claude Desktop). Só aceita arquivo .mcpb dentro da pasta Downloads. Nunca usa shell. */
+export function abrirInstalador(caminho, { plataforma = process.platform, spawnImpl = spawn, pasta = pastaDownloads() } = {}) {
+  const real = path.resolve(String(caminho || ""));
+  if (!real.toLowerCase().endsWith(".mcpb") || path.dirname(real) !== path.resolve(pasta))
+    throw new ErroAtualizacao("Recusei abrir: só abro o arquivo .mcpb que esta ferramenta baixou na pasta Downloads.");
+  if (!fs.existsSync(real)) throw new ErroAtualizacao("O arquivo baixado não está mais na pasta Downloads.");
+  const [cmd, args] = plataforma === "darwin" ? ["open", [real]] : plataforma === "win32" ? ["explorer.exe", [real]] : ["xdg-open", [real]];
+  const filho = spawnImpl(cmd, args, { detached: true, stdio: "ignore", shell: false });
+  if (filho && typeof filho.unref === "function") filho.unref();
+  return cmd;
 }

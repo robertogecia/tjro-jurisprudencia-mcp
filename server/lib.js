@@ -14,6 +14,7 @@ import { linhaCustodia, CUSTODIA_VERSAO, norm1, expandirLigaduras } from "./cust
 import { camposCustodia } from "./voz.js";
 export { expandirLigaduras };
 import { linhaFavoravel } from "./partes.js";
+import { avisoAssinatura } from "./assinatura.js";
 import { fatosDoJulgado, FATOS_MAX, FATOS_MAX_SENT, RE_ALEGACAO, secoesDaEmenta, teseDaEmenta, desfechoDaSentenca, ROTULOS_SENTENCA } from "./posicao.js";
 import { chaveRelator, GRAFIAS_RELATOR } from "./relatores.js";
 import { anotarRequisicao, lerRitmo, contextoDoBloqueio, analisarBloqueios, formatarRelatorio } from "./bloqueios.js";
@@ -527,7 +528,7 @@ export function somarResultado(j, r) {
 // sozinha no fecho não é o resultado: ali a ementa/voto ainda diz o mérito (validação cega 13/10/2026: 4 regressões antes desta regra).
 const usaFecho = (j) => !!(j.fecho && j.fecho.size && (["PROVIDO", "DESPROVIDO", "PARCIAL"].some((x) => j.fecho.has(x)) || (j.embargos && (j.fecho.has("ACOLHIDO") || j.fecho.has("REJEITADO")))));
 export const rotuloDoJulgamento = (j) => rotuloDoConjunto(usaFecho(j) ? j.fecho : j.conjunto, j.classe, j.embargos);
-const PLURAL_SENTENCA = { PROCEDENTE: "procedentes", PARCIAL: "parcialmente procedentes", IMPROCEDENTE: "improcedentes", EXTINTO: "extintas sem resolução do mérito", HOMOLOGADO: "com acordo ou desistência homologados" };
+const PLURAL_SENTENCA = { CONDENADO: "com condenação", ABSOLVIDO: "com absolvição", CONDENADO_PARCIAL: "com condenação em parte", PUNIBILIDADE_EXTINTA: "com punibilidade extinta", PUNIBILIDADE_SCP: "com punibilidade extinta pela suspensão condicional do processo", PUNIBILIDADE_ANPP: "com punibilidade extinta pelo ANPP", ANPP_HOMOLOGADO: "com ANPP homologado", ABSOLVICAO_SUMARIA: "com absolvição sumária", PROCEDENTE: "procedentes", PARCIAL: "parcialmente procedentes", IMPROCEDENTE: "improcedentes", EXTINTO: "extintas sem resolução do mérito", HOMOLOGADO: "com acordo ou desistência homologados" };
 // v1.31.0: desfecho de 1º grau de um documento do tipo SENTENÇA (texto já limpo); null para outros tipos ou sem desfecho identificável.
 export const desfechoDeSentenca = (textoLimpo, tipo, classe = "") => (String(tipo || "").toUpperCase() === "SENTENÇA" ? desfechoDaSentenca(norm1(textoLimpo), classe) : null);
 const CONTAGEM_VAZIA = () => ({ PROVIDO: 0, PARCIAL: 0, DESPROVIDO: 0, ACOLHIDO: 0, REJEITADO: 0, sem: 0 });
@@ -603,12 +604,14 @@ export function linhasQuebra(mapa, max = 8, minimo = 3) {
 // pertence a um julgamento cujo rótulo é o pedido. "sem" = sem resultado identificável.
 export const ROTULOS_FILTRO = { provido: "PROVIDO", parcial: "PARCIAL", desprovido: "DESPROVIDO", acolhido: "ACOLHIDO", rejeitado: "REJEITADO", sem: null };
 // v1.33.0: `resultado=` também filtra SENTENÇAS pelo desfecho lido do dispositivo (o relato de uso de 14/10/2026 não achava como separar procedentes de improcedentes).
-export const FILTRO_SENTENCA = { procedente: "PROCEDENTE", parcialmente_procedente: "PARCIAL", improcedente: "IMPROCEDENTE", extinto: "EXTINTO", homologado: "HOMOLOGADO" };
+export const FILTRO_SENTENCA = { condenado: "CONDENADO", absolvido: "ABSOLVIDO", condenado_parcial: "CONDENADO_PARCIAL", punibilidade_extinta: ["PUNIBILIDADE_EXTINTA", "PUNIBILIDADE_SCP", "PUNIBILIDADE_ANPP"], punibilidade_scp: "PUNIBILIDADE_SCP", punibilidade_anpp: "PUNIBILIDADE_ANPP", anpp_homologado: "ANPP_HOMOLOGADO", absolvicao_sumaria: "ABSOLVICAO_SUMARIA", procedente: "PROCEDENTE", parcialmente_procedente: "PARCIAL", improcedente: "IMPROCEDENTE", extinto: "EXTINTO", homologado: "HOMOLOGADO" };
 export function filtrarPorResultado(hits, rotulo) {
   if (rotulo in FILTRO_SENTENCA) {
     const fica = hits.filter((h) => {
       const x = h._source || {};
-      return desfechoDeSentenca(limpar(x.ds_modelo_documento || "", 0), x.tipo, x.ds_classe_judicial) === FILTRO_SENTENCA[rotulo];
+      const alvo = FILTRO_SENTENCA[rotulo];
+      const got = desfechoDeSentenca(limpar(x.ds_modelo_documento || "", 0), x.tipo, x.ds_classe_judicial);
+      return Array.isArray(alvo) ? alvo.includes(got) : got === alvo;
     });
     return { hits: fica, removidos: hits.length - fica.length };
   }
@@ -1727,6 +1730,69 @@ function cacheGravar(chave, dados, agora) {
   }
 }
 
+
+// 1.42.3 (investigação do HTTP 500, 05/11/2026): 44 de 480 buscas (9,2%) do livro-razão deram 500, rápidas (mediana 288 ms contra
+// 1.040 ms das bem-sucedidas), e a mesma forma de consulta passa minutos depois. Sem a forma das consultas BEM-sucedidas não há taxa
+// de base; sem o corpo do 500, não há causa. Gravamos só CONTAGENS e NOMES DE EXCEÇÃO (a-z e _), nunca termo, nome ou número.
+export function formaDaRequisicao(body) {
+  try {
+    const f = (body && body.fields) || {};
+    const q = String(f.query || "");
+    const sort = JSON.stringify(body.sort || "");
+    return {
+      ord: /dtjulgamento":"desc/.test(sort) ? "recentes" : /dtjulgamento":"asc/.test(sort) ? "antigos" : "relevantes",
+      size: body.size ?? null,
+      from: body.from ?? null,
+      tipos: String(f.tipo || "").split(",").filter(Boolean).length,
+      filtros: Object.keys(f).filter((k) => !["query", "tipo"].includes(k)).sort(),
+      qlen: q.length,
+      ors: (q.match(/ OR /g) || []).length,
+      ands: (q.match(/ AND /g) || []).length,
+      frases: Math.floor((q.match(/(?<!\\)"/g) || []).length / 2),
+      hl: !!body.highlight,
+    };
+  } catch {
+    return null;
+  }
+}
+export function assinaturaDoErro(texto, ctype, server) {
+  const t = String(texto || "");
+  const tipos = [...new Set([...t.matchAll(/"type"\s*:\s*"([a-z_]{3,60})"/g)].map((m) => m[1]))].slice(0, 6);
+  return { tipos, ctype: String(ctype || "").slice(0, 40), bytes: t.length, server: String(server || "").slice(0, 30) || null, html: /<html/i.test(t) };
+}
+
+// 1.42.3 (05/11/2026): REPRODUZIDO ao vivo — data em dd/mm/aaaa ("01/01/2024") ou inexistente ("2024-02-30") faz o portal devolver
+// HTTP 500 (página HTML de 145 bytes), e a consulta conta no ritmo. 25 das 55 falhas 500 do diário tinham filtro de data.
+// Normaliza dd/mm/aaaa para aaaa-mm-dd e recusa data impossível ANTES de consultar. "aaaa" sozinho o portal aceita: passa igual.
+export function normalizarDataBusca(v) {
+  if (v === undefined || v === null || String(v).trim() === "") return { ok: true, valor: undefined };
+  const t = String(v).trim();
+  let a, m, d;
+  let x = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t);
+  if (x) [a, m, d] = [+x[1], +x[2], +x[3]];
+  else if ((x = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t))) [a, m, d] = [+x[3], +x[2], +x[1]];
+  else if (/^\d{4}$/.test(t)) return { ok: true, valor: t };
+  else return { ok: false, erro: `data "${t}" fora do formato: use aaaa-mm-dd (ex.: 2024-01-31).` };
+  const dt = new Date(Date.UTC(a, m - 1, d));
+  if (dt.getUTCFullYear() !== a || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return { ok: false, erro: `data "${t}" não existe no calendário.` };
+  return { ok: true, valor: `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}` };
+}
+
+// Amostra LOCAL das consultas que deram 500 (as 20 últimas, arquivo só do usuário, modo 600): o diário de erros não guarda termos, e
+// sem a consulta exata não dá para reproduzir. Nunca entra no diário, no relatório nem em mensagem de erro.
+const ARQ_AMOSTRAS_500 = () => process.env.TJRO_MCP_ARQUIVO_500 || (process.env.NODE_TEST_CONTEXT ? "" : path.join(os.homedir(), ".tjro-jurisprudencia-500-amostras.jsonl"));
+function guardarAmostra500(body, status) {
+  const arq = ARQ_AMOSTRAS_500();
+  if (!arq) return;
+  try {
+    const linha = JSON.stringify({ quando: new Date().toISOString(), status, fields: body?.fields, sort: body?.sort, size: body?.size, from: body?.from });
+    let linhas = [];
+    try { linhas = fs.readFileSync(arq, "utf8").split("\n").filter(Boolean); } catch { /* novo */ }
+    linhas.push(linha);
+    fs.writeFileSync(arq, linhas.slice(-20).join("\n") + "\n", { mode: 0o600 });
+  } catch { /* nunca derruba a consulta */ }
+}
+
 export async function post(body, fetchImpl = fetch) {
   const chave = JSON.stringify(body);
   const emCache = cacheLer(chave, Date.now());
@@ -1741,7 +1807,8 @@ export async function post(body, fetchImpl = fetch) {
   let r;
   const t0 = Date.now();
   const opPost = (body?.fields || {}).nr_processo && !(body?.fields || {}).query ? "inteiro_teor" : "busca";
-  const livro = (res, status = null) => anotarRequisicao({ t: t0, impl: "node", id: identidadeAtual, op: opPost, res, status, durMs: Date.now() - t0 });
+  const forma = formaDaRequisicao(body);
+  const livro = (res, status = null, corpo = null) => anotarRequisicao({ t: t0, impl: "node", id: identidadeAtual, op: opPost, res, status, durMs: Date.now() - t0, forma, corpo });
   try {
     r = await fetchImpl(ENDPOINT, {
       method: "POST",
@@ -1810,11 +1877,15 @@ export async function post(body, fetchImpl = fetch) {
     });
     livro(ehDesafio ? "desafio" : "bloqueio", r.status);
   } else if (!r.ok) {
-    livro("http", r.status);
+    livro("http", r.status, assinaturaDoErro(texto, ctype, r.headers.get("server")));
+    if (r.status >= 500) guardarAmostra500(body, r.status);
   }
   // 503 e demais erros seguem como instabilidade: não são bloqueio, e insistir dentro
   // do orçamento já é o comportamento certo.
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  if (!r.ok) {
+    const a = assinaturaDoErro(texto, ctype, r.headers.get("server"));
+    throw new Error(`HTTP ${r.status}${a.tipos.length ? ` [${a.tipos.join(", ")}]` : ""}`);
+  }
   if (!ctype.includes("json")) throw new Error(diagnosticarRespostaNaoJson(ctype, texto));
   registrarSucesso();
   livro("ok", r.status);
@@ -2005,7 +2076,7 @@ export function formatBusca(data, consulta, tipo, ordenacao, pagina, porPagina, 
       const doFecho = orgaoDoFechoDe(i);
       const org = doFecho && orgaoDiverge(doFecho, orgao(s)) ? `${doFecho} (fecho; índice: ${orgao(s)})` : orgao(s);
       out.push(
-        `${inicio + i}. ${s.tipo || "?"} · ${s.ds_classe_judicial || "—"} · ${org} · ${quandoDe(s)}${(s.tipo === "ACÓRDÃO" && dataDoFecho(textos[i])) ? ` [sessão (fecho): ${dataDoFecho(textos[i])}]` : " [só índice]"} · ${relator(s)} · ` +
+        `${inicio + i}. ${s.tipo || "?"} · ${s.ds_classe_judicial || "—"} · ${org} · ${quandoDe(s)}${(s.tipo === "ACÓRDÃO" && dataDoFecho(textos[i])) ? ` [sessão (fecho): ${dataDoFecho(textos[i])}]` : s.tipo === "SENTENÇA" ? (avisoAssinatura(textos[i], quandoDe(s)) || " [só índice]") : " [só índice]"} · ${relator(s)} · ` +
           `${r ? ROTULOS_RESULTADO[r] + sufixoOrigem(i) : desfechos[i] ? ROTULOS_SENTENCA[desfechos[i]] + " (1º grau)" : "sem resultado identificável"}${votSufixoI(i)} · ${s.ds_assunto_trf || "—"} · ${cnj(s.nr_processo || "")} · id ${idDocumento(s) || "—"}${recente(s) !== null ? ` · 🆕 recente (${recente(s)} dia(s))` : ""}`
       );
     });
@@ -2985,7 +3056,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.42.2";
+export const VERSAO = "1.42.3";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
@@ -3208,6 +3279,20 @@ export async function comAjudaNoErro(mensagem, opcoes = {}) {
 export function _resetAvisoParaTeste() {
   checagem = null;
   avisoDado = false;
+}
+
+
+// v1.42.3 (relato de 04/11/2026): "4a Vara" (sem o símbolo) devolvia zero sem aviso. O portal exige o
+// ordinal com símbolo (ª/º) e Formato de Título; normalizamos só isso e dizemos o que mudou.
+const PALAVRAS_ORGAO = ["vara", "câmara", "camara", "turma", "cível", "civel", "criminal", "recursal", "especial", "juizado", "núcleo", "nucleo", "fazenda", "pública", "publica", "família", "familia", "sucessões", "sucessoes", "execuções", "execucoes", "fiscais", "única", "unica", "pleno", "cível", "empresarial", "registros", "públicos", "publicos"];
+export function normalizarOrgao(orgao) {
+  if (!orgao || typeof orgao !== "string") return orgao;
+  let o = orgao.trim().replace(/\s+/g, " ");
+  o = o.replace(/(\d+)\s*(?:[aAoO°ºª])(?![a-zA-ZÀ-ÿ])(\s+)(juizado|n[úu]cleo)/gi, "$1º$2$3");
+  o = o.replace(/(\d+)\s*(?:[aAoO°º])(?![a-zA-ZÀ-ÿ])(?!\s+(?:juizado|n[úu]cleo))/gi, "$1ª");
+  o = o.replace(/(^|[\s-])([a-zà-ÿ]+)/g, (m, pre, w) => (PALAVRAS_ORGAO.includes(w) ? pre + w[0].toUpperCase() + w.slice(1) : m));
+  o = o.replace(/\bCamara\b/g, "Câmara").replace(/\bCivel\b/g, "Cível");
+  return o;
 }
 
 // O portal filtra UM órgão por vez: "1ª Câmara Cível,2ª Câmara Cível" devolve total 0

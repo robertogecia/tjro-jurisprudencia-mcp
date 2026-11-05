@@ -45,6 +45,8 @@ export function anotarRequisicao(reg, arquivo = arquivoRitmo()) {
       res: reg.res || "ok", // ok | bloqueio | corrompida | desafio | http | rede
       status: reg.status ?? null,
       durMs: reg.durMs ?? null,
+      ...(reg.forma ? { forma: reg.forma } : {}),
+      ...(reg.corpo ? { corpo: reg.corpo } : {}),
     });
     fs.appendFileSync(arquivo, linha + "\n", { mode: 0o600 });
     if (fs.statSync(arquivo).size > TAMANHO_PARA_RODAR) {

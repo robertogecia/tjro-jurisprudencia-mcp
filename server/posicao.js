@@ -4,6 +4,7 @@
 // para o agente preencher `ratio_ou_dictum` da ficha com evidência; decidir se o julgado dependeu dela continua sendo de
 // quem lê o acórdão. Distinguishing não mora aqui: exige os fatos do caso, que o servidor nunca vê.
 import { norm1, RE_OBITER, faixasAlheias } from "./custodia.js";
+import { desfechoPenal, desfechoAnpp, ROTULOS_PENAL } from "./desfecho-penal.js";
 export { RE_OBITER };
 
 // fórmulas que abrem o dispositivo do voto (as frequentes nos 826 recibos: "ante o exposto" 275, "diante do exposto" 107…);
@@ -318,7 +319,7 @@ export function teseDaEmenta(texto, teto = TESE_MAX) {
 // O rótulo diz o que foi decidido sobre o PEDIDO (procedente/improcedente…), nunca quem ganhou: em embargos à execução e impugnação,
 // "procedente" favorece o devedor. Sentença que corrige/integra outra (ED, "onde se lê"), sem âncora de dispositivo ou com desfechos
 // opostos fica sem rótulo (null), porque rótulo errado é pior que nenhum.
-export const ROTULOS_SENTENCA = { PROCEDENTE: "procedente", PARCIAL: "parcialmente procedente", IMPROCEDENTE: "improcedente", EXTINTO: "extinto sem resolução do mérito", HOMOLOGADO: "acordo ou desistência homologados" };
+export const ROTULOS_SENTENCA = { ...ROTULOS_PENAL, PROCEDENTE: "procedente", PARCIAL: "parcialmente procedente", IMPROCEDENTE: "improcedente", EXTINTO: "extinto sem resolução do mérito", HOMOLOGADO: "acordo ou desistência homologados" };
 // 22/10/2026: "embargos de declaracao" solto pegava a ADVERTÊNCIA de multa do rodapé ("a oposição de embargos de declaração meramente
 // protelatórios ensejará multa…") e calava em ~44% das sentenças cíveis (384 de 875 nos recibos do autor; 11 de 22 silêncios na amostra cega).
 // Agora só conta a sentença que JULGA embargos: "embargos de declaração opostos", "conheço/acolho/rejeito os embargos".
@@ -403,7 +404,10 @@ function rotuloDoTrecho(d) {
  * `classe`: processo penal fica sem rótulo ("procedente a pretensão punitiva" é condenação, "improcedente" é absolvição: não é o par cível).
  * Se a âncora anterior (até 2.500 car. antes) der outro desfecho (ex.: "parcialmente procedentes os pedidos" e, adiante, "improcedente a reconvenção"), null. */
 export function desfechoDaSentenca(tn, classe = "") {
-  if (PENAL.test(norm1(String(classe || "")))) return null;
+  const cl = norm1(String(classe || ""));
+  if (/acordo de nao persecucao/.test(cl)) return desfechoAnpp(dispositivoDaSentenca(tn), tn);
+  if (/antitoxicos/.test(cl)) return desfechoPenal(dispositivoDaSentenca(tn));
+  if (PENAL.test(cl)) return /acao penal|termo circunstanciado|\bjuri\b/.test(cl) ? desfechoPenal(dispositivoDaSentenca(tn)) : null;
   const a = ancorasDeDispositivo(tn);
   if (!a.length) return null;
   const ultima = a[a.length - 1];

@@ -179,8 +179,9 @@ export function formatProcesso(res, nr, maxMov = 15) {
   if (res.vazio)
     return (
       `**Processo ${mascara}:** a API de processos do TJRO não retornou dados. Pelo próprio tribunal, isso acontece ` +
-      "com número incorreto OU processo em segredo de justiça — não prova que o processo não existe. Confira o número; " +
-      "se estiver certo, o caminho é o PJe."
+      "com número incorreto OU processo em segredo de justiça; relato de uso de 04/11/2026 também aponta processo redistribuído de vara (causa não confirmada: a API não diz qual das três). " +
+      "Isso não prova que o processo não existe. Confira o número; para a capa e os movimentos, tente também o Datajud pelo mesmo número (consultar_processo_datajud); " +
+      "se ainda assim vier vazio, o caminho é o PJe."
     );
   const d = res.dados;
   const partes = [`**Processo ${mascara}** — API pública de processos do TJRO`];

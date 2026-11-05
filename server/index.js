@@ -7,6 +7,7 @@
  * Wiring do protocolo MCP e chamada de rede. Toda a lógica pura (formatação,
  * montagem de query, escaping) está em lib.js e é coberta por testes em test/.
  */
+import { diagnosticoCobertura } from "./cobertura.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -70,6 +71,9 @@ import {
   iniciarChecagemVersao,
   VERSAO,
   orgaoMultiplo,
+  normalizarOrgao,
+  normalizarDataBusca,
+  fold,
   ehOrgao1oGrau,
   lerCacheInteiro,
   gravarCacheInteiro,
@@ -86,7 +90,7 @@ import { ordenarPorSimilaridade, notaSimilares } from "./similares.js";
 import { sugerirVocabulario, blocoVocabulario, termosQueDistinguem } from "./vocabulario.js";
 import { linhaDoTempo, citacoesDe } from "./linhadotempo.js";
 import { comDiario, lerErros, resumirErros, relatorioParaAnalise } from "./erros.js";
-import { baixarAtualizacao, textoAtualizacao, ErroAtualizacao } from "./atualizar.js";
+import { baixarAtualizacao, textoAtualizacao, ErroAtualizacao, abrirInstalador } from "./atualizar.js";
 import {
   buscarNormas,
   obterNorma,
@@ -210,7 +214,7 @@ server.registerTool(
             "do principal (teste real: 7 de 20 resultados eram de outro tema). Use SEMPRE junto com consulta ou " +
             "grupos, nunca sozinho."
         ),
-      data_inicio: z.string().optional().describe("Data inicial de julgamento, formato AAAA-MM-DD."),
+      data_inicio: z.string().optional().describe("Data inicial de julgamento, formato AAAA-MM-DD (dd/mm/aaaa é convertida; data inexistente é recusada sem consultar)."),
       data_fim: z.string().optional().describe("Data final de julgamento, formato AAAA-MM-DD."),
       nr_processo: z.string().optional().describe("Filtra por um número de processo específico (com ou sem máscara)."),
       termo_exato: z.boolean().optional().describe("true para buscar a expressão exata (entre aspas)."),
@@ -221,13 +225,20 @@ server.registerTool(
       modo: z.enum(["completo", "compacto"]).optional().describe('"compacto" = uma linha por documento (órgão, data, relator, resultado declarado, assunto, processo, id), sem trecho — para varrer 100–250 resultados e escolher o que abrir. Padrão "completo" (com trecho).'),
       sugerir_termos: z.boolean().optional().describe("true = acrescenta, no fim, o VOCABULÁRIO das ementas desta página (zero consulta extra): termos e pares de palavras característicos dos resultados (frequentes aqui, raros no corpus local), variantes dos seus termos com o radical para `termo*`, e, se houver `relator`, as expressões que ele repete. Serve para montar a 2ª rodada em `grupos`/`excluir` com as palavras que os julgadores de fato usaram. Use com por_pagina de 50 a 250. Indício, não conclusão."),
       similares_a: z.string().optional().describe("Id de um documento DESTA página (id_processo_documento, vem em cada resultado): reordena a página, no cliente e sem consulta extra, pela semelhança de texto com ele (cosseno TF-IDF), com a semelhança em % no cabeçalho. Use com por_pagina alto e a mesma consulta que trouxe o documento. Semelhança de palavras, não de tese."),
-      resultado: z.enum(["provido", "parcial", "desprovido", "acolhido", "rejeitado", "sem", "procedente", "parcialmente_procedente", "improcedente", "extinto", "homologado"]).optional().describe("Filtra, NO CLIENTE e só dentro da página trazida, os documentos cujo julgamento declara esse resultado no dispositivo (provido / parcialmente provido / desprovido / acolhido / rejeitado; \"sem\" = sem resultado identificável). Para SENTENÇAS (tipo=[\"SENTENÇA\"]) vale o desfecho do dispositivo: procedente / parcialmente_procedente / improcedente / extinto / homologado (sentença sem desfecho identificável sai do filtro). Use com por_pagina alto. O total do cabeçalho continua sendo o do índice."),
+      resultado: z.enum(["provido", "parcial", "desprovido", "acolhido", "rejeitado", "sem", "procedente", "parcialmente_procedente", "improcedente", "extinto", "homologado", "condenado", "absolvido", "condenado_parcial", "punibilidade_extinta", "punibilidade_scp", "punibilidade_anpp", "anpp_homologado", "absolvicao_sumaria"]).optional().describe("Filtra, NO CLIENTE e só dentro da página trazida, os documentos cujo julgamento declara esse resultado no dispositivo (provido / parcialmente provido / desprovido / acolhido / rejeitado; \"sem\" = sem resultado identificável). Para SENTENÇAS (tipo=[\"SENTENÇA\"]) vale o desfecho do dispositivo: procedente / parcialmente_procedente / improcedente / extinto / homologado (sentença sem desfecho identificável sai do filtro). Use com por_pagina alto. O total do cabeçalho continua sendo o do índice."),
     },
   },
   async (a) => {
     try {
       let tipo = normTipos(a.tipo, ["EMENTA", "ACÓRDÃO"]);
       let nota = "";
+      if (a.orgao_colegiado && !orgaoMultiplo(a.orgao_colegiado)) {
+        const norm = normalizarOrgao(a.orgao_colegiado);
+        if (norm && norm !== a.orgao_colegiado) {
+          nota += `Nota: orgao_colegiado "${a.orgao_colegiado}" foi normalizado para "${norm}" (o portal exige o ordinal com símbolo e Formato de Título; sem isso devolve 0). Se ainda vier zero, copie o órgão exato de um resultado.\n`;
+          a = { ...a, orgao_colegiado: norm };
+        }
+      }
       if (ehOrgao1oGrau(a.orgao_colegiado) && !tipo.includes("SENTENÇA")) {
         tipo = ["SENTENÇA"];
         nota = "Nota: o órgão indicado é de 1º grau, onde o índice só tem SENTENÇA; a busca foi ajustada para tipo=SENTENÇA.\n";
@@ -253,6 +264,23 @@ server.registerTool(
         return { content: [{ type: "text", text: "Informe a consulta ou pelo menos um grupo de termos." }] };
       const multi = orgaoMultiplo(a.orgao_colegiado);
       if (multi) return { content: [{ type: "text", text: multi }] };
+      // 1.42.3: "APELACAO CRIMINAL" (sem acento) devolvia zero em silêncio; o índice grava com acento. Usa a grafia já vista nos recibos.
+      if (a.classe_judicial && !/[^\x00-\x7F]/.test(a.classe_judicial)) {
+        const alvo = fold(a.classe_judicial).toUpperCase();
+        const achada = [...new Set(indiceLeve().map((x) => x.classe).filter(Boolean))].find((c) => fold(c).toUpperCase() === alvo && c !== a.classe_judicial.toUpperCase());
+        if (achada) {
+          nota += `Nota: classe_judicial "${a.classe_judicial}" trocada por "${achada}" (o índice grava com acento; sem ele a busca devolve 0).\n`;
+          a = { ...a, classe_judicial: achada };
+        }
+      }
+      for (const campo of ["data_inicio", "data_fim"]) {
+        const nd = normalizarDataBusca(a[campo]);
+        if (!nd.ok) return { content: [{ type: "text", text: `${campo}: ${nd.erro} Nada foi consultado (a data errada faz o portal devolver HTTP 500 e gastar a vaga).` }], isError: true };
+        if (nd.valor !== a[campo]) {
+          if (a[campo]) nota += `Nota: ${campo} "${a[campo]}" convertida para "${nd.valor}" (o portal só aceita aaaa-mm-dd).\n`;
+          a = { ...a, [campo]: nd.valor };
+        }
+      }
       const ordenacao = ORDENACOES[a.ordenacao] ? a.ordenacao : "relevantes";
       const filtros = [];
       if (a.classe_judicial) filtros.push(`classe_judicial="${a.classe_judicial}"`);
@@ -266,6 +294,8 @@ server.registerTool(
           `relator="${a.relator}" (grafia e maiúsculas EXATAS como no índice — não há padrão único de caixa; ` +
             'confira o campo "Relator(a)" de um resultado sem filtro antes de repetir; para tipo=["SENTENÇA"] é o NOME DO JUIZ; nos demais tipos, só ACÓRDÃO carrega relator)'
         );
+      if (a.relator && tipo.includes("SENTENÇA") && tipo.length > 1)
+        nota += "Aviso: relator com tipo MISTO (SENTENÇA + outro): o filtro de relator usa o campo do acórdão, onde sentença não tem nome, e pode zerar a sentença. Para juiz de 1º grau, busque tipo=[\"SENTENÇA\"] sozinho.\n";
       if (a.relator) {
         // v1.29.0 (H07): grafia minoritária do mesmo relator fica fora em silêncio.
         const avG = avisoGrafiaRelator(a.relator, indiceLeve());
@@ -366,10 +396,22 @@ server.registerTool(
       const cache = lerCacheInteiro(a.nr_processo, tipo);
       if (cache)
         return { content: [{ type: "text", text: await comAvisos(notaCache(cache.obtido_em) + (a.modo === "triagem" ? formatTriagem : formatInteiro)(cache.data, a.nr_processo, { locais: locaisDoProcesso(a.nr_processo, cache.data) })) }] };
-      const { valor: data, esperouMs } = await comEspera(a.aguardar, () => post(buildInteiroBody(a.nr_processo, tipo)));
+      let tipoUsado = tipo;
+      let { valor: data, esperouMs } = await comEspera(a.aguardar, () => post(buildInteiroBody(a.nr_processo, tipo)));
+      let notaTipo = "";
+      // v1.42.3 (relato de 04/11/2026): sem `tipo`, o padrão é de 2º grau e falhava para sentença. Vazio e sem tipo informado: tenta SENTENÇA uma vez.
+      if (!(a.tipo && a.tipo.length) && !(((data || {}).hits || {}).hits || []).length) {
+        const r2 = await comEspera(a.aguardar, () => post(buildInteiroBody(a.nr_processo, ["SENTENÇA"])));
+        if ((((r2.valor || {}).hits || {}).hits || []).length) {
+          data = r2.valor;
+          tipoUsado = ["SENTENÇA"];
+          esperouMs = (esperouMs || 0) + (r2.esperouMs || 0);
+          notaTipo = "Nota: sem ACÓRDÃO/EMENTA/VOTO/RELATÓRIO neste número; a ferramenta tentou sozinha o tipo SENTENÇA (1º grau) e achou. Foram 2 consultas ao portal.\n";
+        }
+      }
       gravarRecibos(data);
-      gravarCacheInteiro(a.nr_processo, tipo, data);
-      return { content: [{ type: "text", text: await comAvisos((a.modo === "triagem" ? formatTriagem : formatInteiro)(data, a.nr_processo, { locais: locaisDoProcesso(a.nr_processo, data) }) + notaDeEspera(esperouMs) + linhaDeRitmo()) }] };
+      gravarCacheInteiro(a.nr_processo, tipoUsado, data);
+      return { content: [{ type: "text", text: await comAvisos(notaTipo + (a.modo === "triagem" ? formatTriagem : formatInteiro)(data, a.nr_processo, { locais: locaisDoProcesso(a.nr_processo, data) }) + notaDeEspera(esperouMs) + linhaDeRitmo()) }] };
     } catch (e) {
       return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e) + notaErroContado(msgErro(e))) + linhaDeRitmo() }], isError: true };
     }
@@ -510,6 +552,31 @@ server.registerTool(
   async (a) => {
     if (!a.id_documento && !a.nr_processo) return { content: [{ type: "text", text: "Informe id_documento ou nr_processo de um julgado já lido (obter_inteiro_teor_tjro grava o recibo)." }], isError: true };
     return { content: [{ type: "text", text: await comAvisos(limitarSaida(distinguir({ id_documento: a.id_documento || "", nr_processo: a.nr_processo || "", fatos_do_caso: a.fatos_do_caso || "", formato: a.formato || "completo" }))) }] };
+  }
+);
+
+server.registerTool(
+  "diagnostico_cobertura_tjro",
+  {
+    title: "Cobertura do índice por órgão e ano (TJRO)",
+    description:
+      "Quantos documentos o índice do portal JURIS TEM por tipo, órgão e ano, para saber se zero resultado em um filtro significa ausência de julgados ou ausência de indexação. " +
+      "Sem `orgaos`: 1 consulta, com o total, os órgãos e os anos do tipo. Com `orgaos` (até 4, ex.: \"Porto Velho - 4ª Vara Criminal\"): 1 consulta por órgão, com a contagem por ano. " +
+      "Conta o que está INDEXADO, nunca o total de julgamentos que existem. Custa consultas ao portal (respeita o limitador de ritmo).",
+    inputSchema: {
+      tipo: z.string().optional().describe('Tipo do documento; padrão "SENTENÇA". Outros: "ACÓRDÃO", "EMENTA".'),
+      orgaos: z.array(z.string()).max(4).optional().describe('Até 4 órgãos, ex.: "Porto Velho - 2ª Vara Criminal" ou "1ª Câmara Cível" (o ordinal sem símbolo é normalizado).'),
+      aguardar: AGUARDAR,
+    },
+    annotations: { title: "Cobertura do índice (TJRO)", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  async (a) => {
+    try {
+      const { valor: texto, esperouMs } = await comEspera(a.aguardar, () => diagnosticoCobertura({ tipo: a.tipo, orgaos: a.orgaos, post }));
+      return { content: [{ type: "text", text: await comAvisos(texto + notaDeEspera(esperouMs) + linhaDeRitmo()) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: await comAjudaNoErro(msgErro(e) + linhaDeRitmo()) }], isError: true };
+    }
   }
 );
 
@@ -780,15 +847,22 @@ server.registerTool(
     title: "Baixar a versão mais nova desta extensão",
     description:
       "USE SÓ QUANDO O USUÁRIO PEDIR para atualizar a extensão. Consulta o GitHub oficial do projeto e, se houver versão " +
-      "mais nova, baixa o arquivo para a pasta Downloads, confere o SHA-256 e diz onde ele está. NÃO instala: o usuário " +
-      "instala dando dois cliques no arquivo e confirmando. Nunca use por iniciativa própria e nunca abra ou execute o arquivo. " +
+      "mais nova, baixa o arquivo para a pasta Downloads, confere o SHA-256 e diz onde ele está. NÃO instala sozinha. " +
+      "Com `abrir_instalador=true` (use só se o usuário pediu para baixar E abrir/instalar), abre o arquivo conferido no instalador do Claude Desktop, " +
+      "onde o usuário ainda confirma Instalar; sem isso, ele instala dando dois cliques no arquivo. Nunca use por iniciativa própria e nunca execute o arquivo de outro modo. "+
       "Não consulta o TJRO.",
-    inputSchema: {},
+    inputSchema: { abrir_instalador: z.boolean().optional().describe("true = depois de baixar e conferir o SHA-256, abre o .mcpb no instalador do Claude Desktop (o usuário ainda confirma Instalar). Padrão false.") },
     annotations: { title: "Baixar atualização da extensão", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
-  async () => {
+  async (a) => {
     try {
-      return { content: [{ type: "text", text: textoAtualizacao(await baixarAtualizacao()) }] };
+      const res = await baixarAtualizacao();
+      let extra = "";
+      if (a && a.abrir_instalador && !res.jaAtualizada) {
+        abrirInstalador(res.caminho);
+        extra = "\n\n**Abri o instalador do Claude Desktop com o arquivo conferido.** Confirme **Instalar** na tela dele e depois feche e abra o Claude.";
+      }
+      return { content: [{ type: "text", text: textoAtualizacao(res) + extra }] };
     } catch (e) {
       const texto = e instanceof ErroAtualizacao ? e.message : `Não consegui baixar a atualização (${e?.message || e}).`;
       return { content: [{ type: "text", text: texto }], isError: true };

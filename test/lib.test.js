@@ -2172,7 +2172,7 @@ test("desfechoDaSentenca: procedente, parcial, improcedente, extinto, homologado
   assert.equal(desfechoDaSentenca(_sent("Ante o exposto, julgo extinta a ação, sem resolução do mérito, nos termos do art. 485, I, do CPC.")), "EXTINTO");
   assert.equal(desfechoDaSentenca(_sent("Ante o exposto, HOMOLOGO o acordo celebrado entre as partes e extingo o processo com resolução do mérito.")), "HOMOLOGADO");
   assert.equal(desfechoDaSentenca(_sent("Posto isso, acolho os embargos de declaração, para sanar a omissão.")), null, "decisão de ED não é sentença de mérito");
-  assert.equal(desfechoDaSentenca(_sent("Ante o exposto, JULGO IMPROCEDENTE a pretensão punitiva e absolvo o réu."), "AÇÃO PENAL - PROCEDIMENTO SUMÁRIO"), null, "processo penal fica sem rótulo");
+  assert.equal(desfechoDaSentenca(_sent("Ante o exposto, JULGO IMPROCEDENTE a pretensão punitiva e absolvo o réu."), "AÇÃO PENAL - PROCEDIMENTO SUMÁRIO"), "ABSOLVIDO", "ação penal usa o extrator penal (1.42.3), não o par cível");
   assert.equal(desfechoDaSentenca(_sent("Ante o exposto, JULGO IMPROCEDENTE o pedido contra o réu A. HOMOLOGO o pedido de desistência quanto ao réu B.")), null, "homologação + outro desfecho: sem rótulo");
   assert.equal(desfechoDaSentenca(_sent("Ante o exposto, julgo parcialmente procedentes os pedidos. Diante do exposto, julgo improcedente a reconvenção.")), null, "âncora anterior discorda: sem rótulo");
   assert.equal(desfechoDaSentenca(norm1("Texto sem nenhum dispositivo reconhecível.")), null);
