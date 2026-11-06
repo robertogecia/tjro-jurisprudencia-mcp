@@ -190,7 +190,8 @@ test("(1) aguardar: espera a vaga do limite de ritmo e então reserva; sem aguar
 test("(2) HTTP 500 com consulta grande: diz o limite em grupos/termos e que a consulta contou no ritmo", () => {
   const g3 = [["a", "b", "c", "d"], ["e", "f", "g", "h"], ["i", "j", "k"]];
   assert.match(L.dicaConsultaGrande("HTTP 500", g3), /no máximo 2 grupos e 9 termos/);
-  assert.match(L.notaErroContado("HTTP 500"), /CONTOU no limite de ritmo/);
+  assert.match(L.notaErroContado("HTTP 500"), /CONTOU (?:DUAS VEZES )?no limite de ritmo/);
+  assert.match(L.notaErroContado("HTTP 503"), /CONTOU no limite de ritmo/);
   assert.equal(L.notaErroContado("tempo esgotado"), "");
 });
 

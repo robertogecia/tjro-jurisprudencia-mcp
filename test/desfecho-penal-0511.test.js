@@ -106,3 +106,24 @@ test("1.42.4: revisão adversarial", () => {
   assert.deepEqual(normalizarDataBusca("2024/01/31"), { ok: true, valor: "2024-01-31" });
   assert.equal(assin("designo audiencia para o dia 15 de janeiro de 2026 perante este juiz de direito. fulano de tal juiz de direito").data, "");
 });
+
+import { post, notaRetry500, _limparCacheParaTeste } from "../server/lib.js";
+test("HTTP 500: repete uma vez e avisa; dois 500 sobem o erro; 403 não repete", async () => {
+  process.env.TJRO_MCP_ARQUIVO_RITMO = "";
+  const resp = (status, json) => ({ ok: status === 200, status, headers: { get: (k) => (k.toLowerCase() === "content-type" ? (json ? "application/json" : "text/html") : null) }, text: async () => "<html>x</html>", json: async () => json });
+  const corpo = (q) => ({ from: 0, size: 1, fields: { query: q, tipo: "ACÓRDÃO" }, sort: [] });
+  _limparCacheParaTeste();
+  let n = 0;
+  const f1 = async () => (++n === 1 ? resp(500) : resp(200, { hits: { total: { value: 1 }, hits: [{}] } }));
+  const r = await post(corpo("teste-retry-a"), f1);
+  assert.equal(r.hits.total.value, 1);
+  assert.equal(n, 2);
+  assert.match(notaRetry500(), /repetida uma vez/);
+  assert.equal(notaRetry500(), "");
+  let m = 0;
+  await assert.rejects(post(corpo("teste-retry-b"), async () => (++m, resp(500))), /HTTP 500/);
+  assert.equal(m, 2);
+  let k = 0;
+  await assert.rejects(post(corpo("teste-retry-c"), async () => (++k, resp(403))), /HTTP 403|bloque/i);
+  assert.equal(k, 1);
+});

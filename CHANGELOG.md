@@ -2,6 +2,11 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## 1.42.5 — publicada em 05/11/2026
+
+- **HTTP 500: uma repetição automática, dentro do limite de ritmo.** Medido nos 905 registros do livro-razão local (04 e 05/11/2026): 500 em 9,2% das buscas, rápido (mediana de 288 ms contra 1.040 ms), sem relação com a hora do dia, com consulta de outro processo ao lado (0 de 46 contra 0 de 468) nem com a busca anterior (depois de um 500, a seguinte deu 500 em 11%; depois de um sucesso, em 8,6%): é intermitente e independe da anterior. Em 34 consultas controladas só a data malformada reproduziu (corrigida na 1.42.3). Por isso a ferramenta repete a consulta UMA vez quando o portal responde 500, passando pelo mesmo limitador (espera o intervalo mínimo e gasta uma vaga). Nunca repete 403, 429, bloqueio, desafio nem erro de rede, e não faz terceira tentativa. A resposta avisa quando a repetição funcionou ("custou uma vaga extra") e, quando também falha, que a consulta contou duas vezes. Desligue com `TJRO_MCP_SEM_RETRY_500=1`.
+- **Provas ao vivo de 05/11/2026** da dica de continuação do corte de 40 mil caracteres: página 1 com 40 resultados cortou em 23 e mandou `pagina=2` com `por_pagina=23`; o 1º resultado dessa página 2 foi o 24º da mesma busca em modo compacto (conferido pelo id). A dica da página 2 calculou certo o deslocamento seguinte (`pagina=4`, `por_pagina=15`, depois dos itens 24 a 45).
+
 ## 1.42.4 — publicada em 05/11/2026
 
 Revisão adversarial (Opus, só leitura) da 1.42.3 em 05/11/2026: 13 defeitos, todos corrigidos com teste.

@@ -991,7 +991,10 @@ export const SAIDA_MAX_CHARS = 40000; // 1.42.2: 60 mil (1.41.11; antes 80 mil) 
 // 1.41.11 (diagnóstico, item 2): o servidor responder 500 não devolve a vaga. Ela é reservada antes do envio, e devolvê-la
 // deixaria uma sequência de consultas que derrubam o servidor do portal escapar do teto da janela.
 export function notaErroContado(mensagem) {
-  return /HTTP 5\d\d/.test(String(mensagem || "")) ? " Esta consulta CONTOU no limite de ritmo (a vaga é reservada antes do envio e não é devolvida quando o portal falha, para que consultas com erro não escapem do teto)." : "";
+  const m = String(mensagem || "");
+  if (/HTTP 500\b/.test(m) && process.env.TJRO_MCP_SEM_RETRY_500 !== "1")
+    return " Esta consulta CONTOU DUAS VEZES no limite de ritmo: o portal respondeu 500 e a ferramenta repetiu uma vez (também 500). Não repita em seguida; se for a mesma consulta, espere alguns minutos ou simplifique (datas em aaaa-mm-dd, menos termos).";
+  return /HTTP 5\d\d/.test(m) ? " Esta consulta CONTOU no limite de ritmo (a vaga é reservada antes do envio e não é devolvida quando o portal falha, para que consultas com erro não escapem do teto)." : "";
 }
 // 1.42.3: a dica de continuação vale em QUALQUER página. Os `mostrados` primeiros resultados desta página já foram vistos; o próximo
 // começa no deslocamento o = (pagina-1)*por_pagina + mostrados. Só se alcança o deslocamento o com pagina=o/Q+1 e por_pagina=Q quando Q divide o;
@@ -1445,15 +1448,16 @@ export function consultasRecentes(agora = Date.now(), ms = 60_000) {
 // v1.34.0 (relato de uso, 13/10/2026): o subagente estourou o teto de consultas por frente do próprio roteiro sem saber
 // quantas já tinha feito. A busca passa a dizer o placar do limitador (todas as consultas desta máquina ao portal).
 export function linhaDeRitmo(agora = Date.now()) {
+  const notaRetry = notaRetry500();
   try {
     const e = comTrava(() => lerEstado());
     const janela = ESCADA_JANELA_MS[e.indiceJanela] || ESCADA_JANELA_MS[0];
     const reqs = e.requisicoes || [];
     const naJanela = reqs.filter((t) => agora - t <= janela).length;
-    return `\n_Ritmo do portal: ${naJanela} de ${JANELA_MAX_REQS} consultas na janela atual de ${janela / 60_000} min (nível ${e.indiceJanela + 1} de ${ESCADA_JANELA_MS.length}), ` +
+    return notaRetry + `\n_Ritmo do portal: ${naJanela} de ${JANELA_MAX_REQS} consultas na janela atual de ${janela / 60_000} min (nível ${e.indiceJanela + 1} de ${ESCADA_JANELA_MS.length}), ` +
       `somando as consultas de TODOS os agentes e conversas que usam esta extensão nesta máquina (o teto é por máquina, não por agente). Se o seu roteiro tem teto de consultas por frente, conte as suas chamadas; este número só diz o fôlego do limitador._`;
   } catch {
-    return "";
+    return notaRetry;
   }
 }
 
@@ -1802,7 +1806,29 @@ function guardarAmostra500(body, status) {
   } catch { /* nunca derruba a consulta */ }
 }
 
+// 1.42.5: uma repetição automática do HTTP 500 (dado medido nos 905 registros do livro-razão: 500 em 9,2% das buscas e, depois de um 500,
+// a busca seguinte deu 500 de novo em só 11% das vezes, contra 8,6% depois de um sucesso: o erro é intermitente e independe da anterior).
+// A repetição passa pelo MESMO limitador (espera o intervalo mínimo e gasta uma vaga), só ocorre para 500 (nunca 403, 429, bloqueio,
+// desafio ou rede) e uma vez só. Desligue com TJRO_MCP_SEM_RETRY_500=1.
+let retry500Feito = 0;
+export function _retry500ParaTeste() { const n = retry500Feito; retry500Feito = 0; return n; }
+export function notaRetry500() {
+  if (!retry500Feito) return "";
+  const n = retry500Feito; retry500Feito = 0;
+  return `\n_ℹ️ O portal respondeu HTTP 500 a ${n === 1 ? "esta consulta" : n + " consultas"} e ela foi repetida uma vez, dentro do limite de ritmo; a repetição funcionou (custou uma vaga extra)._`;
+}
 export async function post(body, fetchImpl = fetch) {
+  try {
+    return await postUnico(body, fetchImpl);
+  } catch (e) {
+    if (process.env.TJRO_MCP_SEM_RETRY_500 === "1" || !/^HTTP 500\b/.test(String(e?.message || ""))) throw e;
+    const r = await postUnico(body, fetchImpl); // se falhar de novo, o erro desta segunda tentativa sobe (sem terceira)
+    retry500Feito++;
+    return r;
+  }
+}
+
+async function postUnico(body, fetchImpl = fetch) {
   const chave = JSON.stringify(body);
   const emCache = cacheLer(chave, Date.now());
   if (emCache) return emCache; // não consome vaga: nenhuma requisição é feita
@@ -3065,7 +3091,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.42.4";
+export const VERSAO = "1.42.5";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
