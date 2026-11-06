@@ -6,7 +6,9 @@ const n = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replac
 /** { nome, data } da assinatura ao fim do texto de uma sentença ("<dd de mês de aaaa> <Nome> Juiz(a) de Direito"), ou null. */
 export function assinaturaDaSentenca(texto) {
   const t = n(String(texto || "").slice(-500));
-  const m = t.match(/(?:(\d{1,2}) de (\w+) de (\d{4})[ ,.]*(?:assinado eletronicamente )?)?([a-z. ]{6,70}?) juiz(?:a|\(a\))? de direito/);
+  // 1.42.4: a ÚLTIMA ocorrência (a assinatura), não a primeira ("audiência no dia X perante este juiz de direito").
+  const todas = [...t.matchAll(/(?:(\d{1,2}) de (\w+) de (\d{4})[ ,.]*(?:assinado eletronicamente )?)?([a-z. ]{6,70}?) juiz(?:a|\(a\))? de direito/g)];
+  const m = todas[todas.length - 1];
   if (!m) return null;
   const data = m[1] && MES[m[2]] ? `${String(+m[1]).padStart(2, "0")}/${String(MES[m[2]]).padStart(2, "0")}/${m[3]}` : "";
   return { nome: m[4].trim(), data };

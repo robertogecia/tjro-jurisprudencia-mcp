@@ -161,7 +161,18 @@ export function abrirInstalador(caminho, { plataforma = process.platform, spawnI
     throw new ErroAtualizacao("Recusei abrir: só abro o arquivo .mcpb que esta ferramenta baixou na pasta Downloads.");
   if (!fs.existsSync(real)) throw new ErroAtualizacao("O arquivo baixado não está mais na pasta Downloads.");
   const [cmd, args] = plataforma === "darwin" ? ["open", [real]] : plataforma === "win32" ? ["explorer.exe", [real]] : ["xdg-open", [real]];
-  const filho = spawnImpl(cmd, args, { detached: true, stdio: "ignore", shell: false });
-  if (filho && typeof filho.unref === "function") filho.unref();
-  return cmd;
+  // 1.42.4: sem ouvinte de 'error', um comando ausente (Linux sem xdg-open) derrubava o servidor MCP inteiro. Agora a falha volta
+  // como resposta, e só se diz "abri" quando o sistema aceitou o comando.
+  return new Promise((resolve, reject) => {
+    let filho;
+    try {
+      filho = spawnImpl(cmd, args, { detached: true, stdio: "ignore", shell: false });
+    } catch (e) {
+      return reject(new ErroAtualizacao(`Não consegui abrir o instalador (${e?.message || e}). Abra o arquivo com dois cliques.`));
+    }
+    if (!filho || typeof filho.on !== "function") return resolve(cmd);
+    const fim = setTimeout(() => resolve(cmd), 1500);
+    filho.on("error", (e) => { clearTimeout(fim); reject(new ErroAtualizacao(`Não consegui abrir o instalador (${e?.code || e?.message || e}). Abra o arquivo com dois cliques.`)); });
+    filho.on("spawn", () => { clearTimeout(fim); if (typeof filho.unref === "function") filho.unref(); resolve(cmd); });
+  });
 }

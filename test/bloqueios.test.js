@@ -27,7 +27,7 @@ test("livro-razão: anota, relê em ordem e nunca grava texto de busca", () => {
 test("livro-razão: rotaciona sem passar do limite", () => {
   const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "ritmo-")), "r.jsonl");
   const linha = JSON.stringify(req(0)) + "\n";
-  fs.writeFileSync(f, linha.repeat(Math.ceil(700_000 / linha.length) + 5));
+  fs.writeFileSync(f, linha.repeat(Math.ceil(1_500_000 / linha.length) + 5));
   anotarRequisicao({ t: T0, res: "ok" }, f);
   assert.ok(lerRitmo(f).length <= RITMO_MAX_LINHAS);
 });

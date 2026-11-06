@@ -837,11 +837,13 @@ export const sugestoes = (data, consulta) => {
   return out.slice(0, 3);
 };
 
+// 1.42.4: "sentenca", "acordao" (sem acento) eram descartados e a busca caía no tipo padrão sem aviso.
+const semAcentoMaiusc = (x) => String(x).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
 export const normTipos = (arr, padrao) => {
   const t = (arr || padrao)
-    .map((x) => String(x).toUpperCase())
-    .filter((x) => TIPOS_VALIDOS.includes(x));
-  return t.length ? t : padrao;
+    .map((x) => TIPOS_VALIDOS.find((v) => semAcentoMaiusc(v) === semAcentoMaiusc(x)))
+    .filter(Boolean);
+  return t.length ? [...new Set(t)] : padrao;
 };
 
 // ----------------------------------------------------------- request bodies -
@@ -1770,7 +1772,11 @@ export function normalizarDataBusca(v) {
   let a, m, d;
   let x = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t);
   if (x) [a, m, d] = [+x[1], +x[2], +x[3]];
-  else if ((x = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t))) [a, m, d] = [+x[3], +x[2], +x[1]];
+  else if ((x = /^(\d{4})[/.](\d{1,2})[/.](\d{1,2})$/.exec(t))) [a, m, d] = [+x[1], +x[2], +x[3]];
+  else if ((x = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t))) {
+    [a, m, d] = [+x[3], +x[2], +x[1]];
+    if (m > 12 && d <= 12) return { ok: false, erro: `data "${t}" parece estar em mês/dia; escreva dia/mês/ano ou aaaa-mm-dd (ex.: 2024-12-31).` };
+  }
   else if (/^\d{4}$/.test(t)) return { ok: true, valor: t };
   else return { ok: false, erro: `data "${t}" fora do formato: use aaaa-mm-dd (ex.: 2024-01-31).` };
   const dt = new Date(Date.UTC(a, m - 1, d));
@@ -1788,8 +1794,11 @@ function guardarAmostra500(body, status) {
     const linha = JSON.stringify({ quando: new Date().toISOString(), status, fields: body?.fields, sort: body?.sort, size: body?.size, from: body?.from });
     let linhas = [];
     try { linhas = fs.readFileSync(arq, "utf8").split("\n").filter(Boolean); } catch { /* novo */ }
+    const limite = Date.now() - 30 * 86400000; // 1.42.4: guarda 30 dias, no máximo 20 consultas
+    linhas = linhas.filter((l) => { try { return Date.parse(JSON.parse(l).quando) >= limite; } catch { return false; } });
     linhas.push(linha);
     fs.writeFileSync(arq, linhas.slice(-20).join("\n") + "\n", { mode: 0o600 });
+    try { fs.chmodSync(arq, 0o600); } catch { /* Windows ignora o modo */ }
   } catch { /* nunca derruba a consulta */ }
 }
 
@@ -3056,7 +3065,7 @@ export const notaCache = (obtidoEm) =>
 // resposta da API). Sem rede, com erro ou em mais de 2 s: silêncio, a busca segue.
 // Só o GitHub vê o IP de quem consulta; nada da pesquisa nem do caso sai daqui.
 // Desligar: variável de ambiente TJRO_MCP_SEM_AVISO_ATUALIZACAO=1.
-export const VERSAO = "1.42.3";
+export const VERSAO = "1.42.4";
 export const RELEASES_API =
   "https://api.github.com/repos/robertogecia/tjro-jurisprudencia-mcp/releases/latest";
 export const RELEASES_PAGINA =
@@ -3298,8 +3307,12 @@ export function normalizarOrgao(orgao) {
 // O portal filtra UM órgão por vez: "1ª Câmara Cível,2ª Câmara Cível" devolve total 0
 // (medido em 22/09/2026), e zero silencioso vira falso "não localizado".
 const SEP_ORGAO = /[,;|]|\s(?:ou|e|or|and)\s/i;
+// 1.42.4: " e " dentro do nome ("1ª Vara de Fazenda e Saúde Pública") não é soma de órgãos: só conta quando os DOIS lados são órgãos.
+const PARTE_ORGAO = /c[âa]mara|vara|turma|juizado|n[úu]cleo|pleno|conselho|tribunal/i;
 export function orgaoMultiplo(orgao) {
   if (!orgao || !SEP_ORGAO.test(String(orgao))) return null;
+  const partes = String(orgao).split(new RegExp(SEP_ORGAO.source, "i")).map((x) => x.trim()).filter(Boolean);
+  if (partes.length < 2 || !partes.some((x) => PARTE_ORGAO.test(x)) || !partes.every((x) => PARTE_ORGAO.test(x) || /^\d+\s*[ªºa°]?$/.test(x))) return null;
   return (
     `orgao_colegiado aceita UM órgão só; "${orgao}" parece ter vários, e o portal devolveria 0 resultado (que não é "não localizado"). ` +
     "Faça uma busca por órgão, ou, melhor, busque sem filtro de órgão e confira a câmara no fecho de cada acórdão: " +

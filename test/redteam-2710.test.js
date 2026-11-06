@@ -298,9 +298,9 @@ test("(14) identificação pendente sai com o prefixo [CONSULTA NÃO REALIZADA]"
 });
 
 test("versão 1.42.2", () => {
-  assert.equal(VERSAO, "1.42.3");
+  assert.equal(VERSAO, "1.42.4");
   const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const man = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
-  assert.equal(pkg.version, "1.42.3");
-  assert.equal(man.version, "1.42.3");
+  assert.equal(pkg.version, "1.42.4");
+  assert.equal(man.version, "1.42.4");
 });

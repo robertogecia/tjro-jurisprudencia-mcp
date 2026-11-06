@@ -1,7 +1,7 @@
 // v1.42.3 (relato de 04/11/2026, seção 2): sem saber quantos documentos o índice tem por órgão e ano,
 // "zero resultado" vira "não há julgados". Esta ferramenta conta o que o índice do portal TEM; não diz
 // quantos julgamentos existem de fato.
-import { buildBuscaBody, normalizarOrgao } from "./lib.js";
+import { buildBuscaBody, normalizarOrgao, normTipos, orgaoMultiplo, ehOrgao1oGrau } from "./lib.js";
 
 const buckets = (data, k) => ((((data || {}).aggregations || {})[k] || {}).buckets || []).filter((b) => b && b.doc_count > 0);
 const chave = (b) => (Array.isArray(b.key) ? b.key.join(" ") : String(b.key)).trim() || "(sem cadastro)";
@@ -26,25 +26,39 @@ export function formatCobertura(tipo, painel, porOrgao) {
     const an = anosDe(painel);
     if (an.length) out.push("Por ano (tudo): " + an.map(([a, c]) => `${a}: ${c}`).join(" · "));
   }
-  for (const { orgao, normalizado, data } of porOrgao || []) {
+  for (const { orgao, normalizado, data, erro } of porOrgao || []) {
+    if (erro) { out.push(`- ${orgao}: [CONSULTA NÃO REALIZADA] (${erro}); não é zero.`); continue; }
     const t = total(data);
     const an = anosDe(data);
     out.push(`- ${orgao}${normalizado ? ` (usado como "${normalizado}")` : ""}: ${t} documentos` + (an.length ? ` · ${an.map(([a, c]) => `${a}: ${c}`).join(" · ")}` : ""));
-    if (t === 0) out.push("  ⚠️ Zero: ou o órgão não existe com esta grafia, ou não há nada indexado dele neste tipo. Confira a grafia contra a lista de órgãos acima; zero aqui NÃO prova que não houve julgamentos.");
+    if (t === 0) out.push("  ⚠️ Zero: ou o órgão não existe com esta grafia, ou não há nada indexado dele neste tipo. Confira a grafia (sem `orgaos`, a ferramenta lista os órgãos do índice) e o tipo; zero aqui NÃO prova que não houve julgamentos.");
   }
   out.push("\nLeitura: ano com poucos documentos ao lado de anos cheios indica indexação esparsa; nesse caso, busca com zero resultado não prova ausência de julgado.");
   return out.join("\n");
 }
 
 export async function diagnosticoCobertura({ tipo, orgaos, post }) {
-  const t = String(tipo || "SENTENÇA").toUpperCase();
-  const base = (orgao) => buildBuscaBody({ consulta: "", tipo: [t], orgaoColegiado: orgao, pagina: 1, porPagina: 1, ordenacao: "relevantes" });
   const lista = (orgaos || []).map((o) => String(o).trim()).filter(Boolean).slice(0, 4);
-  const painel = lista.length ? null : await post(base(undefined));
+  for (const o of lista) {
+    const multi = orgaoMultiplo(o);
+    if (multi) return `Nada foi consultado. ${multi}`;
+  }
+  // 1.42.4: tipo normalizado ("sentenca" ia ao portal como "SENTENCA" e voltava zero) e, sem tipo, câmara/turma usa ACÓRDÃO
+  // (câmara com SENTENÇA dava zero garantido). Órgãos de graus diferentes na mesma chamada: cada um com o seu tipo.
+  const tipoDe = (o) => (tipo ? normTipos([tipo], ["SENTENÇA"])[0] : o && !ehOrgao1oGrau(normalizarOrgao(o)) ? "ACÓRDÃO" : "SENTENÇA");
+  const base = (orgao, t) => buildBuscaBody({ consulta: "", tipo: [t], orgaoColegiado: orgao, pagina: 1, porPagina: 1, ordenacao: "relevantes" });
+  let painel = null;
+  const tPainel = tipoDe(null);
+  if (!lista.length) painel = await post(base(undefined, tPainel));
   const porOrgao = [];
   for (const o of lista) {
     const n = normalizarOrgao(o);
-    porOrgao.push({ orgao: o, normalizado: n !== o ? n : "", data: await post(base(n)) });
+    const t = tipoDe(o);
+    try {
+      porOrgao.push({ orgao: `${o} [${t}]`, normalizado: n !== o ? n : "", data: await post(base(n, t)) });
+    } catch (e) {
+      porOrgao.push({ orgao: `${o} [${t}]`, normalizado: "", erro: String(e?.message || e) });
+    }
   }
-  return formatCobertura(t, painel, porOrgao);
+  return formatCobertura(lista.length ? "por órgão" : tPainel, painel, porOrgao);
 }

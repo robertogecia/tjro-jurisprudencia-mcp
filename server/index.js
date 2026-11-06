@@ -241,11 +241,11 @@ server.registerTool(
       }
       if (ehOrgao1oGrau(a.orgao_colegiado) && !tipo.includes("SENTENÇA")) {
         tipo = ["SENTENÇA"];
-        nota = "Nota: o órgão indicado é de 1º grau, onde o índice só tem SENTENÇA; a busca foi ajustada para tipo=SENTENÇA.\n";
+        nota += "Nota: o órgão indicado é de 1º grau, onde o índice só tem SENTENÇA; a busca foi ajustada para tipo=SENTENÇA.\n";
       } else if (a.grau === 1 && !tipo.includes("SENTENÇA")) {
         // No índice, EMENTA/ACÓRDÃO/VOTO/RELATÓRIO/DECISÃO só existem no 2º grau.
         tipo = ["SENTENÇA"];
-        nota = "Nota: EMENTA/ACÓRDÃO são peças de 2º grau; a busca em 1º grau foi ajustada para tipo=SENTENÇA.\n";
+        nota += "Nota: EMENTA/ACÓRDÃO são peças de 2º grau; a busca em 1º grau foi ajustada para tipo=SENTENÇA.\n";
       }
       const porPagina = Math.max(1, Math.min(a.por_pagina ?? 10, POR_PAGINA_MAX));
       const pagina = Math.max(1, a.pagina ?? 1);
@@ -393,7 +393,7 @@ server.registerTool(
       return { content: [{ type: "text", text: lerTrechoDoRecibo({ id_documento: a.id_documento || "", nr_processo: a.nr_processo, offset: a.offset, trecho_em_torno_de: a.trecho_em_torno_de || "" }) }] };
     try {
       const tipo = normTipos(a.tipo, ["ACÓRDÃO", "EMENTA", "VOTO", "RELATÓRIO"]);
-      const cache = lerCacheInteiro(a.nr_processo, tipo);
+      const cache = lerCacheInteiro(a.nr_processo, tipo) || (!(a.tipo && a.tipo.length) ? lerCacheInteiro(a.nr_processo, ["SENTENÇA"]) : null);
       if (cache)
         return { content: [{ type: "text", text: await comAvisos(notaCache(cache.obtido_em) + (a.modo === "triagem" ? formatTriagem : formatInteiro)(cache.data, a.nr_processo, { locais: locaisDoProcesso(a.nr_processo, cache.data) })) }] };
       let tipoUsado = tipo;
@@ -402,10 +402,11 @@ server.registerTool(
       // v1.42.3 (relato de 04/11/2026): sem `tipo`, o padrão é de 2º grau e falhava para sentença. Vazio e sem tipo informado: tenta SENTENÇA uma vez.
       if (!(a.tipo && a.tipo.length) && !(((data || {}).hits || {}).hits || []).length) {
         const r2 = await comEspera(a.aguardar, () => post(buildInteiroBody(a.nr_processo, ["SENTENÇA"])));
+        esperouMs = (esperouMs || 0) + (r2.esperouMs || 0);
+        notaTipo = "Nota: sem ACÓRDÃO/EMENTA/VOTO/RELATÓRIO neste número, e a tentativa sozinha com o tipo SENTENÇA também veio vazia. Foram 2 consultas ao portal.\n";
         if ((((r2.valor || {}).hits || {}).hits || []).length) {
           data = r2.valor;
           tipoUsado = ["SENTENÇA"];
-          esperouMs = (esperouMs || 0) + (r2.esperouMs || 0);
           notaTipo = "Nota: sem ACÓRDÃO/EMENTA/VOTO/RELATÓRIO neste número; a ferramenta tentou sozinha o tipo SENTENÇA (1º grau) e achou. Foram 2 consultas ao portal.\n";
         }
       }
@@ -859,7 +860,11 @@ server.registerTool(
       const res = await baixarAtualizacao();
       let extra = "";
       if (a && a.abrir_instalador && !res.jaAtualizada) {
-        abrirInstalador(res.caminho);
+        try {
+          await abrirInstalador(res.caminho);
+        } catch (e) {
+          return { content: [{ type: "text", text: textoAtualizacao(res) + "\n\n" + (e?.message || e) }] };
+        }
         extra = "\n\n**Abri o instalador do Claude Desktop com o arquivo conferido.** Confirme **Instalar** na tela dele e depois feche e abra o Claude.";
       }
       return { content: [{ type: "text", text: textoAtualizacao(res) + extra }] };

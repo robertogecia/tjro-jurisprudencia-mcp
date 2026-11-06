@@ -2,6 +2,25 @@
 
 Versões anteriores estão descritas nas mensagens de commit (`git log`).
 
+## 1.42.4 — publicada em 05/11/2026
+
+Revisão adversarial (Opus, só leitura) da 1.42.3 em 05/11/2026: 13 defeitos, todos corrigidos com teste.
+
+- **Absolvição lida como condenação.** "Condeno o Estado ao pagamento dos honorários do dativo", "deixo de condenar em custas" e "prova insuficiente para condenar" faziam uma absolvição sair como condenação em parte. Agora o verbo precisa ter o réu como objeto (ou vir na fórmula de procedência da denúncia) e não pode estar negado; "condeno-o" (pronome) conta.
+- **Extinção narrada, negada ou futura não vira mais extinção.** "Indefiro o pedido de extinção", "venham conclusos para extinção", "conforme a decisão que declarou a extinção, arquive-se" ficavam rotulados como extinção (inclusive pelo ANPP). Só conta a extinção declarada pelo juiz nesta peça.
+- **"Não homologo" o ANPP** saía como acordo homologado; agora fica sem rótulo.
+- **Causa da extinção pela mais próxima.** Uma SCP revogada citada antes não vence a prescrição declarada depois.
+- **Absolvição sumária** cita os arts. 397 ou 415 do CPP (júri).
+- **`atualizar_extensao_tjro`:** sem o programa de abrir arquivos (Linux sem xdg-open), o servidor inteiro caía; agora a falha volta como resposta e só se diz "abri" quando o sistema aceitou.
+- **Avisos que sumiam ou enganavam:** a nota da normalização do órgão era apagada pela nota de 1º grau; a segunda tentativa como SENTENÇA no inteiro teor não era avisada quando também vinha vazia; o cache de SENTENÇA não era achado numa chamada sem tipo.
+- **`diagnostico_cobertura_tjro`:** tipo sem acento ("sentenca") reconhecido; sem tipo, câmara e turma contam ACÓRDÃO e vara conta SENTENÇA (câmara com SENTENÇA dava zero garantido); vários órgãos numa string são recusados sem consultar; falha no meio sai como [CONSULTA NÃO REALIZADA] por órgão, sem perder as contagens já feitas.
+- **Tipo sem acento em toda busca.** `tipo: ["sentenca", "acordao"]` era descartado em silêncio e a busca caía no tipo padrão.
+- **Órgão com " e " no nome** ("1ª Vara de Fazenda e Saúde Pública") não é mais recusado como se fossem dois órgãos.
+- **Data em mês/dia** ("12/31/2024") ganha mensagem certa; "2024/01/31" é aceita.
+- **Assinatura da sentença:** usa a última ocorrência de "Juiz de Direito" (a assinatura), não uma menção anterior ("audiência no dia X perante este juiz").
+- **Amostras locais de HTTP 500** ficam no máximo 30 dias; a permissão 600 é reaplicada a cada gravação. O livro-razão só roda acima de 1,5 MB (a linha com a forma da consulta ficou maior).
+- **Medição mantida:** as quatro amostras cegas anteriores seguem com o mesmo acerto (penal 47 de 47 contando SCP como extinção; penal nova 35 de 35; ANPP 28 de 28; ANPP nova 38 de 38).
+
 ## 1.42.3 — publicada em 05/11/2026
 
 - **Órgão com ordinal sem símbolo ("4a Vara", "1a camara civel") não devolve mais zero em silêncio.** `orgao_colegiado` é normalizado para o ordinal com símbolo e Formato de Título, e a resposta diz o que mudou. Cidade e demais palavras não são reescritas.

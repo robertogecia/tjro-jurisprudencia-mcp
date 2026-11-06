@@ -18,7 +18,7 @@ export const ARQUIVO_RITMO = path.join(os.homedir(), ".tjro-jurisprudencia-ritmo
 // com fetch falso jamais pode gravar no livro-razão real (já aconteceu uma vez, em 12/10/2026, e o arquivo foi apagado).
 const arquivoRitmo = () => process.env.TJRO_MCP_ARQUIVO_RITMO || (process.env.NODE_TEST_CONTEXT ? null : ARQUIVO_RITMO);
 export const RITMO_MAX_LINHAS = 3000;
-const TAMANHO_PARA_RODAR = 700_000; // bytes; ~3000 linhas de ~200 B ficam abaixo disso, passou = roda o arquivo
+const TAMANHO_PARA_RODAR = 1_500_000; // bytes; 1.42.4: com a forma da consulta a linha tem ~330 B (3000 linhas ≈ 1 MB); passou = roda o arquivo
 
 // Faixas de intervalo (s) desde a requisição anterior de QUALQUER processo desta máquina. 5 s bloqueou e 6 s passou (23/09/2026).
 export const FAIXAS_S = [

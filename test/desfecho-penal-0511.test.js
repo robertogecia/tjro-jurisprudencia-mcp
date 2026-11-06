@@ -40,18 +40,20 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { abrirInstalador } from "../server/atualizar.js";
-test("abrirInstalador: só .mcpb da pasta Downloads, sem shell, comando por sistema", () => {
+test("abrirInstalador: só .mcpb da pasta Downloads, sem shell, comando por sistema, falha sem derrubar", async () => {
   const pasta = fs.mkdtempSync(path.join(os.tmpdir(), "dl-"));
   const arq = path.join(pasta, "Jurisprudencia-TJRO.mcpb");
   fs.writeFileSync(arq, "x");
   const chamadas = [];
   const falso = (cmd, args, op) => (chamadas.push({ cmd, args, op }), { unref() {} });
-  assert.equal(abrirInstalador(arq, { plataforma: "darwin", spawnImpl: falso, pasta }), "open");
-  assert.equal(abrirInstalador(arq, { plataforma: "win32", spawnImpl: falso, pasta }), "explorer.exe");
+  assert.equal(await abrirInstalador(arq, { plataforma: "darwin", spawnImpl: falso, pasta }), "open");
+  assert.equal(await abrirInstalador(arq, { plataforma: "win32", spawnImpl: falso, pasta }), "explorer.exe");
   assert.equal(chamadas[0].op.shell, false);
   assert.throws(() => abrirInstalador(path.join(pasta, "x.sh"), { spawnImpl: falso, pasta }), /só abro o arquivo \.mcpb/);
   assert.throws(() => abrirInstalador("/etc/passwd.mcpb", { spawnImpl: falso, pasta }), /só abro/);
   assert.equal(chamadas.length, 2);
+  const { spawn } = await import("node:child_process");
+  await assert.rejects(abrirInstalador(arq, { plataforma: "linux", pasta, spawnImpl: (c, a, o) => spawn("comando-inexistente-tjro-xyz", a, o) }), /Não consegui abrir o instalador/);
 });
 
 import { formaDaRequisicao, assinaturaDoErro, buildBuscaBody } from "../server/lib.js";
@@ -84,4 +86,23 @@ test("ANPP: extinção pelo cumprimento, homologação, e o que não é", () => 
   assert.equal(desfechoPenal("julgo procedente os presentes embargos declaratorios para aclarar: onde se lia 'julgo procedente a pretensao punitiva'"), null);
   assert.equal(desfechoPenal("condeno o reu pelo art. 306. antecedentes: sentenca de extincao da punibilidade proferida em 2019"), "CONDENADO");
   assert.equal(desfechoPenal("julgo procedente em parte a denuncia: a) julgo extinta a punibilidade quanto ao art. 28; b) condeno o reu pelo art. 33"), "CONDENADO_PARCIAL");
+});
+
+import { orgaoMultiplo, normTipos } from "../server/lib.js";
+import { assinaturaDaSentenca as assin } from "../server/assinatura.js";
+test("1.42.4: revisão adversarial", () => {
+  assert.equal(desfechoPenal("absolvo o reu (art. 386, vii). condeno o estado de rondonia ao pagamento dos honorarios do dativo"), "ABSOLVIDO");
+  assert.equal(desfechoPenal("ausente prova suficiente para condenar o reu, absolvo-o com fulcro no art. 386, vii"), "ABSOLVIDO");
+  assert.equal(desfechoPenal("absolvo o reu. deixo de condenar em custas"), "ABSOLVIDO");
+  assert.equal(desfechoPenal("indefiro o pedido da defesa de declaracao da extincao da punibilidade"), null);
+  assert.equal(desfechoPenal("a suspensao condicional do processo (art. 89) foi revogada em 2019. declaro extinta a punibilidade do reu pela prescricao"), "PUNIBILIDADE_EXTINTA");
+  assert.equal(desfechoPenal("fixo a pena. condeno-o, ainda, ao pagamento das custas"), "CONDENADO");
+  assert.equal(desfechoAnpp("ante o exposto, nao homologo o acordo de nao persecucao penal"), null);
+  assert.equal(desfechoAnpp("homologo o acordo. cumprido integralmente o acordo, venham conclusos para extincao da punibilidade"), "ANPP_HOMOLOGADO");
+  assert.equal(orgaoMultiplo("Porto Velho - 1ª Vara de Fazenda e Saúde Pública"), null);
+  assert.ok(orgaoMultiplo("1ª Câmara Cível, 2ª Câmara Cível"));
+  assert.deepEqual(normTipos(["sentenca", "acordao"], ["X"]), ["SENTENÇA", "ACÓRDÃO"]);
+  assert.equal(normalizarDataBusca("12/31/2024").ok, false);
+  assert.deepEqual(normalizarDataBusca("2024/01/31"), { ok: true, valor: "2024-01-31" });
+  assert.equal(assin("designo audiencia para o dia 15 de janeiro de 2026 perante este juiz de direito. fulano de tal juiz de direito").data, "");
 });
